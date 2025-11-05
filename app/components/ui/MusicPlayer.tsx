@@ -1,8 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-// Minimal playlist; drop audio files in /public/audio with these names or change the src values.
-// The player will gracefully show an error if a track is missing.
+// Default fallback playlist; real files are discovered from /api/audio
 const DEFAULT_PLAYLIST = [
   { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
   { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
@@ -10,58 +9,76 @@ const DEFAULT_PLAYLIST = [
 
 type Track = { title: string; src: string };
 
-type PlayerState = {
-  idx: number;
-  isPlaying: boolean;
-  volume: number; // 0..1
-  muted: boolean;
-  loop: boolean;
-  time: number; // seconds
-};
+const STORE = "algohub_player_prefs_v1";
 
-const STORAGE_KEY = "algohub_player_state_v1";
-
-export default function MusicPlayer({
-  playlist,
-  startOpen = false,
-}: {
-  playlist?: Track[];
-  startOpen?: boolean;
-}) {
+export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
+  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const panelTimer = useRef<number | null>(null);
-  const autoplayTried = useRef(false);
-  const [ready, setReady] = useState(false);
-  const [open, setOpen] = useState(startOpen);
+  const playingRef = useRef(false);
+  const autoPlayRef = useRef(false);
+
+  // UI state
+  const [hoverDisc, setHoverDisc] = useState(false);
+  const [hoverPanel, setHoverPanel] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>(() => playlist ?? []);
-  const [state, setState] = useState<PlayerState>(() => {
-    if (typeof window === "undefined")
-      return { idx: 0, isPlaying: false, volume: 0.6, muted: false, loop: false, time: 0 };
+  const [idx, setIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw) as PlayerState;
+      const raw = localStorage.getItem(STORE);
+      if (raw) {
+        const p = JSON.parse(raw) as { muted?: boolean };
+        if (typeof p.muted === "boolean") return p.muted;
+      }
     } catch {}
-    return { idx: 0, isPlaying: false, volume: 0.6, muted: false, loop: false, time: 0 };
+    return false;
   });
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof window === "undefined") return 0.7;
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (raw) {
+        const p = JSON.parse(raw) as { volume?: number };
+        if (typeof p.volume === "number") return Math.max(0, Math.min(1, p.volume));
+      }
+    } catch {}
+    return 0.7;
+  });
+  const [loop, setLoop] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (raw) {
+        const p = JSON.parse(raw) as { loop?: boolean };
+        if (typeof p.loop === "boolean") return p.loop;
+      }
+    } catch {}
+    return false;
+  });
+  // (Optional) duration/time omitted to keep UI simple and avoid stutter
 
-  const effectiveTracks = tracks.length > 0 ? tracks : DEFAULT_PLAYLIST;
-  const current = useMemo(
-    () => effectiveTracks[Math.max(0, Math.min(state.idx, effectiveTracks.length - 1))],
-    [effectiveTracks, state.idx]
-  );
-
-  // Fetch tracks from /api/audio if not provided via props
+  // Persist prefs
   useEffect(() => {
-    if (playlist && playlist.length) {
-      setTracks(playlist);
-      return;
-    }
+    if (typeof window === "undefined") return;
+    const p = { volume, muted, loop };
+    try {
+      localStorage.setItem(STORE, JSON.stringify(p));
+    } catch {}
+  }, [volume, muted, loop]);
+
+  // Resolve playlist (API fallback)
+  const effectiveTracks = useMemo(() => (playlist?.length ? playlist : (tracks.length ? tracks : DEFAULT_PLAYLIST)), [playlist, tracks]);
+  const current = useMemo(() => effectiveTracks[Math.max(0, Math.min(idx, effectiveTracks.length - 1))], [effectiveTracks, idx]);
+
+  // Fetch from API if no playlist provided
+  useEffect(() => {
+    if (playlist?.length) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch("/api/audio", { cache: "no-store" });
-        if (!res.ok) throw new Error("Failed to load audio list");
         const data = (await res.json()) as Track[];
         if (!cancelled) setTracks(Array.isArray(data) && data.length ? data : DEFAULT_PLAYLIST);
       } catch {
@@ -73,254 +90,189 @@ export default function MusicPlayer({
     };
   }, [playlist]);
 
-  // Initialize audio element and wire events
+  // Keep track count in a ref for event handlers
+  const lenRef = useRef(1);
   useEffect(() => {
-    const audio = new Audio();
-    audio.preload = "auto";
-    audioRef.current = audio;
-
-    const onEnded = () => {
-      if (state.loop) {
-        audio.currentTime = 0;
-        void audio.play().catch(() => {});
-        return;
-      }
-      next();
-    };
-    const onError = () => {
-      setError("Audio failed to load.");
-    };
-
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-    setReady(true);
-
-    return () => {
-      audio.pause();
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
-      audioRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Change track source when current track changes
-  useEffect(() => {
-    if (!ready || !audioRef.current || !current?.src) return;
-    const audio = audioRef.current;
-    setError(null);
-    // Only change src here to avoid re-buffering on unrelated state changes
-    if (audio.src !== location.origin + current.src) {
-      audio.src = current.src;
-      audio.currentTime = 0;
-    }
-    // If we should be playing, kick off playback
-    if (state.isPlaying) void audio.play().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, current.src]);
-
-  // Apply playback controls when state changes (without touching src)
-  useEffect(() => {
-    if (!audioRef.current) return;
-    const audio = audioRef.current;
-    audio.loop = state.loop;
-    audio.muted = state.muted;
-    audio.volume = state.volume;
-  }, [state.loop, state.muted, state.volume]);
-
-  // React to isPlaying changes
-  useEffect(() => {
-    if (!audioRef.current) return;
-    const audio = audioRef.current;
-    if (state.isPlaying) {
-      setError(null);
-      void audio.play().catch(() => {});
-    } else {
-      audio.pause();
-    }
-  }, [state.isPlaying]);
-
-  // If track list changes and idx is out of range, clamp it
-  useEffect(() => {
-    const len = effectiveTracks.length;
-    if (len === 0) return;
-    setState((s) => (s.idx >= len ? { ...s, idx: 0 } : s));
+    lenRef.current = Math.max(1, effectiveTracks.length);
   }, [effectiveTracks.length]);
 
-  // Persist state
+  // Create and wire audio element
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const persist = {
-        idx: state.idx,
-        isPlaying: state.isPlaying,
-        volume: state.volume,
-        muted: state.muted,
-        loop: state.loop,
-        time: 0,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(persist));
-    }
-  }, [state.idx, state.isPlaying, state.volume, state.muted, state.loop]);
+    const a = new Audio();
+  a.preload = "auto";
+    audioRef.current = a;
 
-  // Track time while playing
-  useEffect(() => {
-    if (!audioRef.current) return;
-    const audio = audioRef.current;
-    const onTime = () => {
-      setState((s) => ({ ...s, time: audio.currentTime }));
+    const onPlay = () => {
+      playingRef.current = true;
+      setPlaying(true);
     };
-    audio.addEventListener("timeupdate", onTime);
-    return () => audio.removeEventListener("timeupdate", onTime);
-  }, [ready]);
+    const onPause = () => {
+      playingRef.current = false;
+      setPlaying(false);
+    };
+    const onEnded = () => {
+      if (a.loop) {
+        a.currentTime = 0;
+        void a.play().catch(() => {});
+      } else {
+        // Advance to next track and keep playing
+        autoPlayRef.current = true;
+        setIdx((i) => (i + 1) % lenRef.current);
+      }
+    };
+    const onError = () => setError("Audio failed to load");
 
-  const playPause = () => {
-    if (!audioRef.current) return;
-    if (state.isPlaying) {
-      audioRef.current.pause();
-      setState((s) => ({ ...s, isPlaying: false }));
-    } else {
-      setError(null);
-      // Treat this as an explicit user gesture: unmute and play
-      audioRef.current.muted = false;
-      setState((s) => ({ ...s, muted: false }));
-      void audioRef.current.play().then(() => setState((s) => ({ ...s, isPlaying: true })));
-    }
-  };
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnded);
+    a.addEventListener("error", onError);
 
-  const prev = () => setState((s) => ({ ...s, idx: (s.idx - 1 + effectiveTracks.length) % effectiveTracks.length, time: 0 }));
-  const next = () => setState((s) => ({ ...s, idx: (s.idx + 1) % effectiveTracks.length, time: 0 }));
-
-  // Disc click: toggle play/pause and briefly reveal panel (mobile-friendly)
-  const handleDiscClick = () => {
-    playPause();
-    setOpen(true);
-    if (panelTimer.current) window.clearTimeout(panelTimer.current);
-    panelTimer.current = window.setTimeout(() => setOpen(false), 2500);
-  };
-
-  // Clear any pending panel auto-close timer on unmount
-  useEffect(() => {
     return () => {
-      if (panelTimer.current) window.clearTimeout(panelTimer.current);
+      a.pause();
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnded);
+      a.removeEventListener("error", onError);
+      audioRef.current = null;
     };
   }, []);
 
-  // Attempt muted autoplay once when ready and a track is available
+  // Apply settings to audio when they change
   useEffect(() => {
-    if (!ready || autoplayTried.current || !audioRef.current || !current?.src) return;
-    autoplayTried.current = true;
-    const audio = audioRef.current;
-    try {
-      audio.muted = true;
-      audio.volume = state.volume;
-      audio.loop = state.loop;
-      audio.currentTime = 0;
-      void audio.play().then(() => {
-        setState((s) => ({ ...s, isPlaying: true, muted: true, time: 0 }));
-      }).catch(() => {
-        // Autoplay blocked; user will tap to start
-      });
-    } catch {
-      // Ignore
-    }
-  }, [ready, current?.src, state.volume, state.loop]);
+    if (!audioRef.current) return;
+    audioRef.current.volume = volume;
+  }, [volume]);
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.muted = muted;
+  }, [muted]);
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.loop = loop;
+  }, [loop]);
 
-  // On first user interaction anywhere, unmute and try to start playback once
+  // When current track changes: first time, try muted autoplay; otherwise respect play/pause
+  const autoplayTriedRef = useRef(false);
   useEffect(() => {
-    if (!ready) return;
-    let done = false;
-    const onInteract = () => {
-      if (done || !audioRef.current) return;
-      done = true;
-      const a = audioRef.current;
-      a.muted = false;
-      setState((s) => ({ ...s, muted: false }));
-      if (a.paused) {
-        void a.play().then(() => setState((s) => ({ ...s, isPlaying: true })));
+    const a = audioRef.current;
+    if (!a || !current?.src) return;
+    (async () => {
+      setError(null);
+      if (!autoplayTriedRef.current) {
+        autoplayTriedRef.current = true;
+        a.src = current.src;
+        try {
+          a.muted = true;
+          await a.play();
+          setMuted(true);
+          return;
+        } catch {
+          a.pause();
+          return;
+        }
       }
-    };
-    window.addEventListener("pointerdown", onInteract, { once: true });
-    window.addEventListener("keydown", onInteract, { once: true });
-    return () => {
-      window.removeEventListener("pointerdown", onInteract);
-      window.removeEventListener("keydown", onInteract);
-    };
-  }, [ready]);
-  const setVolume = (v: number) => {
-    v = Math.max(0, Math.min(1, v));
-    if (audioRef.current) audioRef.current.volume = v;
-    setState((s) => ({ ...s, volume: v }));
+      a.src = current.src;
+      a.currentTime = 0;
+      const shouldAuto = autoPlayRef.current || playingRef.current;
+      autoPlayRef.current = false;
+      if (shouldAuto) {
+        void a.play().catch(() => {});
+      } else {
+        a.pause();
+      }
+    })();
+  }, [current?.src]);
+
+  // Controls
+  const handleToggle = async () => {
+    const a = audioRef.current;
+    if (!a) return;
+    try {
+      if (a.paused) {
+        setMuted(false);
+        a.muted = false;
+        await a.play();
+      } else {
+        a.pause();
+      }
+    } catch {}
   };
-  const toggleMute = () => {
-    if (audioRef.current) audioRef.current.muted = !state.muted;
-    setState((s) => ({ ...s, muted: !s.muted }));
+  const handlePrev = () => {
+    autoPlayRef.current = playingRef.current;
+    setIdx((i) => (i - 1 + effectiveTracks.length) % effectiveTracks.length);
   };
-  const toggleLoop = () => setState((s) => ({ ...s, loop: !s.loop }));
+  const handleNext = () => {
+    autoPlayRef.current = playingRef.current;
+    setIdx((i) => (i + 1) % effectiveTracks.length);
+  };
+  const handleMute = () => setMuted((m) => !m);
+  const handleLoop = () => setLoop((l) => !l);
+  const handleVolume = (v: number) => setVolume(Math.max(0, Math.min(1, v)));
+
+  const isOpen = hoverDisc || hoverPanel;
 
   return (
-    <div className="group fixed bottom-4 right-4 z-50 select-none">
-      {/* Compact disc button */}
-      <button
-        onClick={handleDiscClick}
-        aria-label={state.isPlaying ? "Pause music" : "Play music"}
-        className={`relative grid h-14 w-14 place-items-center rounded-full ring-1 ring-white/20 transition-transform duration-200 hover:scale-105 active:scale-95 ${
-          state.isPlaying ? "bg-sky-600/90" : "bg-black/35 backdrop-blur-md"
-        }`}
-        title={current?.title}
-      >
-        {/* vinyl record icon */}
-        <div
-          className={`relative h-9 w-9 rounded-full border-[3px] border-white/70 bg-gradient-to-br from-white/60 to-white/20 shadow-inner ${
-            state.isPlaying ? "motion-safe:animate-[spinSlow_6s_linear_infinite]" : ""
-          }`}
+    <div
+      className="fixed bottom-4 right-4 z-50 select-none"
+      onMouseLeave={() => { setHoverDisc(false); setHoverPanel(false); }}
+    >
+      <div className={`flex items-center gap-3 rounded-2xl bg-black/50 p-2 text-white ring-1 ring-white/20 backdrop-blur-md ${isOpen ? "" : "px-3 py-2"}`}>
+        {/* Disc / Play-Pause */}
+        <button
+          onClick={handleToggle}
+          onMouseEnter={() => setHoverDisc(true)}
+          onMouseLeave={() => setHoverDisc(false)}
+          onFocus={() => setHoverDisc(true)}
+          onBlur={() => setHoverDisc(false)}
+          aria-label={playing ? "Pause" : "Play"}
+          className={`relative grid h-12 w-12 place-items-center rounded-full ${playing ? "bg-sky-600/90" : "bg-black/40"} ring-1 ring-white/20`}
+          title={current?.title}
         >
-          <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60" />
-          <div className="absolute inset-0 rounded-full" style={{
-            background:
-              "radial-gradient(circle at 30% 30%, rgba(0,0,0,.06) 0 40%, transparent 41%)"
-          }} />
-        </div>
-        {/* tiny play indicator dot */}
-        <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ${state.isPlaying ? "bg-green-400" : "bg-white/50"}`} />
-      </button>
+          <div className={`relative h-8 w-8 rounded-full border-[3px] border-white/70 bg-gradient-to-br from-white/60 to-white/20 shadow-inner ${playing ? "motion-safe:animate-[spinSlow_6s_linear_infinite]" : ""}`}>
+            <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60" />
+            <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 30%, rgba(0,0,0,.06) 0 40%, transparent 41%)" }} />
+          </div>
+          <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ${playing ? "bg-green-400" : "bg-white/50"}`} />
+        </button>
 
-      {/* Hover/expanded controls panel - shows on hover or when open is true */}
-      <div
-        className={`pointer-events-none absolute bottom-1 right-[4.25rem] flex translate-x-2 items-center gap-2 rounded-2xl bg-black/40 p-2 text-white opacity-0 ring-1 ring-white/20 backdrop-blur-md transition-all duration-200 group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100 ${
-          open ? "pointer-events-auto translate-x-0 opacity-100" : ""
-        }`}
-      >
-        {/* current track name (desktop) */}
-        <span className="hidden max-w-[160px] truncate text-xs opacity-90 sm:block">
-          {current?.title}
-          {error ? " (missing)" : ""}
-        </span>
-        <IconButton label="Previous" onClick={prev}>
-          <Icon name="prev" />
-        </IconButton>
-        <IconButton label={state.isPlaying ? "Pause" : "Play"} onClick={playPause} bigger>
-          {state.isPlaying ? <Icon name="pause" /> : <Icon name="play" />}
-        </IconButton>
-        <IconButton label="Next" onClick={next}>
-          <Icon name="next" />
-        </IconButton>
-        <div className="mx-2 hidden items-center gap-2 sm:flex">
-          <IconButton label={state.muted ? "Unmute" : "Mute"} onClick={toggleMute}>
-            <Icon name={state.muted ? "mute" : "volume"} />
-          </IconButton>
-          <input
-            aria-label="Volume"
-            type="range"
-            min={0}
-            max={100}
-            value={Math.round(state.volume * 100)}
-            onChange={(e) => setVolume(Number(e.target.value) / 100)}
-            className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/25 accent-sky-500"
-          />
-          <IconButton label={state.loop ? "Disable loop" : "Enable loop"} onClick={toggleLoop}>
-            <Icon name={state.loop ? "loopOn" : "loop"} />
-          </IconButton>
-        </div>
+        {/* Expanded panel */}
+        {isOpen && (
+          <div
+            className="flex items-center gap-2"
+            onMouseEnter={() => setHoverPanel(true)}
+            onMouseLeave={() => setHoverPanel(false)}
+            onFocus={() => setHoverPanel(true)}
+            onBlur={() => setHoverPanel(false)}
+          >
+            <div className="hidden max-w-[180px] truncate text-xs opacity-90 sm:block" title={current?.title}>
+              {current?.title}
+              {error ? " (missing)" : ""}
+            </div>
+            <IconButton label="Previous" onClick={handlePrev}><Icon name="prev" /></IconButton>
+            <IconButton label={playing ? "Pause" : "Play"} onClick={handleToggle} bigger>
+              {playing ? <Icon name="pause" /> : <Icon name="play" />}
+            </IconButton>
+            <IconButton label="Next" onClick={handleNext}><Icon name="next" /></IconButton>
+            <div className="ml-1 hidden items-center gap-2 sm:flex">
+              <IconButton label={muted ? "Unmute" : "Mute"} onClick={handleMute}>
+                <Icon name={muted ? "mute" : "volume"} />
+              </IconButton>
+              <input
+                aria-label="Volume"
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(volume * 100)}
+                onChange={(e) => handleVolume(Number(e.target.value) / 100)}
+                onInput={(e) => handleVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/25 accent-sky-500"
+              />
+              <IconButton label={loop ? "Disable loop" : "Enable loop"} onClick={handleLoop}>
+                <Icon name={loop ? "loopOn" : "loop"} />
+              </IconButton>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -331,49 +283,35 @@ function IconButton({ children, onClick, label, bigger = false }: { children: Re
     <button
       onClick={onClick}
       aria-label={label}
-      className={`inline-grid place-items-center rounded-xl bg-white/10 ring-1 ring-white/15 transition-all hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
-        bigger ? "h-10 w-10" : "h-9 w-9"
-      }`}
+      className={`inline-grid place-items-center rounded-xl bg-white/10 ring-1 ring-white/15 transition-all hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${bigger ? "h-10 w-10" : "h-9 w-9"}`}
     >
       {children}
     </button>
   );
 }
 
-function Icon({ name }: { name: "play" | "pause" | "prev" | "next" | "volume" | "mute" | "loop" | "loopOn" }) {
+function Icon({ name }: { name: "play" | "pause" | "prev" | "next" | "volume" | "mute" | "loop" | "loopOn" | "chevLeft" | "chevRight" }) {
   switch (name) {
     case "play":
-      return (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-      );
+      return <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>;
     case "pause":
-      return (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
-      );
+      return <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>;
     case "prev":
-      return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6l-10 6 10 6z" /></svg>
-      );
+      return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6l-10 6 10 6z"/></svg>;
     case "next":
-      return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l10 6-10 6z" /></svg>
-      );
+      return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l10 6-10 6z"/></svg>;
     case "volume":
-      return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3z" /></svg>
-      );
+      return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3z"/></svg>;
     case "mute":
-      return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12l4.5 4.5-1.5 1.5L15 13.5 10.5 18 7 14H3v-4h4l5-5 3.5 3.5 4.5-4.5 1.5 1.5L16.5 12z" /></svg>
-      );
+      return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12l4.5 4.5-1.5 1.5L15 13.5 10.5 18 7 14H3v-4h4l5-5 3.5 3.5 4.5-4.5 1.5 1.5L16.5 12z"/></svg>;
     case "loop":
-      return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1l4 4-4 4V6H7a3 3 0 0 0-3 3v1H2V9a5 5 0 0 1 5-5h10V1zm-10 22l-4-4 4-4v3h10a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5H7v3z" /></svg>
-      );
+      return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1l4 4-4 4V6H7a3 3 0 0 0-3 3v1H2V9a5 5 0 0 1 5-5h10V1zm-10 22l-4-4 4-4v3h10a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5H7v3z"/></svg>;
     case "loopOn":
-      return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1l4 4-4 4V6H7a3 3 0 0 0-3 3v1H2V9a5 5 0 0 1 5-5h10V1zM7 23l-4-4 4-4v3h10a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5H7v3z"/></svg>
-      );
+      return <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1l4 4-4 4V6H7a3 3 0 0 0-3 3v1H2V9a5 5 0 0 1 5-5h10V1zM7 23l-4-4 4-4v3h10a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5H7v3z"/></svg>;
+    case "chevLeft":
+      return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>;
+    case "chevRight":
+      return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>;
     default:
       return null;
   }
