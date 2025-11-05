@@ -1,43 +1,49 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
-// Small presentational component for decorative images
-function Doodle({
-  src,
-  w,
-  className,
-  priority = false,
-  style,
-  imgClass = "",
-}: {
-  src: string;
-  w: number;
-  className?: string;
-  priority?: boolean;
-  style?: React.CSSProperties;
-  imgClass?: string;
-}) {
-  return (
-    <div style={style} className={`pointer-events-none absolute ${className ?? ""}`}>
-      <Image
-        src={src}
-        alt=""
-        width={w}
-        height={w}
-        aria-hidden
-        priority={priority}
-        className={`h-auto ${imgClass}`}
-      />
-    </div>
-  );
-}
+import { useEffect, useRef } from "react";
+import BackgroundDoodles from "./components/sections/BackgroundDoodles";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
+  // Preload a short click SFX for the primary CTA
+  const clickSfxRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    try {
+      const a = new Audio("/button_click.mp3");
+      a.preload = "auto";
+      a.volume = 0.6; // subtle click
+      clickSfxRef.current = a;
+      return () => {
+        a.pause();
+        clickSfxRef.current = null;
+      };
+    } catch {
+      // ignore if Audio is unavailable (SSR or older env)
+    }
+  }, []);
+  const playClickSfx = () => {
+    const a = clickSfxRef.current;
+    if (!a) return;
+    try {
+      a.currentTime = 0;
+      void a.play();
+    } catch {}
+  };
+  const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
+    // Respect new-tab/modified clicks and non-left clicks
+    if (e.defaultPrevented) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    playClickSfx();
+    // Small delay so the SFX is audible before navigation
+    setTimeout(() => router.push("/learn"), 140);
+  };
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white">
-      {/* decorative background doodles */}
-      <BackgroundDoodles />
+  {/* decorative background doodles */}
+  <BackgroundDoodles />
 
       <section className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center px-4 sm:px-6 text-center">
         {/* logo - no box, just the mark */}
@@ -68,6 +74,7 @@ export default function Home() {
         <div className="mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:gap-4 motion-safe:animate-[fadeUp_700ms_ease-out_forwards] motion-safe:[animation-delay:300ms] motion-safe:opacity-0">
           <Link
             href="/learn"
+            onClick={handleStartClick}
             className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-600 px-6 py-3 text-base font-extrabold tracking-wide shadow-[0_10px_0_0_rgb(2,132,199)] transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_8px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_5px_0_0_rgb(2,132,199)] sm:px-8 sm:py-4 sm:text-xl motion-safe:animate-[fadeUp_700ms_ease-out_forwards]"
           >
             START LEARNING
@@ -87,93 +94,4 @@ export default function Home() {
   );
 }
 
-function BackgroundDoodles() {
-  // track mouse for subtle parallax (disabled if reduced motion)
-  const [p, setP] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-    const onMove = (e: MouseEvent) => {
-      const x = (e.clientX / window.innerWidth) * 2 - 1;
-      const y = (e.clientY / window.innerHeight) * 2 - 1;
-      setP({ x, y });
-    };
-    window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
-  }, []);
-  // Even distribution using percentage positions
-  // Jittered, hand-picked positions for a natural, non-grid feel.
-  // Mobile: fewer, smaller items; Desktop: fuller layout.
-  const mobileItems = [
-    { src: "/db1.png", x: 10, y: 10, w: 52, rot: -6, pri: true },
-    { src: "/node1-1.png", x: 85, y: 16, w: 44, rot: 4 },
-    { src: "/stats1.png", x: 18, y: 78, w: 42, rot: 2 },
-    { src: "/node2-1.png", x: 88, y: 82, w: 46, rot: -3 },
-  ];
-  const desktopItems = [
-    { src: "/db1.png", x: 7, y: 9, w: 68, rot: -6, pri: true },
-    { src: "/node1-1.png", x: 22, y: 15, w: 50, rot: 3 },
-    { src: "/node2-1.png", x: 86, y: 12, w: 78, rot: -8 },
-    { src: "/stats1.png", x: 10, y: 38, w: 54, rot: 2 },
-    { src: "/node2-1.png", x: 92, y: 38, w: 66, rot: 5 },
-    { src: "/node1-1.png", x: 17, y: 82, w: 52, rot: -4 },
-    { src: "/db1.png", x: 44, y: 88, w: 62, rot: 8 },
-    { src: "/stats1.png", x: 88, y: 86, w: 58, rot: -3 },
-    { src: "/node1-1.png", x: 6, y: 65, w: 44, rot: 6 },
-    { src: "/stats1.png", x: 95, y: 64, w: 42, rot: -5 },
-    { src: "/db1.png", x: 30, y: 6, w: 46, rot: 2 },
-    { src: "/node2-1.png", x: 70, y: 7, w: 48, rot: -2 },
-  ];
-
-  return (
-    <>
-      {/* mobile set */}
-      {mobileItems.map((it, i) => {
-        const dx = p.x * 6; // gentle on mobile
-        const dy = p.y * 6;
-        return (
-          <Doodle
-            key={i}
-            src={it.src}
-            w={it.w}
-            priority={Boolean(it.pri)}
-            className={`opacity-45 sm:hidden`}
-            imgClass="will-change-transform motion-reduce:animate-none motion-safe:animate-[floaty_7s_ease-in-out_infinite]"
-            style={{
-              left: `${it.x}%`,
-              top: `${it.y}%`,
-              transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${it.rot}deg)`,
-            }}
-          />
-        );
-      })}
-      {/* desktop+ set */}
-      {desktopItems.map((it, i) => {
-        const intensity = 12; // px at edges
-        const dx = p.x * intensity;
-        const dy = p.y * intensity;
-        return (
-          <Doodle
-            key={`d-${i}`}
-            src={it.src}
-            w={it.w}
-            priority={Boolean(it.pri)}
-            className={`hidden opacity-55 sm:block`}
-            imgClass="will-change-transform motion-reduce:animate-none motion-safe:animate-[floaty_8s_ease-in-out_infinite]"
-            style={{
-              left: `${it.x}%`,
-              top: `${it.y}%`,
-              transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${it.rot}deg)`,
-            }}
-          />
-        );
-      })}
-
-      {/* subtle center glow to enhance depth */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[18vh] w-[18vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/5 blur-2xl sm:h-[24vh] sm:w-[24vh]"
-      />
-    </>
-  );
-}
+// BackgroundDoodles is now imported from components
