@@ -9,11 +9,14 @@ import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { setIrisPoint } from "../components/ui/transitionBus";
 import { playSfx } from "../components/ui/sfx";
+import LoadingOverlay from "../components/ui/LoadingOverlay";
+import { useState } from "react";
 
 export default function LearnPage() {
   const irisRef = useRef<IrisHandle | null>(null);
   const transitioningRef = useRef(false);
   const router = useRouter();
+  const [showLoader, setShowLoader] = useState(false);
 
   const handleBackClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     if (e.defaultPrevented) return;
@@ -37,8 +40,14 @@ export default function LearnPage() {
       durationMs: 650,
       mode: "close",
       onDone: () => {
-        router.push("/");
-        setTimeout(() => (transitioningRef.current = false), 200);
+        setShowLoader(true);
+        setTimeout(() => {
+          router.push("/");
+          setTimeout(() => {
+            transitioningRef.current = false;
+            setShowLoader(false);
+          }, 200);
+        }, 2400);
       },
     });
   };
@@ -62,6 +71,8 @@ export default function LearnPage() {
       <GameScroller />
       {/* Iris transition overlay for close */}
       <IrisTransition ref={irisRef} />
+      {/* 3D loading overlay */}
+      <LoadingOverlay active={showLoader} />
     </main>
   );
 }
