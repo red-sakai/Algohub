@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getGlobalAudio } from "../ui/audioSingleton";
 import { getGameAudio } from "../ui/gameAudio";
+import CameraCaptureModal from "../ui/CameraCaptureModal";
 
 type Game = {
   id: string;
@@ -53,6 +54,8 @@ export default function GameScroller() {
   const lastPlayedRef = useRef<number | null>(null);
   const pausedPlayerPrevRef = useRef(false);
   const globalAudioPlayHandlerRef = useRef<EventListener | null>(null);
+  const [showCam, setShowCam] = useState(false);
+  const [licensePhoto, setLicensePhoto] = useState<string | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -96,6 +99,11 @@ export default function GameScroller() {
   const playForIndex = (idx: number) => {
     const g = items[idx];
     if (!g) return;
+    // For the first game, trigger the camera capture flow instead of immediate audio
+    if (g.id === "sorting-sprint") {
+      setShowCam(true);
+      return;
+    }
     ensureGlobalPlayerPaused();
     const a = getGameAudio();
     a.loop = true;
@@ -142,6 +150,21 @@ export default function GameScroller() {
                   <span className="h-2 w-2 rounded-full bg-green-300" />
                   {i === active ? "Now Playing Theme" : "Tap Next/Prev"}
                 </div>
+                <div className="mt-5 flex items-center justify-center">
+                  <button
+                    onClick={() => playForIndex(i)}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-5 py-2.5 text-base font-extrabold tracking-wide text-white shadow-[0_8px_0_0_rgb(2,132,199)] ring-1 ring-white/20 transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_6px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
+                    aria-label={`Play ${g.title}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Play
+                  </button>
+                </div>
+                {g.id === "sorting-sprint" && licensePhoto && (
+                  <div className="mt-4 text-center text-xs text-white/80">License photo saved.</div>
+                )}
               </div>
             </div>
           </div>
@@ -182,6 +205,28 @@ export default function GameScroller() {
           />
         ))}
       </div>
+
+      {/* Camera modal for first game */}
+      <CameraCaptureModal
+        active={showCam}
+        onClose={() => setShowCam(false)}
+        onCaptured={(dataUrl) => {
+          setLicensePhoto(dataUrl);
+          // After capturing, start the game's audio to proceed
+          const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
+          if (firstIdx >= 0) {
+            // proceed to play the track after photo capture
+            ensureGlobalPlayerPaused();
+            const a = getGameAudio();
+            a.loop = true;
+            a.volume = 0.8;
+            a.src = items[firstIdx].track.src;
+            a.currentTime = 0;
+            a.play().catch(() => {});
+            lastPlayedRef.current = firstIdx;
+          }
+        }}
+      />
     </section>
   );
 }
