@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from "react";
 import IrisTransition, { IrisHandle } from "./IrisTransition";
 import { consumeIrisPoint } from "./transitionBus";
 
-export default function IrisOpenOnMount({ durationMs = 650 }: { durationMs?: number }) {
+export default function IrisOpenOnMount({ durationMs = 650, requirePoint = false }: { durationMs?: number; requirePoint?: boolean }) {
   const ref = useRef<IrisHandle | null>(null);
   useEffect(() => {
     const p = consumeIrisPoint();
@@ -11,11 +11,11 @@ export default function IrisOpenOnMount({ durationMs = 650 }: { durationMs?: num
     const id = requestAnimationFrame(() => {
       if (p) {
         ref.current?.start({ x: p.x, y: p.y, durationMs, mode: "open" });
-      } else {
+      } else if (!requirePoint) {
         ref.current?.start({ durationMs, mode: "open" });
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [durationMs]);
+  }, [durationMs, requirePoint]);
   return <IrisTransition ref={ref} />;
 }
