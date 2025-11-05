@@ -37,6 +37,10 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
   const countdownTimerRef = useRef<number | null>(null);
   const clickSfxRef = useRef<HTMLAudioElement | null>(null);
   const clickPlayedRef = useRef(false);
+  const shutterTimerRef = useRef<number | null>(null);
+  const captureTimerRef = useRef<number | null>(null);
+  const [flashVisible, setFlashVisible] = useState(false);
+  const [flashOpacity, setFlashOpacity] = useState(0);
 
   // Track breakpoint (sm: 640px)
   const [isSm, setIsSm] = useState(false);
@@ -82,6 +86,14 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
     if (countdownTimerRef.current) {
       window.clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
+    }
+    if (shutterTimerRef.current) {
+      window.clearTimeout(shutterTimerRef.current);
+      shutterTimerRef.current = null;
+    }
+    if (captureTimerRef.current) {
+      window.clearTimeout(captureTimerRef.current);
+      captureTimerRef.current = null;
     }
     const stream = streamRef.current;
     if (stream) {
@@ -145,17 +157,28 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
           if (prev <= 1) {
             window.clearInterval(id);
             countdownTimerRef.current = null;
-            // Play shutter immediately after timer completes
-            const a = clickSfxRef.current;
-            try {
-              if (a && !clickPlayedRef.current) {
-                a.currentTime = 0;
-                a.play().catch(() => {});
-                clickPlayedRef.current = true;
-              }
-            } catch {}
-            // Slight delay to mimic shutter then capture frame
-            setTimeout(() => capturePhoto(), 120);
+            // Schedule shutter at ~0.5s before capture
+            shutterTimerRef.current = window.setTimeout(() => {
+              const a = clickSfxRef.current;
+              try {
+                if (a && !clickPlayedRef.current) {
+                  a.currentTime = 0;
+                  a.play().catch(() => {});
+                  clickPlayedRef.current = true;
+                }
+              } catch {}
+            }, 500);
+
+            // Schedule flash + capture at timer end
+            captureTimerRef.current = window.setTimeout(() => {
+              try {
+                setFlashVisible(true);
+                setFlashOpacity(1);
+                setTimeout(() => setFlashOpacity(0), 140);
+                setTimeout(() => setFlashVisible(false), 320);
+              } catch {}
+              setTimeout(() => capturePhoto(), 120);
+            }, 1000);
             return 0;
           }
           return prev - 1;
@@ -222,6 +245,17 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
       clickSfxRef.current = null;
       clickPlayedRef.current = false;
     }
+    if (shutterTimerRef.current) {
+      window.clearTimeout(shutterTimerRef.current);
+      shutterTimerRef.current = null;
+    }
+    if (captureTimerRef.current) {
+      window.clearTimeout(captureTimerRef.current);
+      captureTimerRef.current = null;
+    }
+    // Reset flash
+    setFlashVisible(false);
+    setFlashOpacity(0);
     // If we pushed history entries to block back, consume them now
     if (typeof window !== "undefined") {
       const entries = historyEntriesRef.current;
@@ -239,6 +273,18 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
 
   return (
     <div className="fixed inset-0 z-[1200]" aria-modal role="dialog">
+      {/* Global flash overlay */}
+      {flashVisible && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[2000]"
+          style={{
+            background: "white",
+            opacity: flashOpacity,
+            transition: "opacity 160ms ease-in-out",
+            willChange: "opacity",
+          }}
+        />
+      )}
       <div className="absolute inset-0 bg-black/90" onClick={!hasStream ? handleClose : undefined} />
       <div className="absolute inset-0 grid place-items-center p-4">
         {/* Persistent Close button in top-right */}
