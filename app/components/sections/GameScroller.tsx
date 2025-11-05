@@ -96,11 +96,14 @@ export default function GameScroller() {
     }
   };
 
-  const playForIndex = (idx: number) => {
+  const playForIndex = (idx: number, opts?: { fromNav?: boolean }) => {
+    const fromNav = opts?.fromNav === true;
     const g = items[idx];
     if (!g) return;
     // For the first game, trigger the camera capture flow instead of immediate audio
     if (g.id === "sorting-sprint") {
+      // When navigating with Prev/Next, don't open the camera automatically.
+      if (fromNav) return;
       setShowCam(true);
       return;
     }
@@ -118,14 +121,14 @@ export default function GameScroller() {
     setActive((i) => {
       const nxt = Math.max(0, Math.min(items.length - 1, i + dir));
       // Only play on user-initiated navigation
-      playForIndex(nxt);
+      playForIndex(nxt, { fromNav: true });
       return nxt;
     });
   };
   const goTo = (idx: number) => {
     const nxt = Math.max(0, Math.min(items.length - 1, idx));
     setActive(nxt);
-    playForIndex(nxt);
+    playForIndex(nxt, { fromNav: true });
   };
 
   return (
