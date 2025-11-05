@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MUSIC_BUS } from "./musicBus";
 import { getGlobalAudio } from "./audioSingleton";
+import { getGameAudio } from "./gameAudio";
 
 // Default fallback playlist; real files are discovered from /api/audio
 const DEFAULT_PLAYLIST = [
@@ -60,6 +61,8 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     return false;
   });
   // (Optional) duration/time omitted to keep UI simple and avoid stutter
+  const mutedRef = useRef(false);
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
 
   // Persist prefs
   useEffect(() => {
@@ -73,6 +76,9 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   // Resolve playlist (API fallback)
   const effectiveTracks = useMemo(() => (playlist?.length ? playlist : (tracks.length ? tracks : DEFAULT_PLAYLIST)), [playlist, tracks]);
   const current = useMemo(() => effectiveTracks[Math.max(0, Math.min(idx, effectiveTracks.length - 1))], [effectiveTracks, idx]);
+  // Keep a ref of current src for first-interaction unlock handler
+  const currentSrcRef = useRef<string | undefined>(undefined);
+  useEffect(() => { currentSrcRef.current = current?.src; }, [current?.src]);
 
   // Fetch from API if no playlist provided
   useEffect(() => {
@@ -201,6 +207,58 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     })();
   }, [current?.src]);
 
+  // On first user interaction anywhere, attempt to start or unmute playback (respect game audio priority and user mute pref)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let unlocked = false;
+    const unlock = async () => {
+      if (unlocked) return;
+      unlocked = true;
+      cleanup();
+      const a = audioRef.current;
+      if (!a) return;
+      // If game audio is playing, respect its priority and do nothing
+      try {
+        const ga = getGameAudio();
+        if (ga && ga.paused === false) return;
+      } catch {}
+      const src = currentSrcRef.current;
+      if (!src) return;
+      if (!a.src || a.src !== src) {
+        a.src = src;
+        a.currentTime = 0;
+      }
+      try {
+        if (!mutedRef.current) {
+          a.muted = false;
+        } else {
+          a.muted = true;
+        }
+        await a.play();
+        if (!mutedRef.current) {
+          setMuted(false);
+        }
+      } catch {
+        // As a fallback, try muted autoplay once more
+        try {
+          a.muted = true;
+          setMuted(true);
+          await a.play();
+        } catch {}
+      }
+    };
+    const handler = () => unlock();
+    window.addEventListener("pointerdown", handler, { once: true } as AddEventListenerOptions);
+    window.addEventListener("keydown", handler, { once: true } as AddEventListenerOptions);
+    window.addEventListener("touchstart", handler, { once: true } as AddEventListenerOptions);
+    const cleanup = () => {
+      window.removeEventListener("pointerdown", handler as EventListener);
+      window.removeEventListener("keydown", handler as EventListener);
+      window.removeEventListener("touchstart", handler as EventListener);
+    };
+    return cleanup;
+  }, []);
+
   // Controls
   const handleToggle = async () => {
     const a = audioRef.current;
@@ -234,7 +292,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
       className="fixed bottom-4 right-4 z-50 select-none"
       onMouseLeave={() => { setHoverDisc(false); setHoverPanel(false); }}
     >
-      <div className={`flex items-center gap-3 rounded-2xl bg-black/50 p-2 text-white ring-1 ring-white/20 backdrop-blur-md ${isOpen ? "" : "px-3 py-2"}`}>
+  <div className={`flex items-center gap-3 rounded-2xl bg-black/50 p-2 text-white ring-1 ring-white/20 backdrop-blur-md transition-all duration-300 ease-out`}>
         {/* Disc / Play-Pause */}
         <button
           onClick={handleToggle}
@@ -253,44 +311,45 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
           <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ${playing ? "bg-green-400" : "bg-white/50"}`} />
         </button>
 
-        {/* Expanded panel */}
-        {isOpen && (
-          <div
-            className="flex items-center gap-2"
-            onMouseEnter={() => setHoverPanel(true)}
-            onMouseLeave={() => setHoverPanel(false)}
-            onFocus={() => setHoverPanel(true)}
-            onBlur={() => setHoverPanel(false)}
-          >
-            <div className="hidden max-w-[180px] truncate text-xs opacity-90 sm:block" title={current?.title}>
-              {current?.title}
-              {error ? " (missing)" : ""}
-            </div>
-            <IconButton label="Previous" onClick={handlePrev}><Icon name="prev" /></IconButton>
-            <IconButton label={playing ? "Pause" : "Play"} onClick={handleToggle} bigger>
-              {playing ? <Icon name="pause" /> : <Icon name="play" />}
-            </IconButton>
-            <IconButton label="Next" onClick={handleNext}><Icon name="next" /></IconButton>
-            <div className="ml-1 hidden items-center gap-2 sm:flex">
-              <IconButton label={muted ? "Unmute" : "Mute"} onClick={handleMute}>
-                <Icon name={muted ? "mute" : "volume"} />
-              </IconButton>
-              <input
-                aria-label="Volume"
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(volume * 100)}
-                onChange={(e) => handleVolume(Number(e.target.value) / 100)}
-                onInput={(e) => handleVolume(Number((e.target as HTMLInputElement).value) / 100)}
-                className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/25 accent-sky-500"
-              />
-              <IconButton label={loop ? "Disable loop" : "Enable loop"} onClick={handleLoop}>
-                <Icon name={loop ? "loopOn" : "loop"} />
-              </IconButton>
-            </div>
+        {/* Expanded panel (animated in/out) */}
+        <div
+          className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+            isOpen ? "opacity-100 translate-x-0 scale-100 max-w-[320px] w-auto pointer-events-auto" : "opacity-0 -translate-x-1 scale-95 max-w-0 w-0 pointer-events-none"
+          }`}
+          onMouseEnter={() => setHoverPanel(true)}
+          onMouseLeave={() => setHoverPanel(false)}
+          onFocus={() => setHoverPanel(true)}
+          onBlur={() => setHoverPanel(false)}
+          aria-hidden={!isOpen}
+        >
+          <div className="hidden max-w-[180px] truncate text-xs opacity-90 sm:block" title={current?.title}>
+            {current?.title}
+            {error ? " (missing)" : ""}
           </div>
-        )}
+          <IconButton label="Previous" onClick={handlePrev}><Icon name="prev" /></IconButton>
+          <IconButton label={playing ? "Pause" : "Play"} onClick={handleToggle} bigger>
+            {playing ? <Icon name="pause" /> : <Icon name="play" />}
+          </IconButton>
+          <IconButton label="Next" onClick={handleNext}><Icon name="next" /></IconButton>
+          <div className="ml-1 hidden items-center gap-2 sm:flex">
+            <IconButton label={muted ? "Unmute" : "Mute"} onClick={handleMute}>
+              <Icon name={muted ? "mute" : "volume"} />
+            </IconButton>
+            <input
+              aria-label="Volume"
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(volume * 100)}
+              onChange={(e) => handleVolume(Number(e.target.value) / 100)}
+              onInput={(e) => handleVolume(Number((e.target as HTMLInputElement).value) / 100)}
+              className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/25 accent-sky-500"
+            />
+            <IconButton label={loop ? "Disable loop" : "Enable loop"} onClick={handleLoop}>
+              <Icon name={loop ? "loopOn" : "loop"} />
+            </IconButton>
+          </div>
+        </div>
       </div>
     </div>
   );
