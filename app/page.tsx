@@ -1,44 +1,49 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef } from "react";
 import BackgroundDoodles from "./components/sections/BackgroundDoodles";
 import { useRouter } from "next/navigation";
+import { playSfx } from "./components/ui/sfx";
+import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
+import { useRef } from "react";
+import { setIrisPoint } from "./components/ui/transitionBus";
 
 export default function Home() {
   const router = useRouter();
-  // Preload a short click SFX for the primary CTA
-  const clickSfxRef = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    try {
-      const a = new Audio("/button_click.mp3");
-      a.preload = "auto";
-      a.volume = 0.6; // subtle click
-      clickSfxRef.current = a;
-      return () => {
-        a.pause();
-        clickSfxRef.current = null;
-      };
-    } catch {
-      // ignore if Audio is unavailable (SSR or older env)
-    }
-  }, []);
-  const playClickSfx = () => {
-    const a = clickSfxRef.current;
-    if (!a) return;
-    try {
-      a.currentTime = 0;
-      void a.play();
-    } catch {}
-  };
+  const irisRef = useRef<IrisHandle | null>(null);
+  const transitioningRef = useRef(false);
   const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     // Respect new-tab/modified clicks and non-left clicks
     if (e.defaultPrevented) return;
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    playClickSfx();
-    // Small delay so the SFX is audible before navigation
-    setTimeout(() => router.push("/learn"), 140);
+    // Play SFX from a global pool so it continues after navigation
+    playSfx("/button_click.mp3", 0.6);
+    if (transitioningRef.current) return; // avoid double triggers
+    transitioningRef.current = true;
+
+    // Determine center from click position; fallback to button center
+  let x = e.clientX as number | undefined;
+  let y = e.clientY as number | undefined;
+    if (typeof x !== "number" || typeof y !== "number" || x === 0 && y === 0) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      x = rect.left + rect.width / 2;
+      y = rect.top + rect.height / 2;
+    }
+
+    // Persist the origin point so the destination can open from the same spot
+    setIrisPoint(x, y);
+
+    irisRef.current?.start({
+      x,
+      y,
+      durationMs: 650,
+      onDone: () => {
+        router.push("/learn");
+        // allow future transitions when returning to this page
+        setTimeout(() => { transitioningRef.current = false; }, 200);
+      },
+    });
   };
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white">
@@ -90,6 +95,8 @@ export default function Home() {
           </Link>
         </div>
       </section>
+      {/* Iris transition overlay */}
+      <IrisTransition ref={irisRef} />
     </main>
   );
 }
