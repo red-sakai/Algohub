@@ -8,11 +8,14 @@ import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
 import { useRef } from "react";
 import IrisOpenOnMount from "./components/ui/IrisOpenOnMount";
 import { setIrisPoint } from "./components/ui/transitionBus";
+import LoadingOverlay from "./components/ui/LoadingOverlay";
+import { useState } from "react";
 
 export default function Home() {
   const router = useRouter();
   const irisRef = useRef<IrisHandle | null>(null);
   const transitioningRef = useRef(false);
+  const [showLoader, setShowLoader] = useState(false);
   const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     // Respect new-tab/modified clicks and non-left clicks
     if (e.defaultPrevented) return;
@@ -40,9 +43,12 @@ export default function Home() {
       y,
       durationMs: 650,
       onDone: () => {
-        router.push("/learn");
-        // allow future transitions when returning to this page
-        setTimeout(() => { transitioningRef.current = false; }, 200);
+        // Between transitions: show 3D loader for ~3s, then navigate
+        setShowLoader(true);
+        setTimeout(() => {
+          router.push("/learn");
+          setTimeout(() => { transitioningRef.current = false; setShowLoader(false); }, 200);
+        }, 2400);
       },
     });
   };
@@ -100,6 +106,8 @@ export default function Home() {
       <IrisTransition ref={irisRef} />
       {/* Iris open on arrival (plays from saved point when available, otherwise center) */}
       <IrisOpenOnMount />
+      {/* 3D loading overlay */}
+      <LoadingOverlay active={showLoader} />
     </main>
   );
 }

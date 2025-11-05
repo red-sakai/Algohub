@@ -25,3 +25,8 @@ export async function GET() {
     return NextResponse.json([]);
   }
 }
+
+// Ensure this route uses the Node.js runtime so fs access works in production
+export const runtime = "nodejs";
+// Avoid static optimization; always read the folder at request time
+export const dynamic = "force-dynamic";
