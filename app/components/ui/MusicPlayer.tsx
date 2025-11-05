@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getGlobalAudio } from "./audioSingleton";
 
 // Default fallback playlist; real files are discovered from /api/audio
 const DEFAULT_PLAYLIST = [
@@ -96,10 +97,9 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     lenRef.current = Math.max(1, effectiveTracks.length);
   }, [effectiveTracks.length]);
 
-  // Create and wire audio element
+  // Create and wire audio element (global singleton to survive route changes/HMR)
   useEffect(() => {
-    const a = new Audio();
-  a.preload = "auto";
+    const a = getGlobalAudio();
     audioRef.current = a;
 
     const onPlay = () => {
@@ -128,7 +128,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     a.addEventListener("error", onError);
 
     return () => {
-      a.pause();
+      // Do not pause on unmount; keep music playing across page remounts.
       a.removeEventListener("play", onPlay);
       a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnded);
