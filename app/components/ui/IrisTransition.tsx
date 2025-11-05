@@ -24,8 +24,10 @@ export default React.forwardRef<IrisHandle, { zIndex?: number }>(function IrisTr
   const [r, setR] = useState(0);
   const [vw, setVw] = useState(0);
   const [vh, setVh] = useState(0);
+  const [opacity, setOpacity] = useState(1);
   const rafRef = useRef<number | null>(null);
   const runningRef = useRef(false);
+  const fadeMs = 160;
 
   useImperativeHandle(ref, () => ({
     start: ({ x, y, durationMs = 600, onDone, mode = "close" } = {}) => {
@@ -50,7 +52,8 @@ export default React.forwardRef<IrisHandle, { zIndex?: number }>(function IrisTr
   setCy(cyVal);
   // Initialize radius based on mode: open starts from 0, close starts from full
   setR(mode === "open" ? 0 : startR);
-      setVisible(true);
+  setVisible(true);
+  setOpacity(1);
 
       runningRef.current = true;
       const t0 = performance.now();
@@ -72,9 +75,12 @@ export default React.forwardRef<IrisHandle, { zIndex?: number }>(function IrisTr
             // so the previous page doesn't flash back before the route change completes.
             onDone?.();
           } else {
-            // For 'open', fade the overlay out right away so content is revealed.
-            setVisible(false);
-            onDone?.();
+            // For 'open', fade the overlay out so content is revealed smoothly
+            setOpacity(0);
+            setTimeout(() => {
+              setVisible(false);
+              onDone?.();
+            }, fadeMs);
           }
         }
       };
@@ -101,7 +107,7 @@ export default React.forwardRef<IrisHandle, { zIndex?: number }>(function IrisTr
 
   // SVG mask: black rect with a circular transparent hole at (cx, cy) with radius rRef.current
   return (
-    <div className="fixed inset-0 pointer-events-none" style={{ zIndex }} aria-hidden>
+    <div className="fixed inset-0 pointer-events-none" style={{ zIndex, opacity, transition: `opacity ${fadeMs}ms ease-out` }} aria-hidden>
       <svg width="100%" height="100%" viewBox={`0 0 ${vw} ${vh}`} preserveAspectRatio="none" style={{ display: "block" }}>
         <defs>
           <mask id="iris-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width={vw} height={vh}>

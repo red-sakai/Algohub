@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { MUSIC_BUS } from "./musicBus";
 import { getGlobalAudio } from "./audioSingleton";
 
 // Default fallback playlist; real files are discovered from /api/audio
@@ -135,6 +136,23 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
       a.removeEventListener("error", onError);
       audioRef.current = null;
     };
+  }, []);
+
+  // Listen for external playlist change requests via the music bus
+  useEffect(() => {
+    const onBus = (ev: Event) => {
+      const e = ev as CustomEvent<{ tracks: Track[]; index?: number }>;
+      const payload = e.detail;
+      if (!payload || !Array.isArray(payload.tracks) || payload.tracks.length === 0) return;
+      // Update playlist and index, then request autoplay
+      setTracks(payload.tracks);
+      setIdx(Math.max(0, Math.min(payload.index ?? 0, payload.tracks.length - 1)));
+      autoPlayRef.current = true;
+      // Ensure we don't go through muted-autoplay path on first run
+      autoplayTriedRef.current = true;
+    };
+    window.addEventListener(MUSIC_BUS.EVENT_NAME, onBus as EventListener);
+    return () => window.removeEventListener(MUSIC_BUS.EVENT_NAME, onBus as EventListener);
   }, []);
 
   // Apply settings to audio when they change

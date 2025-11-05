@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { playSfx } from "./components/ui/sfx";
 import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
 import { useRef } from "react";
+import IrisOpenOnMount from "./components/ui/IrisOpenOnMount";
 import { setIrisPoint } from "./components/ui/transitionBus";
 
 export default function Home() {
@@ -97,6 +98,8 @@ export default function Home() {
       </section>
       {/* Iris transition overlay */}
       <IrisTransition ref={irisRef} />
+      {/* Iris open on arrival (plays from saved point when available, otherwise center) */}
+      <IrisOpenOnMount />
     </main>
   );
 }
