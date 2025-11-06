@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getGlobalAudio } from "../ui/audioSingleton";
 import { getGameAudio } from "../ui/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
+import LicenseCardModal from "../ui/LicenseCardModal";
 
 type Game = {
   id: string;
@@ -56,6 +57,7 @@ export default function GameScroller() {
   const globalAudioPlayHandlerRef = useRef<EventListener | null>(null);
   const [showCam, setShowCam] = useState(false);
   const [licensePhoto, setLicensePhoto] = useState<string | null>(null);
+  const [showLicense, setShowLicense] = useState(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -215,10 +217,20 @@ export default function GameScroller() {
         onClose={() => setShowCam(false)}
         onCaptured={(dataUrl) => {
           setLicensePhoto(dataUrl);
-          // After capturing, start the game's audio to proceed
+          setShowCam(false);
+          setShowLicense(true);
+        }}
+      />
+
+      {/* License card modal after capture */}
+      <LicenseCardModal
+        active={showLicense}
+        photoDataUrl={licensePhoto || ""}
+        onClose={() => setShowLicense(false)}
+        onSave={() => {
+          // After saving the license, begin the game's audio
           const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
           if (firstIdx >= 0) {
-            // proceed to play the track after photo capture
             ensureGlobalPlayerPaused();
             const a = getGameAudio();
             a.loop = true;
@@ -228,6 +240,7 @@ export default function GameScroller() {
             a.play().catch(() => {});
             lastPlayedRef.current = firstIdx;
           }
+          setShowLicense(false);
         }}
       />
     </section>
