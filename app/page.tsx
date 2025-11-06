@@ -2,6 +2,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import BackgroundDoodles from "./components/sections/BackgroundDoodles";
+import Squares from "./components/ui/Squares";
 import { useRouter } from "next/navigation";
 import { playSfx } from "./components/ui/sfx";
 import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
@@ -54,6 +55,15 @@ export default function Home() {
   };
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white">
+  {/* animated squares background */}
+  <Squares
+    speed={0.5}
+    squareSize={40}
+    direction="diagonal"
+    borderColor="#ffffff22"
+    hoverFillColor="#ffffff"
+    className="pointer-events-none fixed inset-0 z-0"
+  />
   {/* decorative background doodles */}
   <BackgroundDoodles />
 
