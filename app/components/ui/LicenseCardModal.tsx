@@ -1,37 +1,37 @@
 "use client";
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
-// Adjustable layout for drivers_license.png
-// Tune these rects to align elements precisely on your asset.
+// Responsive layout definitions for drivers_license3.png.
+// mobile: applied when viewport < 640px; desktop: >= 640px.
+// Adjust each rect independently; positions are in logical pixels relative to layout.width.
+// If something looks off ONLY on mobile, edit the mobile section; if off ONLY on large screens, edit desktop.
 const LICENSE_LAYOUT = {
-  // Base layout (mobile & small widths). Adjust numbers here to reposition elements.
-  base: {
-    width: 680, // Overall logical design width. Scaling applied relative to this.
-    // photoRect: controls the captured photo box
-    // Move Up: decrease 'top'. Move Left/Right: change 'left'. Resize: change 'width'/'height'.
-    // radius: corner rounding.
-    photoRect: { top: 45, left: 52, width: 160, height: 205, radius: 12 }, // ADJUSTED: moved up & made smaller
-    // nameRect: FULL NAME input area.
-    nameRect: { top: 150, left: 410, width: 320, height: 40 },
-    // plateRect: License plate text label area.
-    plateRect: { top: 230, left: 410, width: 220, height: 36 },
-    // issuedRect: Issued date label area.
-    issuedRect: { top: 315, left: 410, width: 140, height: 30 },
-    // expiryRect: Expiry date label area.
-    expiryRect: { top: 380, left: 410, width: 160, height: 30 },
-    // signatureRect: Drawing canvas area for signature.
-    signatureRect: { top: 310, left: 60, width: 150, height: 110 },
+  mobile: {
+    width: 680,
+    // Photo box (captured image)
+    photoRect: { top: 45, left: 52, width: 160, height: 205, radius: 12 },
+    // FULL NAME input
+    nameRect: { top: 135, left: 375, width: 320, height: 40 },
+    // License plate text
+    plateRect: { top: 213, left: 375, width: 220, height: 36 },
+    // Issued date
+    issuedRect: { top: 281, left: 375, width: 140, height: 30 },
+    // Expiry date
+    expiryRect: { top: 332, left: 375, width: 160, height: 30 },
+    // Signature canvas
+    signatureRect: { top: 280, left: 50, width: 160, height: 100 },
   },
-  // Larger screen layout (>=640px). Mirror adjustments here for desktop behavior.
-  sm: {
+  desktop: {
     width: 820,
-    photoRect: { top: 65, left: 60, width: 195, height: 240, radius: 14 }, // ADJUSTED: moved up & made smaller
-    nameRect: { top: 168, left: 450, width: 360, height: 44 },
-    plateRect: { top: 260, left: 450, width: 250, height: 40 },
-    issuedRect: { top: 341, left: 450, width: 160, height: 34 },
-    expiryRect: { top: 406, left: 450, width: 180, height: 34 },
-    signatureRect: { top: 338, left: 70, width: 190, height: 120 },
+    // These values can diverge if the asset spacing differs on larger screens.
+    // For now we start from mobile values proportionally expanded; tweak as needed.
+    photoRect: { top: 60, left: 60, width: 190, height: 240, radius: 14 },
+    nameRect: { top: 167, left: 450, width: 350, height: 44 },
+    plateRect: { top: 257, left: 450, width: 250, height: 40 },
+    issuedRect: { top: 340, left: 450, width: 160, height: 34 },
+    expiryRect: { top: 403, left: 450, width: 180, height: 34 },
+    signatureRect: { top: 340, left: 70, width: 190, height: 120 },
   },
 };
 
@@ -46,42 +46,65 @@ type Props = {
     expiry: string;
     signatureDataUrl: string | null;
   }) => void;
+  debugRects?: boolean; // optional: show rectangles for alignment tuning
 };
 
-export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave }: Props) {
+export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave, debugRects }: Props) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
-  const [isSm, setIsSm] = useState(false);
-  const [containerWidth, setContainerWidth] = useState<number>(LICENSE_LAYOUT.base.width);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [containerWidth, setContainerWidth] = useState<number>(LICENSE_LAYOUT.mobile.width);
 
-  // Responsive breakpoint
+  // Breakpoint detection (matches Tailwind's sm: 640px)
   useEffect(() => {
-    const m = window.matchMedia("(min-width: 640px)");
-    const update = () => setIsSm(m.matches);
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 640px)");
+    const update = () => setIsDesktop(mq.matches);
     update();
-    m.addEventListener("change", update);
-    return () => m.removeEventListener("change", update);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
   }, []);
 
-  const layout = isSm ? LICENSE_LAYOUT.sm : LICENSE_LAYOUT.base;
+  const layout = isDesktop ? LICENSE_LAYOUT.desktop : LICENSE_LAYOUT.mobile;
 
-  // width measurement + scale factor
-  useLayoutEffect(() => {
-    // no-op: initial width will update via ResizeObserver soon after mount
-  }, [layout.width]);
+  // Width measurement parity with camera modal
   useEffect(() => {
     const el = stageRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect?.width ?? el.clientWidth;
-        if (w > 0) setContainerWidth(w);
+        if (w > 0 && w !== containerWidth) setContainerWidth(w);
       }
     });
     ro.observe(el);
     return () => ro.disconnect();
+  }, [layout.width, containerWidth]);
+  // Reset width baseline whenever layout changes by scheduling inside microtask to avoid immediate cascade
+  useEffect(() => {
+    Promise.resolve().then(() => setContainerWidth(layout.width));
   }, [layout.width]);
+
+  // Track natural image dimensions and recompute scaled height on width/layout changes
+  const [imageHeight, setImageHeight] = useState<number | null>(null);
+  const naturalDimsRef = useRef<{ w: number; h: number } | null>(null);
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth > 0) {
+      naturalDimsRef.current = { w: img.naturalWidth, h: img.naturalHeight };
+      const scale = (containerWidth / layout.width) || 1;
+      setImageHeight(Math.round(img.naturalHeight * scale));
+    }
+  }, [containerWidth, layout.width]);
+  // Recompute imageHeight when containerWidth or layout changes and we have natural dims
+  useEffect(() => {
+    if (naturalDimsRef.current) {
+      const { h } = naturalDimsRef.current;
+      const scale = (containerWidth / layout.width) || 1;
+      setImageHeight(Math.round(h * scale));
+    }
+  }, [containerWidth, layout.width]);
   const s = containerWidth / layout.width;
 
   // Form state
@@ -237,19 +260,20 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
           </button>
 
           {/* Stage */}
-          <div ref={stageRef} className="relative mx-auto" style={{ width: `min(100%, ${layout.width}px)` }}>
+          <div ref={stageRef} key={layout.width} className="relative mx-auto" style={{ width: `min(100%, ${layout.width}px)` }}>
             <Image
-              src="/drivers_license.png"
+              src="/drivers_license3.png"
               alt="Driver's License"
               width={layout.width}
-              height={Math.round(layout.width * 0.6)}
+              height={imageHeight ?? Math.round(layout.width * 0.6)}
               priority
+              onLoad={handleImageLoad}
               className="w-full h-auto select-none"
             />
 
             {/* Photo placement */}
             <div
-              className="absolute overflow-hidden bg-black/20"
+              className={`absolute overflow-hidden bg-black/20 ${debugRects ? "ring-2 ring-cyan-400" : ""}`}
               style={{
                 top: layout.photoRect.top * s,
                 left: layout.photoRect.left * s,
@@ -268,7 +292,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="FULL NAME"
-              className="absolute bg-transparent text-black placeholder:text-black/60 outline-none font-semibold"
+              className={`absolute bg-transparent text-black placeholder:text-black/60 outline-none font-semibold ${debugRects ? "ring-1 ring-purple-400" : ""}`}
               style={{
                 top: layout.nameRect.top * s,
                 left: layout.nameRect.left * s,
@@ -280,7 +304,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
 
             {/* Plate / Issued / Expiry - read-only spans */}
             <div
-              className="absolute font-bold text-black"
+              className={`absolute font-bold text-black ${debugRects ? "ring-1 ring-green-400" : ""}`}
               style={{
                 top: layout.plateRect.top * s,
                 left: layout.plateRect.left * s,
@@ -294,7 +318,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
               {plate}
             </div>
             <div
-              className="absolute font-medium text-black"
+              className={`absolute font-medium text-black ${debugRects ? "ring-1 ring-yellow-400" : ""}`}
               style={{
                 top: layout.issuedRect.top * s,
                 left: layout.issuedRect.left * s,
@@ -308,7 +332,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
               {issued}
             </div>
             <div
-              className="absolute font-medium text-black"
+              className={`absolute font-medium text-black ${debugRects ? "ring-1 ring-orange-400" : ""}`}
               style={{
                 top: layout.expiryRect.top * s,
                 left: layout.expiryRect.left * s,
@@ -324,7 +348,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
 
             {/* Signature area */}
             <div
-              className="absolute rounded-md bg-black/5 ring-1 ring-black/20"
+              className={`absolute rounded-md bg-black/5 ring-1 ring-black/20 ${debugRects ? "ring-2 ring-red-400" : ""}`}
               style={{
                 top: sigRect.top * s,
                 left: sigRect.left * s,

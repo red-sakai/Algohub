@@ -18,7 +18,7 @@ const GAMES: Game[] = [
     desc: "Race through arrays with quick pivots and perfect merges.",
     colorFrom: "from-fuchsia-500",
     colorTo: "to-rose-500",
-    track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
+    track: { title: "AlgoHub Theme", src: "Pokemon FireRed - Route 1.mp3" },
   },
   {
     id: "graph-quest",

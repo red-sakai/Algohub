@@ -1,18 +1,19 @@
 "use client";
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
-// Adjust these numbers to perfectly align the video "screen" with your camera.png
+// Responsive camera layout definitions.
+// mobile: viewport < 640px, desktop: >= 640px.
+// Adjust each section independently. Values are logical pixels relative to layout.width and auto-scaled.
+// screen: rectangle where the live video or captured preview is clipped.
 const CAMERA_LAYOUT = {
-  base: {
-    // overall camera image width (in px)
-    width: 480, // up from 420 — makes the camera and preview a bit bigger
-    // the rectangle on the camera image where the preview should appear
-    screen: { top: 105, left: 50, width: 272, height: 178, radius: 14 },
+  mobile: {
+    width: 480,
+    screen: { top: 105, left: 50, width: 272, height: 178, radius: 14 }, // original base settings
   },
-  sm: {
-    width: 640, // up from 560 — larger on bigger screens
-    screen: { top: 137, left: 50, width: 368, height: 236, radius: 16 },
+  desktop: {
+    width: 640,
+    screen: { top: 137, left: 50, width: 368, height: 236, radius: 16 }, // original sm settings
   },
 };
 
@@ -23,9 +24,10 @@ type Props = {
   active: boolean;
   onClose: () => void;
   onCaptured: (dataUrl: string) => void;
+  debugRects?: boolean; // optional: outline the preview clipping rectangle for tuning
 };
 
-export default function CameraCaptureModal({ active, onClose, onCaptured }: Props) {
+export default function CameraCaptureModal({ active, onClose, onCaptured, debugRects }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -43,42 +45,36 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
   const [flashOpacity, setFlashOpacity] = useState(0);
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
 
-  // Track breakpoint (sm: 640px)
-  const [isSm, setIsSm] = useState(false);
+  // Responsive breakpoint detection (matches Tailwind's sm 640px)
+  const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const m = window.matchMedia("(min-width: 640px)");
-    const update = () => setIsSm(m.matches);
+    const mq = window.matchMedia("(min-width: 640px)");
+    const update = () => setIsDesktop(mq.matches);
     update();
-    m.addEventListener("change", update);
-    return () => m.removeEventListener("change", update);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
   }, []);
 
-  const layout = isSm ? CAMERA_LAYOUT.sm : CAMERA_LAYOUT.base;
+  const layout = isDesktop ? CAMERA_LAYOUT.desktop : CAMERA_LAYOUT.mobile;
 
-  // Measure stage width to compute scale factor s
+  // Container width measurement (no direct setState in effect body except RO callback)
   const [containerWidth, setContainerWidth] = useState<number>(layout.width);
-  // Ensure we have an accurate width before first paint to avoid misalignment flicker
-  useLayoutEffect(() => {
-    const el = stageRef.current;
-    if (el) {
-      const w = el.clientWidth || layout.width;
-      if (w > 0) setContainerWidth(w);
-    }
-  }, [layout.width]);
   useEffect(() => {
     const el = stageRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect?.width ?? el.clientWidth;
-        if (w > 0) setContainerWidth(w);
+        if (w > 0 && w !== containerWidth) setContainerWidth(w);
       }
     });
     ro.observe(el);
-    // Initial sync
-    setContainerWidth(el.clientWidth || layout.width);
     return () => ro.disconnect();
+  }, [layout.width, containerWidth]);
+  // Force reset width when layout changes
+  useEffect(() => {
+    setContainerWidth(layout.width);
   }, [layout.width]);
 
   const s = containerWidth / layout.width;
@@ -187,6 +183,22 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
       setError("Camera permission denied or unavailable.");
     }
   }, [capturePhoto]);
+
+  // Ensure video element gets the stream after layout/view switches
+  useEffect(() => {
+    if (!hasStream) return;
+    const v = videoRef.current;
+    const stream = streamRef.current;
+    if (v && stream) {
+      try {
+        if (v.srcObject !== stream) {
+          v.srcObject = stream;
+        }
+        // play might throw on some browsers; ignore
+        v.play().catch(() => {});
+      } catch {}
+    }
+  }, [hasStream]);
 
   // Cleanup on unmount or when modal is hidden
   useEffect(() => {
@@ -298,6 +310,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
           <div className="relative w-full">
             <div
               ref={stageRef}
+              key={layout.width}
               className="relative mx-auto"
               style={{ width: `min(100%, ${layout.width}px)` }}
             >
@@ -313,7 +326,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
               </div>
               {/* Clipped screen wrapper to allow scaling the video without shifting the frame */}
               <div
-                className="absolute overflow-hidden"
+                className={`absolute overflow-hidden ${debugRects ? "ring-2 ring-cyan-400" : ""}`}
                 style={{
                   top: layout.screen.top * s,
                   left: layout.screen.left * s,
@@ -335,6 +348,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
                       transformOrigin: "center center",
                     }}
                     playsInline
+                    autoPlay
                     muted
                   />
                 )}
@@ -434,6 +448,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
           <div className="grid place-items-center gap-4">
             <div
               ref={stageRef}
+              key={`pre-${layout.width}`}
               className="relative"
               style={{ width: `min(100%, ${layout.width}px)` }}
             >
@@ -448,7 +463,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
                 />
               </div>
               <div
-                className="absolute overflow-hidden"
+                className={`absolute overflow-hidden ${debugRects ? "ring-2 ring-cyan-400" : ""}`}
                 style={{
                   top: layout.screen.top * s,
                   left: layout.screen.left * s,
@@ -468,6 +483,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
                     opacity: 0,
                   }}
                   playsInline
+                  autoPlay
                   muted
                 />
               </div>
