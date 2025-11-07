@@ -41,6 +41,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
   const captureTimerRef = useRef<number | null>(null);
   const [flashVisible, setFlashVisible] = useState(false);
   const [flashOpacity, setFlashOpacity] = useState(0);
+  const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
 
   // Track breakpoint (sm: 640px)
   const [isSm, setIsSm] = useState(false);
@@ -117,16 +118,12 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
       if (!ctx) throw new Error("No 2D context");
       ctx.drawImage(v, 0, 0, w, h);
       const dataUrl = c.toDataURL("image/jpeg", 0.92);
-      try {
-        localStorage.setItem("algohub_license_photo", dataUrl);
-      } catch {}
-      cleanupStream();
-      onCaptured(dataUrl);
-      onClose();
+      setCapturedDataUrl(dataUrl);
+      // Keep stream active in case user wants to retake
     } catch {
       setError("Failed to capture image.");
     }
-  }, [cleanupStream, layout.screen.height, layout.screen.width, onCaptured, onClose, s]);
+  }, [layout.screen.height, layout.screen.width, s]);
 
   const requestCamera = useCallback(async () => {
     setError(null);
@@ -266,6 +263,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
         } catch {}
       }
     }
+    setCapturedDataUrl(null);
     onClose();
   }, [cleanupStream, onClose]);
 
@@ -325,17 +323,21 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
                   background: "rgba(0,0,0,0.35)",
                 }}
               >
-                <video
-                  ref={videoRef}
-                  className="h-full w-full"
-                  style={{
-                    objectFit: "cover",
-                    transform: `scale(${PREVIEW_SCALE})`,
-                    transformOrigin: "center center",
-                  }}
-                  playsInline
-                  muted
-                />
+                {capturedDataUrl ? (
+                  <Image src={capturedDataUrl} alt="Captured preview" fill unoptimized style={{ objectFit: "cover" }} />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    className="h-full w-full"
+                    style={{
+                      objectFit: "cover",
+                      transform: `scale(${PREVIEW_SCALE})`,
+                      transformOrigin: "center center",
+                    }}
+                    playsInline
+                    muted
+                  />
+                )}
               </div>
               {countdown !== null && countdown > 0 && (
                 <div
@@ -353,6 +355,79 @@ export default function CameraCaptureModal({ active, onClose, onCaptured }: Prop
               )}
             </div>
             <canvas ref={canvasRef} className="hidden" />
+            {/* Action bar */}
+            <div className="mx-auto mt-4 flex max-w-[min(100%,_600px)] items-center justify-center gap-3">
+              {capturedDataUrl ? (
+                <>
+                  <button
+                    onClick={() => {
+                      // Clear captured image and let user try again (keep stream running)
+                      setCapturedDataUrl(null);
+                      setError(null);
+                      setCountdown(null);
+                    }}
+                    className="rounded-xl bg-white/20 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/30 hover:bg-white/30"
+                  >
+                    Retake
+                  </button>
+                  <button
+                    onClick={() => {
+                      try { localStorage.setItem("algohub_license_photo", capturedDataUrl); } catch {}
+                      // End stream now that we're done
+                      cleanupStream();
+                      onCaptured(capturedDataUrl);
+                      onClose();
+                    }}
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-extrabold text-white shadow-[0_6px_0_0_rgb(2,132,199)] ring-1 ring-white/20 active:translate-y-[2px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    // Start (or restart) a short countdown then capture
+                    setCountdown(3);
+                    const id = window.setInterval(() => {
+                      setCountdown((prev) => {
+                        if (prev === null) return prev;
+                        if (prev <= 1) {
+                          window.clearInterval(id);
+                          countdownTimerRef.current = null;
+                          // Schedule shutter ~0.5s before capture
+                          shutterTimerRef.current = window.setTimeout(() => {
+                            const a = clickSfxRef.current;
+                            try {
+                              if (a && !clickPlayedRef.current) {
+                                a.currentTime = 0;
+                                a.play().catch(() => {});
+                                clickPlayedRef.current = true;
+                              }
+                            } catch {}
+                          }, 500);
+                          // Flash + capture
+                          captureTimerRef.current = window.setTimeout(() => {
+                            try {
+                              setFlashVisible(true);
+                              setFlashOpacity(1);
+                              setTimeout(() => setFlashOpacity(0), 140);
+                              setTimeout(() => setFlashVisible(false), 320);
+                            } catch {}
+                            setTimeout(() => capturePhoto(), 120);
+                          }, 1000);
+                          return 0;
+                        }
+                        return prev - 1;
+                      });
+                    }, 1000);
+                    countdownTimerRef.current = id;
+                  }}
+                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-extrabold text-white shadow-[0_6px_0_0_rgb(2,132,199)] ring-1 ring-white/20 active:translate-y-[2px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
+                >
+                  Take Photo
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           // Pre-permission view (same size as after permission)
