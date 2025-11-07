@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
 
 // Responsive layout definitions for drivers_license3.png.
 // mobile: applied when viewport < 640px; desktop: >= 640px.
@@ -116,6 +117,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     } catch {}
     return "";
   });
+  const [hasSignature, setHasSignature] = useState(false);
   const [plate] = useState<string>(() => {
     const letters = () => Array.from({ length: 3 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join("");
     const digits = () => Math.floor(100 + Math.random() * 900).toString();
@@ -155,6 +157,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     const { x, y } = getCanvasPos(e.nativeEvent as MouseEvent);
     ctx.beginPath();
     ctx.moveTo(x, y);
+    setHasSignature(true);
   };
   const startDrawTouch = (e: React.TouchEvent) => {
     e.preventDefault();
@@ -165,6 +168,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     const { x, y } = getCanvasPos(e.nativeEvent as unknown as TouchEvent);
     ctx.beginPath();
     ctx.moveTo(x, y);
+    setHasSignature(true);
   };
   const moveDrawMouse = (e: React.MouseEvent) => {
     if (!drawingRef.current) return;
@@ -200,6 +204,17 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // redraw baseline
+    const dpr = window.devicePixelRatio || 1;
+    ctx.scale(1 / dpr, 1 / dpr); // reset scale to draw baseline at device pixels
+    ctx.scale(dpr, dpr); // reapply scale (cheap approach)
+    ctx.strokeStyle = "rgba(0,0,0,0.2)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(4, (canvas.height / (window.devicePixelRatio || 1)) - 6);
+    ctx.lineTo((canvas.width / (window.devicePixelRatio || 1)) - 4, (canvas.height / (window.devicePixelRatio || 1)) - 6);
+    ctx.stroke();
+    setHasSignature(false);
   };
 
   // Fit signature canvas to display size
@@ -227,7 +242,85 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     }
   }, [sigW, sigH]);
 
-  const handleSave = useCallback(() => {
+  // Compose final license card image and upload to Supabase (license-photos bucket via env)
+  const composeAndUpload = useCallback(async () => {
+    const load = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+    const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+      const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    };
+
+    const baseImg = await load("/drivers_license3.png");
+    const photoImg = await load(photoDataUrl);
+    const sigUrl = (() => { try { return canvasRef.current?.toDataURL("image/png") || null; } catch { return null; } })();
+    const sigImg = sigUrl ? await load(sigUrl) : null;
+
+    const outW = baseImg.naturalWidth || baseImg.width;
+    const outH = baseImg.naturalHeight || baseImg.height;
+    const exLayout = isDesktop ? LICENSE_LAYOUT.desktop : LICENSE_LAYOUT.mobile;
+    const exS = outW / exLayout.width;
+    const ex = (v: number) => Math.round(v * exS);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("No 2D context");
+    ctx.drawImage(baseImg, 0, 0, outW, outH);
+
+    // Photo
+    const pr = exLayout.photoRect;
+    const pw = ex(pr.width), ph = ex(pr.height), px = ex(pr.left), py = ex(pr.top);
+    const rad = ex(pr.radius || 0);
+    ctx.save();
+    roundRect(ctx, px, py, pw, ph, rad);
+    ctx.clip();
+    const scale = Math.max(pw / photoImg.naturalWidth, ph / photoImg.naturalHeight);
+    const dw = photoImg.naturalWidth * scale;
+    const dh = photoImg.naturalHeight * scale;
+    const dx = px + (pw - dw) / 2;
+    const dy = py + (ph - dh) / 2;
+    ctx.drawImage(photoImg, dx, dy, dw, dh);
+    ctx.restore();
+
+    // Text
+    ctx.fillStyle = "#000";
+    ctx.textBaseline = "middle";
+    const drawText = (text: string, rect: { top: number; left: number; width: number; height: number }, pxSize: number, weight: number = 600) => {
+      ctx.font = `${weight} ${Math.round(pxSize * exS)}px Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+      const x = ex(rect.left);
+      const y = ex(rect.top) + ex(rect.height) / 2;
+      ctx.fillText(text, x, y);
+    };
+    drawText(name, exLayout.nameRect, 18, 600);
+    drawText(plate, exLayout.plateRect, 18, 700);
+    drawText(issued, exLayout.issuedRect, 16, 500);
+    drawText(expiry, exLayout.expiryRect, 16, 500);
+
+    // Signature
+    if (sigImg) {
+      const sr = exLayout.signatureRect;
+      ctx.drawImage(sigImg, ex(sr.left), ex(sr.top), ex(sr.width), ex(sr.height));
+    }
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    await uploadImageDataUrl(dataUrl, { folder: "license-cards", makePublic: true });
+  }, [isDesktop, name, plate, issued, expiry, photoDataUrl]);
+
+  const handleSave = useCallback(async () => {
+    if (!name.trim() || !hasSignature) return; // guard
     let signatureDataUrl: string | null = null;
     try {
       signatureDataUrl = canvasRef.current?.toDataURL("image/png") ?? null;
@@ -239,26 +332,27 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
       localStorage.setItem("algohub_license_expiry", expiry);
       if (signatureDataUrl) localStorage.setItem("algohub_license_signature", signatureDataUrl);
     } catch {}
+    // Compose and upload final license image
+    try { await composeAndUpload(); } catch (e) { console.error("License compose/upload failed", e); }
     onSave?.({ name, plate, issued, expiry, signatureDataUrl });
     onClose();
-  }, [expiry, issued, name, onClose, onSave, plate]);
+  }, [expiry, issued, name, onClose, onSave, plate, hasSignature, composeAndUpload]);
 
   if (!active) return null;
 
   return (
     <div className="fixed inset-0 z-[1400]" aria-modal role="dialog">
-      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/90" onClick={onClose} />
       <div className="absolute inset-0 grid place-items-center p-4">
-        <div className="relative w-full max-w-[900px] rounded-3xl bg-black/40 p-4 ring-1 ring-white/15 backdrop-blur-md">
-          {/* Close */}
-          <button
-            aria-label="Close license"
-            onClick={onClose}
-            className="absolute right-4 top-4 inline-grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white ring-1 ring-white/20 hover:bg-white/25"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-          </button>
-
+        {/* Close */}
+        <button
+          aria-label="Close license"
+          onClick={onClose}
+          className="absolute right-4 top-4 inline-grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white ring-1 ring-white/20 hover:bg-white/25"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+        <div className="relative w-full">
           {/* Stage */}
           <div ref={stageRef} key={layout.width} className="relative mx-auto" style={{ width: `min(100%, ${layout.width}px)` }}>
             <Image
@@ -268,9 +362,8 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
               height={imageHeight ?? Math.round(layout.width * 0.6)}
               priority
               onLoad={handleImageLoad}
-              className="w-full h-auto select-none"
+              className="w-full h-auto select-none drop-shadow-[0_10px_24px_rgba(0,0,0,0.5)]"
             />
-
             {/* Photo placement */}
             <div
               className={`absolute overflow-hidden bg-black/20 ${debugRects ? "ring-2 ring-cyan-400" : ""}`}
@@ -286,7 +379,6 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
                 <Image src={photoDataUrl} alt="Captured" fill unoptimized sizes="100vw" style={{ objectFit: "cover" }} />
               </div>
             </div>
-
             {/* Name input positioned */}
             <input
               value={name}
@@ -301,8 +393,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
                 fontSize: Math.max(12, Math.round(18 * s)),
               }}
             />
-
-            {/* Plate / Issued / Expiry - read-only spans */}
+            {/* Plate / Issued / Expiry */}
             <div
               className={`absolute font-bold text-black ${debugRects ? "ring-1 ring-green-400" : ""}`}
               style={{
@@ -345,7 +436,6 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
             >
               {expiry}
             </div>
-
             {/* Signature area */}
             <div
               className={`absolute rounded-md bg-black/5 ring-1 ring-black/20 ${debugRects ? "ring-2 ring-red-400" : ""}`}
@@ -376,9 +466,8 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
               </button>
             </div>
           </div>
-
-          {/* Actions */}
-          <div className="mt-4 flex items-center justify-end gap-3">
+          {/* Action bar */}
+          <div className="mx-auto mt-4 flex max-w-[min(100%,_700px)] items-center justify-end gap-3">
             <button
               onClick={onClose}
               className="rounded-xl bg-white/20 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/30 hover:bg-white/30"
@@ -387,11 +476,18 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
             </button>
             <button
               onClick={handleSave}
+              disabled={!name.trim() || !hasSignature}
+              aria-disabled={!name.trim() || !hasSignature}
               className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-extrabold text-white shadow-[0_6px_0_0_rgb(2,132,199)] ring-1 ring-white/20 active:translate-y-[2px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
             >
               Save & Continue
             </button>
           </div>
+          {(!name.trim() || !hasSignature) && (
+            <div className="mt-2 text-center text-xs font-medium text-white/70">
+              Enter your full name and draw your signature to enable saving.
+            </div>
+          )}
         </div>
       </div>
     </div>
