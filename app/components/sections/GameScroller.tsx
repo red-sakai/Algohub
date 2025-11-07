@@ -4,6 +4,7 @@ import { getGlobalAudio } from "../ui/audioSingleton";
 import { getGameAudio } from "../ui/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
 import LicenseCardModal from "../ui/LicenseCardModal";
+import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
 
 type Game = {
   id: string;
@@ -227,8 +228,21 @@ export default function GameScroller() {
         active={showLicense}
         photoDataUrl={licensePhoto || ""}
         onClose={() => setShowLicense(false)}
-        onSave={() => {
-          // After saving the license, begin the game's audio
+        onSave={async (data) => {
+          try {
+            if (licensePhoto) {
+              const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
+              console.log("Uploaded license photo:", photo);
+            }
+            if (data.signatureDataUrl) {
+              const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
+              console.log("Uploaded signature:", sig);
+            }
+          } catch (e) {
+            console.error("Upload failed:", e);
+          }
+
+          // After saving and uploading, begin the game's audio
           const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
           if (firstIdx >= 0) {
             ensureGlobalPlayerPaused();

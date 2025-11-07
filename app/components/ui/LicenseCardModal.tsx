@@ -5,24 +5,33 @@ import Image from "next/image";
 // Adjustable layout for drivers_license.png
 // Tune these rects to align elements precisely on your asset.
 const LICENSE_LAYOUT = {
+  // Base layout (mobile & small widths). Adjust numbers here to reposition elements.
   base: {
-    width: 680, // target pixel width of the license image at base
-    // rectangles in pixels relative to base.width
-    photoRect: { top: 120, left: 52, width: 210, height: 260, radius: 12 },
-    nameRect: { top: 110, left: 290, width: 320, height: 40 },
-    plateRect: { top: 170, left: 290, width: 220, height: 36 },
-    issuedRect: { top: 220, left: 290, width: 140, height: 30 },
-    expiryRect: { top: 220, left: 450, width: 160, height: 30 },
-    signatureRect: { top: 300, left: 290, width: 300, height: 90 },
+    width: 680, // Overall logical design width. Scaling applied relative to this.
+    // photoRect: controls the captured photo box
+    // Move Up: decrease 'top'. Move Left/Right: change 'left'. Resize: change 'width'/'height'.
+    // radius: corner rounding.
+    photoRect: { top: 45, left: 52, width: 160, height: 205, radius: 12 }, // ADJUSTED: moved up & made smaller
+    // nameRect: FULL NAME input area.
+    nameRect: { top: 150, left: 410, width: 320, height: 40 },
+    // plateRect: License plate text label area.
+    plateRect: { top: 230, left: 410, width: 220, height: 36 },
+    // issuedRect: Issued date label area.
+    issuedRect: { top: 315, left: 410, width: 140, height: 30 },
+    // expiryRect: Expiry date label area.
+    expiryRect: { top: 380, left: 410, width: 160, height: 30 },
+    // signatureRect: Drawing canvas area for signature.
+    signatureRect: { top: 310, left: 60, width: 150, height: 110 },
   },
+  // Larger screen layout (>=640px). Mirror adjustments here for desktop behavior.
   sm: {
     width: 820,
-    photoRect: { top: 140, left: 60, width: 250, height: 300, radius: 14 },
-    nameRect: { top: 128, left: 330, width: 360, height: 44 },
-    plateRect: { top: 190, left: 330, width: 250, height: 40 },
-    issuedRect: { top: 246, left: 330, width: 160, height: 34 },
-    expiryRect: { top: 246, left: 500, width: 180, height: 34 },
-    signatureRect: { top: 328, left: 330, width: 340, height: 100 },
+    photoRect: { top: 65, left: 60, width: 195, height: 240, radius: 14 }, // ADJUSTED: moved up & made smaller
+    nameRect: { top: 168, left: 450, width: 360, height: 44 },
+    plateRect: { top: 260, left: 450, width: 250, height: 40 },
+    issuedRect: { top: 341, left: 450, width: 160, height: 34 },
+    expiryRect: { top: 406, left: 450, width: 180, height: 34 },
+    signatureRect: { top: 338, left: 70, width: 190, height: 120 },
   },
 };
 
