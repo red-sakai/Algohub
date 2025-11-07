@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MUSIC_BUS } from "./musicBus";
 import { getGlobalAudio } from "./audioSingleton";
 import { getGameAudio } from "./gameAudio";
@@ -15,6 +16,7 @@ type Track = { title: string; src: string };
 const STORE = "algohub_player_prefs_v1";
 
 export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
+  const pathname = usePathname();
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playingRef = useRef(false);
@@ -258,6 +260,39 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     };
     return cleanup;
   }, []);
+
+  // Route-aware resume: when returning to landing page (/), try to resume global music automatically
+  useEffect(() => {
+    if (!pathname) return;
+    if (pathname !== "/") return;
+    const a = audioRef.current;
+    if (!a) return;
+    // If game audio is playing, don't fight it
+    try { const ga = getGameAudio(); if (ga && ga.paused === false) return; } catch {}
+    // Prepare src synchronously before any async play attempt
+    if (!a.src && current?.src) {
+      a.src = current.src;
+      a.currentTime = 0;
+    }
+    if (!a.paused) return; // already playing
+    const attempt = async () => {
+      try {
+        a.muted = !!mutedRef.current;
+        await a.play();
+      } catch {
+        const retry = () => { a.play().catch(() => {}); cleanup(); };
+        const cleanup = () => {
+          window.removeEventListener("pointerdown", retry as EventListener);
+          window.removeEventListener("keydown", retry as EventListener);
+          window.removeEventListener("touchstart", retry as EventListener);
+        };
+        window.addEventListener("pointerdown", retry, { once: true } as AddEventListenerOptions);
+        window.addEventListener("keydown", retry, { once: true } as AddEventListenerOptions);
+        window.addEventListener("touchstart", retry, { once: true } as AddEventListenerOptions);
+      }
+    };
+    void attempt();
+  }, [pathname, current?.src]);
 
   // Controls
   const handleToggle = async () => {

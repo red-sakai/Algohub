@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { getGlobalAudio } from "../ui/audioSingleton";
 import { getGameAudio } from "../ui/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
@@ -22,7 +23,7 @@ const GAMES: Game[] = [
     desc: "Race through arrays with quick pivots and perfect merges.",
     colorFrom: "from-fuchsia-500",
     colorTo: "to-rose-500",
-    track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
+    track: { title: "Pokemon FireRed - Route 1", src: "/audio/Pokemon%20FireRed%20-%20Route%201.mp3" },
   },
   {
     id: "graph-quest",
@@ -53,31 +54,39 @@ const GAMES: Game[] = [
 export default function GameScroller() {
   const items = useMemo(() => GAMES, []);
   const [active, setActive] = useState(0);
-  const lastPlayedRef = useRef<number | null>(null);
+  const [lastPlayed, setLastPlayed] = useState<number | null>(null);
   const pausedPlayerPrevRef = useRef(false);
   const globalAudioPlayHandlerRef = useRef<EventListener | null>(null);
+  // Remember per-slide resume times when user navigates away
+  const resumeTimesRef = useRef<Map<number, number>>(new Map());
   const [showCam, setShowCam] = useState(false);
   const [licensePhoto, setLicensePhoto] = useState<string | null>(null);
   const [showLicense, setShowLicense] = useState(false);
+  const pathname = usePathname();
 
-  // Cleanup on unmount
+  // Cleanup on unmount (stop game audio only; let global resume naturally on landing page)
   useEffect(() => {
     return () => {
-      // Stop game audio
-  try { getGameAudio().pause(); } catch {}
-      // Remove global player play handler
+      try { getGameAudio().pause(); } catch {}
       const ga = getGlobalAudio();
       if (globalAudioPlayHandlerRef.current) {
         ga.removeEventListener("play", globalAudioPlayHandlerRef.current);
         globalAudioPlayHandlerRef.current = null;
       }
-      // Optionally resume global player if it was paused by us
-      if (pausedPlayerPrevRef.current) {
-        try { ga.play().catch(() => {}); } catch {}
-        pausedPlayerPrevRef.current = false;
-      }
+      // Do not forcibly pause global audio here so landing page MusicPlayer can continue.
+      pausedPlayerPrevRef.current = false;
     };
   }, []);
+
+  // Game volume slider state (persisted)
+  const GAME_VOL_KEY = "algohub_game_volume_v1";
+  const [gameVolume, setGameVolume] = useState<number>(() => {
+    if (typeof window === "undefined") return 0.8;
+    try { const raw = localStorage.getItem(GAME_VOL_KEY); if (raw) return Math.max(0, Math.min(1, parseFloat(raw))); } catch {}
+    return 0.8;
+  });
+  useEffect(() => { try { localStorage.setItem(GAME_VOL_KEY, String(gameVolume)); } catch {} }, [gameVolume]);
+  useEffect(() => { try { const a = getGameAudio(); a.volume = gameVolume; } catch {} }, [gameVolume]);
 
   const ensureGlobalPlayerPaused = () => {
     const ga = getGlobalAudio();
@@ -85,10 +94,8 @@ export default function GameScroller() {
       pausedPlayerPrevRef.current = true;
       try { ga.pause(); } catch {}
     }
-    // While game audio is active, force-pause the global player if it tries to play
     if (!globalAudioPlayHandlerRef.current) {
       const handler: EventListener = () => {
-        // If game audio is playing, immediately pause global audio
         const a = getGameAudio();
         if (!a.paused) {
           try { ga.pause(); } catch {}
@@ -99,6 +106,31 @@ export default function GameScroller() {
     }
   };
 
+  // Auto-start first game track when entering /learn (before license capture)
+  useEffect(() => {
+    if (!pathname) return;
+    if (pathname.startsWith("/learn")) {
+      const firstIdx = items.findIndex(g => g.id === "sorting-sprint");
+      if (firstIdx >= 0) {
+        try { getGlobalAudio().pause(); } catch {}
+        ensureGlobalPlayerPaused();
+        const a = getGameAudio();
+        a.loop = true;
+        a.volume = gameVolume;
+        a.src = items[firstIdx].track.src;
+        a.currentTime = 0;
+        a.play().then(() => setLastPlayed(firstIdx)).catch(() => {
+          const retry = () => { a.play().catch(() => {}); window.removeEventListener("pointerdown", retry); };
+          window.addEventListener("pointerdown", retry, { once: true } as AddEventListenerOptions);
+        });
+      }
+    } else if (pathname === "/") {
+      const ga = getGlobalAudio();
+      try { ga.play().catch(() => {}); } catch {}
+      try { getGameAudio().pause(); } catch {}
+    }
+  }, [pathname, items, gameVolume]);
+
   const playForIndex = (idx: number, opts?: { fromNav?: boolean }) => {
     const fromNav = opts?.fromNav === true;
     const g = items[idx];
@@ -106,32 +138,79 @@ export default function GameScroller() {
     // For the first game, trigger the camera capture flow instead of immediate audio
     if (g.id === "sorting-sprint") {
       // When navigating with Prev/Next, don't open the camera automatically.
-      if (fromNav) return;
+      if (fromNav) {
+        // On navigation back to the first slide, resume or play its track without opening camera
+        ensureGlobalPlayerPaused();
+        const a = getGameAudio();
+        a.loop = true;
+        a.volume = gameVolume;
+        a.src = g.track.src;
+        const t = resumeTimesRef.current.get(idx) ?? 0;
+        a.currentTime = t;
+        a.play().catch(() => {});
+        setLastPlayed(idx);
+        resumeTimesRef.current.delete(idx);
+        return;
+      }
       setShowCam(true);
       return;
     }
     ensureGlobalPlayerPaused();
     const a = getGameAudio();
     a.loop = true;
-    a.volume = 0.8;
+    a.volume = gameVolume;
     a.src = g.track.src;
     a.currentTime = 0;
     a.play().catch(() => {});
-    lastPlayedRef.current = idx;
+  setLastPlayed(idx);
+  };
+
+  // Handle pausing current slide's music when leaving and resuming when returning
+  const handleSlideChange = (prevIdx: number, nextIdx: number) => {
+    try {
+      const a = getGameAudio();
+      // If the slide we're leaving is the one currently playing, pause and save time
+      if (lastPlayed === prevIdx && !a.paused) {
+        const t = isFinite(a.currentTime) ? a.currentTime : 0;
+        resumeTimesRef.current.set(prevIdx, t);
+        a.pause();
+        setLastPlayed(null);
+      }
+      // If we're returning to a slide with a saved time, resume its designated track
+      const resumeTime = resumeTimesRef.current.get(nextIdx);
+      if (resumeTime !== undefined) {
+        ensureGlobalPlayerPaused();
+        a.loop = true;
+        a.volume = gameVolume;
+        a.src = items[nextIdx].track.src;
+        a.currentTime = resumeTime || 0;
+        a.play().catch(() => {});
+        setLastPlayed(nextIdx);
+        resumeTimesRef.current.delete(nextIdx);
+      }
+    } catch {}
   };
 
   const go = (dir: 1 | -1) => {
     setActive((i) => {
       const nxt = Math.max(0, Math.min(items.length - 1, i + dir));
-      // Only play on user-initiated navigation
-      playForIndex(nxt, { fromNav: true });
+      handleSlideChange(i, nxt);
+      // For first slide, if no resume saved, still start track on return without opening camera
+      if (items[nxt]?.id === "sorting-sprint" && !resumeTimesRef.current.has(nxt)) {
+        playForIndex(nxt, { fromNav: true });
+      }
       return nxt;
     });
   };
   const goTo = (idx: number) => {
-    const nxt = Math.max(0, Math.min(items.length - 1, idx));
-    setActive(nxt);
-    playForIndex(nxt, { fromNav: true });
+    setActive((i) => {
+      const nxt = Math.max(0, Math.min(items.length - 1, idx));
+      handleSlideChange(i, nxt);
+      if (items[nxt]?.id === "sorting-sprint" && !resumeTimesRef.current.has(nxt)) {
+        playForIndex(nxt, { fromNav: true });
+      }
+      return nxt;
+    });
   };
 
   return (
@@ -153,8 +232,22 @@ export default function GameScroller() {
                 <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">{g.title}</h2>
                 <p className="mx-auto mt-3 max-w-prose text-base text-white/90 sm:text-lg md:text-xl">{g.desc}</p>
                 <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold ring-1 ring-white/25">
-                  <span className="h-2 w-2 rounded-full bg-green-300" />
-                  {i === active ? "Now Playing Theme" : "Tap Next/Prev"}
+                  <span className={`h-2 w-2 rounded-full ${lastPlayed === i ? "bg-green-300" : "bg-white/40"}`} />
+                  {lastPlayed === i ? `Now Playing: ${items[i].track.title}` : "Tap Next/Prev"}
+                  {lastPlayed === i && (
+                    <div className="ml-3 flex items-center gap-1">
+                      <input
+                        aria-label="Game volume"
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(gameVolume * 100)}
+                        onChange={(e) => setGameVolume(Number(e.target.value) / 100)}
+                        className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/30 accent-sky-500"
+                      />
+                      <span className="text-[10px] font-semibold tabular-nums">{Math.round(gameVolume * 100)}%</span>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-5 flex items-center justify-center">
                   <button
@@ -229,32 +322,35 @@ export default function GameScroller() {
         photoDataUrl={licensePhoto || ""}
         onClose={() => setShowLicense(false)}
         onSave={async (data) => {
-          try {
-            if (licensePhoto) {
-              const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
-              console.log("Uploaded license photo:", photo);
-            }
-            if (data.signatureDataUrl) {
-              const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
-              console.log("Uploaded signature:", sig);
-            }
-          } catch (e) {
-            console.error("Upload failed:", e);
-          }
-
-          // After saving and uploading, begin the game's audio
+          // Start audio immediately on user gesture path (before network awaits)
           const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
           if (firstIdx >= 0) {
             ensureGlobalPlayerPaused();
             const a = getGameAudio();
             a.loop = true;
-            a.volume = 0.8;
+            a.volume = gameVolume;
             a.src = items[firstIdx].track.src;
             a.currentTime = 0;
             a.play().catch(() => {});
-            lastPlayedRef.current = firstIdx;
+            setLastPlayed(firstIdx);
           }
           setShowLicense(false);
+
+          // Kick off uploads in background (fire-and-forget)
+          (async () => {
+            try {
+              if (licensePhoto) {
+                const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
+                console.log("Uploaded license photo:", photo);
+              }
+              if (data.signatureDataUrl) {
+                const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
+                console.log("Uploaded signature:", sig);
+              }
+            } catch (e) {
+              console.error("Upload failed:", e);
+            }
+          })();
         }}
       />
     </section>
