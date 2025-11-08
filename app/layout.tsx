@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import MusicPlayer from "./components/ui/MusicPlayer";
+import CustomCursor from "./components/ui/CustomCursor";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +32,8 @@ export default function RootLayout({
         {children}
         {/* Site-wide music player */}
         <MusicPlayer />
+        {/* Site-wide custom cursor rendered last to guarantee topmost stacking */}
+        <CustomCursor />
       </body>
     </html>
   );
