@@ -82,23 +82,30 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   const currentSrcRef = useRef<string | undefined>(undefined);
   useEffect(() => { currentSrcRef.current = current?.src; }, [current?.src]);
 
-  // Fetch from API if no playlist provided
+  // Fetch from API if no playlist provided; route-aware source
   useEffect(() => {
     if (playlist?.length) return;
     let cancelled = false;
+    const endpoint = pathname?.startsWith("/learn/parking") ? "/api/car-radio" : "/api/audio";
     (async () => {
       try {
-        const res = await fetch("/api/audio", { cache: "no-store" });
+        const res = await fetch(endpoint, { cache: "no-store" });
         const data = (await res.json()) as Track[];
-        if (!cancelled) setTracks(Array.isArray(data) && data.length ? data : DEFAULT_PLAYLIST);
+        if (!cancelled) {
+          const next = Array.isArray(data) && data.length ? data : DEFAULT_PLAYLIST;
+          setTracks(next);
+          // If switching libraries while already playing, continue playback from first item of new list
+          if (playingRef.current) {
+            autoPlayRef.current = true;
+            setIdx(0);
+          }
+        }
       } catch {
         if (!cancelled) setTracks(DEFAULT_PLAYLIST);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [playlist]);
+    return () => { cancelled = true; };
+  }, [playlist, pathname]);
 
   // Keep track count in a ref for event handlers
   const lenRef = useRef(1);
