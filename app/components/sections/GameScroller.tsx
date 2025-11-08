@@ -1,11 +1,12 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getGlobalAudio } from "../ui/audioSingleton";
 import { getGameAudio } from "../ui/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
 import LicenseCardModal from "../ui/LicenseCardModal";
 import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
+import { playSfx } from "../ui/sfx";
 
 type Game = {
   id: string;
@@ -63,6 +64,7 @@ export default function GameScroller() {
   const [licensePhoto, setLicensePhoto] = useState<string | null>(null);
   const [showLicense, setShowLicense] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   // Cleanup on unmount (stop game audio only; let global resume naturally on landing page)
   useEffect(() => {
@@ -116,7 +118,6 @@ export default function GameScroller() {
         ensureGlobalPlayerPaused();
         const a = getGameAudio();
         a.loop = true;
-        a.volume = gameVolume;
         a.src = items[firstIdx].track.src;
         a.currentTime = 0;
         a.play().then(() => setLastPlayed(firstIdx)).catch(() => {
@@ -129,8 +130,7 @@ export default function GameScroller() {
       try { ga.play().catch(() => {}); } catch {}
       try { getGameAudio().pause(); } catch {}
     }
-  }, [pathname, items, gameVolume]);
-
+  }, [pathname, items]);
   const playForIndex = (idx: number, opts?: { fromNav?: boolean }) => {
     const fromNav = opts?.fromNav === true;
     const g = items[idx];
@@ -251,7 +251,7 @@ export default function GameScroller() {
                 </div>
                 <div className="mt-5 flex items-center justify-center">
                   <button
-                    onClick={() => playForIndex(i)}
+                    onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch {} ; playForIndex(i); }}
                     className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-5 py-2.5 text-base font-extrabold tracking-wide text-white shadow-[0_8px_0_0_rgb(2,132,199)] ring-1 ring-white/20 transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_6px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
                     aria-label={`Play ${g.title}`}
                   >
@@ -273,7 +273,7 @@ export default function GameScroller() {
       {/* Prev/Next controls */}
       <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center gap-4 sm:bottom-8">
         <button
-          onClick={() => go(-1)}
+          onClick={() => { try { playSfx("/previous.mp3", 0.65); } catch {}; go(-1); }}
           disabled={active === 0}
           className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
           aria-label="Previous game"
@@ -284,7 +284,7 @@ export default function GameScroller() {
           {active + 1} / {items.length}
         </div>
         <button
-          onClick={() => go(1)}
+          onClick={() => { try { playSfx("/next.mp3", 0.65); } catch {}; go(1); }}
           disabled={active === items.length - 1}
           className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
           aria-label="Next game"
@@ -351,6 +351,9 @@ export default function GameScroller() {
               console.error("Upload failed:", e);
             }
           })();
+
+          // Navigate to the Stack/Queue garage game after saving
+          try { router.push("/learn/garage"); } catch {}
         }}
       />
     </section>

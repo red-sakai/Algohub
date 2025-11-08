@@ -282,7 +282,11 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
   if (!active) return null;
 
   return (
-    <div className="fixed inset-0 z-[1200]" aria-modal role="dialog">
+    <div
+      className="fixed inset-0 z-[1200] opacity-0 animate-[cameraFadeIn_420ms_cubic-bezier(0.22,0.9,0.3,1)_forwards]"
+      aria-modal
+      role="dialog"
+    >
       {/* Global flash overlay */}
       {flashVisible && (
         <div
@@ -311,7 +315,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
             <div
               ref={stageRef}
               key={layout.width}
-              className="relative mx-auto"
+              className="relative mx-auto will-change-transform animate-[cameraSlideIn_480ms_cubic-bezier(0.25,0.85,0.25,1)_both]"
               style={{ width: `min(100%, ${layout.width}px)` }}
             >
               <div className="motion-safe:animate-[popIn_500ms_ease-out_forwards] motion-safe:opacity-0">
@@ -341,7 +345,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
                 ) : (
                   <video
                     ref={videoRef}
-                    className="h-full w-full"
+                    className="h-full w-full opacity-0 animate-[cameraVideoFade_380ms_ease-out_forwards]"
                     style={{
                       objectFit: "cover",
                       transform: `scale(${PREVIEW_SCALE})`,
@@ -364,7 +368,9 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
                     borderRadius: layout.screen.radius * s,
                   }}
                 >
-                  <div className="text-6xl font-extrabold text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">{countdown}</div>
+                  <div className="text-6xl font-extrabold text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] animate-[popIn_300ms_ease-out_forwards]">
+                    {countdown}
+                  </div>
                 </div>
               )}
             </div>
@@ -400,7 +406,28 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
               ) : (
                 <button
                   onClick={() => {
-                    // Start (or restart) a short countdown then capture
+                    // If a countdown is in progress, skip it and capture immediately
+                    const isCounting = (countdownTimerRef.current !== null) || (countdown !== null && countdown > 0);
+                    if (isCounting || captureTimerRef.current || shutterTimerRef.current) {
+                      if (countdownTimerRef.current) { window.clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; }
+                      if (shutterTimerRef.current) { window.clearTimeout(shutterTimerRef.current); shutterTimerRef.current = null; }
+                      if (captureTimerRef.current) { window.clearTimeout(captureTimerRef.current); captureTimerRef.current = null; }
+                      setCountdown(0);
+                      try {
+                        const a = clickSfxRef.current;
+                        if (a) { a.currentTime = 0; a.play().catch(() => {}); clickPlayedRef.current = true; }
+                      } catch {}
+                      try {
+                        setFlashVisible(true);
+                        setFlashOpacity(1);
+                        setTimeout(() => setFlashOpacity(0), 140);
+                        setTimeout(() => setFlashVisible(false), 320);
+                      } catch {}
+                      setTimeout(() => capturePhoto(), 120);
+                      return;
+                    }
+
+                    // Otherwise start a short countdown and then capture
                     setCountdown(3);
                     const id = window.setInterval(() => {
                       setCountdown((prev) => {
@@ -449,7 +476,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
             <div
               ref={stageRef}
               key={`pre-${layout.width}`}
-              className="relative"
+              className="relative will-change-transform animate-[cameraSlideIn_480ms_cubic-bezier(0.25,0.85,0.25,1)_both]"
               style={{ width: `min(100%, ${layout.width}px)` }}
             >
               <div className="motion-safe:animate-[popIn_500ms_ease-out_forwards] motion-safe:opacity-0">

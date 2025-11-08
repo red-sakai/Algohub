@@ -24,6 +24,29 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Simple opacity fade-in */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Camera modal specific entrance keyframes */
+@keyframes cameraFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cameraSlideIn {
+  0% { opacity: 0; transform: translateY(14px) scale(0.985); }
+  60% { opacity: 1; transform: translateY(0) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes cameraVideoFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @keyframes logoFloat {
   0% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-4px) rotate(-1.5deg); }
@@ -49,3 +72,19 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide default cursor when custom cursor active */
+.custom-cursor-on, .custom-cursor-on * { cursor: none !important; }
+/* Restore appropriate cursors for common interactive elements */
+.custom-cursor-on a,
+.custom-cursor-on button,
+.custom-cursor-on [role="button"] { cursor: pointer !important; }
+.custom-cursor-on input[type="text"],
+.custom-cursor-on input[type="email"],
+.custom-cursor-on input[type="search"],
+.custom-cursor-on input[type="password"],
+.custom-cursor-on textarea { cursor: text !important; }
+.custom-cursor-on input[type="range"],
+.custom-cursor-on input[type="checkbox"],
+.custom-cursor-on input[type="radio"],
+.custom-cursor-on select { cursor: default !important; }
