@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-three/cannon": "^6.6.0",
+    "@react-three/drei": "^10.7.6",
+    "@react-three/fiber": "^9.4.0",
     "@supabase/supabase-js": "^2.80.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

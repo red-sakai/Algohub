@@ -5,6 +5,9 @@ import { getGlobalAudio } from "../ui/audioSingleton";
 import { getGameAudio } from "../ui/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
 import LicenseCardModal from "../ui/LicenseCardModal";
+import LoadingOverlay from "../ui/LoadingOverlay";
+import IrisTransition, { IrisHandle } from "../ui/IrisTransition";
+import { setIrisPoint } from "../ui/transitionBus";
 import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
 import { playSfx } from "../ui/sfx";
 
@@ -63,6 +66,8 @@ export default function GameScroller() {
   const [showCam, setShowCam] = useState(false);
   const [licensePhoto, setLicensePhoto] = useState<string | null>(null);
   const [showLicense, setShowLicense] = useState(false);
+  const [showLoader, setShowLoader] = useState(false);
+  const irisRef = useRef<IrisHandle | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -108,7 +113,7 @@ export default function GameScroller() {
     }
   };
 
-  // Auto-start first game track when entering /learn (before license capture)
+  // Auto-start first game track when entering /learn (Parking redirect enabled)
   useEffect(() => {
     if (!pathname) return;
     if (pathname.startsWith("/learn")) {
@@ -135,23 +140,8 @@ export default function GameScroller() {
     const fromNav = opts?.fromNav === true;
     const g = items[idx];
     if (!g) return;
-    // For the first game, trigger the camera capture flow instead of immediate audio
-    if (g.id === "sorting-sprint") {
-      // When navigating with Prev/Next, don't open the camera automatically.
-      if (fromNav) {
-        // On navigation back to the first slide, resume or play its track without opening camera
-        ensureGlobalPlayerPaused();
-        const a = getGameAudio();
-        a.loop = true;
-        a.volume = gameVolume;
-        a.src = g.track.src;
-        const t = resumeTimesRef.current.get(idx) ?? 0;
-        a.currentTime = t;
-        a.play().catch(() => {});
-        setLastPlayed(idx);
-        resumeTimesRef.current.delete(idx);
-        return;
-      }
+    // For the first game, trigger camera -> license flow instead of immediate redirect
+    if (g.id === "sorting-sprint" && !fromNav) {
       setShowCam(true);
       return;
     }
@@ -195,7 +185,6 @@ export default function GameScroller() {
     setActive((i) => {
       const nxt = Math.max(0, Math.min(items.length - 1, i + dir));
       handleSlideChange(i, nxt);
-      // For first slide, if no resume saved, still start track on return without opening camera
       if (items[nxt]?.id === "sorting-sprint" && !resumeTimesRef.current.has(nxt)) {
         playForIndex(nxt, { fromNav: true });
       }
@@ -322,40 +311,52 @@ export default function GameScroller() {
         photoDataUrl={licensePhoto || ""}
         onClose={() => setShowLicense(false)}
         onSave={async (data) => {
-          // Start audio immediately on user gesture path (before network awaits)
-          const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
-          if (firstIdx >= 0) {
-            ensureGlobalPlayerPaused();
-            const a = getGameAudio();
-            a.loop = true;
-            a.volume = gameVolume;
-            a.src = items[firstIdx].track.src;
-            a.currentTime = 0;
-            a.play().catch(() => {});
-            setLastPlayed(firstIdx);
-          }
+          // Save license first visually: close iris, then show loader, then change route.
           setShowLicense(false);
-
-          // Kick off uploads in background (fire-and-forget)
-          (async () => {
-            try {
-              if (licensePhoto) {
-                const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
-                console.log("Uploaded license photo:", photo);
+          // Capture a center point for iris
+          try { setIrisPoint(window.innerWidth / 2, window.innerHeight / 2); } catch {}
+          irisRef.current?.start({
+            durationMs: 650,
+            mode: "close",
+            onDone: () => {
+              // After close completes: start audio + loader + async uploads, then navigate and let parking page open iris.
+              const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
+              if (firstIdx >= 0) {
+                ensureGlobalPlayerPaused();
+                const a = getGameAudio();
+                a.loop = true;
+                a.volume = gameVolume;
+                a.src = items[firstIdx].track.src;
+                a.currentTime = 0;
+                a.play().catch(() => {});
+                setLastPlayed(firstIdx);
               }
-              if (data.signatureDataUrl) {
-                const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
-                console.log("Uploaded signature:", sig);
-              }
-            } catch (e) {
-              console.error("Upload failed:", e);
+              setShowLoader(true);
+              // Fire-and-forget uploads while loader shows
+              (async () => {
+                try {
+                  if (licensePhoto) {
+                    const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
+                    console.log("Uploaded license photo:", photo);
+                  }
+                  if (data.signatureDataUrl) {
+                    const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
+                    console.log("Uploaded signature:", sig);
+                  }
+                } catch (e) { console.error("Upload failed:", e); }
+              })();
+              // Keep loader visible for ~2.3s before navigating to the game
+              setTimeout(() => {
+                try { router.push("/learn/parking"); } catch {}
+              }, 2300);
             }
-          })();
-
-          // Navigate to the Stack/Queue garage game after saving
-          try { router.push("/learn/garage"); } catch {}
+          });
         }}
       />
+      {/* Iris overlay for transitions */}
+      <IrisTransition ref={irisRef} zIndex={1600} />
+      {/* Loading overlay displayed after "Save & Continue" before navigating */}
+      <LoadingOverlay active={showLoader} zIndex={1700} />
     </section>
   );
 }
