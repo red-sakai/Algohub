@@ -13,6 +13,38 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keyup', (e) => { pressed.delete(e.key.toLowerCase()); });
 }
 const key = (k) => pressed.has(k.toLowerCase());
+const joystickVector = { x: 0, y: 0 };
+const setJoystickVector = (x, y) => {
+  joystickVector.x = THREE.MathUtils.clamp(Number.isFinite(x) ? x : 0, -1, 1);
+  joystickVector.y = THREE.MathUtils.clamp(Number.isFinite(y) ? y : 0, -1, 1);
+};
+const getJoystickVector = () => joystickVector;
+const JOYSTICK_DEADZONE = 0.22;
+const STACK_CAMERA_CONFIG = {
+  position: new THREE.Vector3(42, 74, 70),
+  lookAt: new THREE.Vector3(42, 0, 4),
+};
+const STACK_SLOT_HEIGHT = 0.2;
+const STACK_SLOT_POSITIONS = Object.freeze([
+  { id: 1, position: [68, STACK_SLOT_HEIGHT, -7] },
+  { id: 2, position: [60.5, STACK_SLOT_HEIGHT, -7] },
+  { id: 3, position: [53, STACK_SLOT_HEIGHT, -7] },
+  { id: 4, position: [45, STACK_SLOT_HEIGHT, -7] },
+  { id: 5, position: [37, STACK_SLOT_HEIGHT, -7] },
+  { id: 6, position: [29.5, STACK_SLOT_HEIGHT, -7] },
+  { id: 7, position: [21.8, STACK_SLOT_HEIGHT, -7] },
+  { id: 8, position: [14, STACK_SLOT_HEIGHT, -7] },
+  { id: 9, position: [6, STACK_SLOT_HEIGHT, -7] },
+  { id: 10, position: [6, STACK_SLOT_HEIGHT, 37] },
+  { id: 11, position: [13.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 12, position: [21.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 13, position: [29.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 14, position: [37.3, STACK_SLOT_HEIGHT, 37] },
+  { id: 15, position: [45, STACK_SLOT_HEIGHT, 37] },
+  { id: 16, position: [52.7, STACK_SLOT_HEIGHT, 37] },
+  { id: 17, position: [60.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 18, position: [68.5, STACK_SLOT_HEIGHT, 37] },
+]);
 
 const STACK_MARKER_POSITION = [40, 0.08, -19];
 const STACK_MARKER_SIZE = 7;
@@ -146,6 +178,8 @@ const easeOutCubic = (t) => {
   return 1 - Math.pow(1 - clamped, 3);
 };
 
+const normalizeAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
+
 function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume = 0.7, countdownVolume = 0.8 }) {
   const [isActive, setIsActive] = useState(false);
   const [countdown, setCountdown] = useState(startValue);
@@ -266,7 +300,7 @@ function CarModel(props) {
   return <primitive object={scene} {...props} />;
 }
 
-function Car({ onSpeedChange, carRef }) {
+function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   const internalRef = useRef();
   const ref = carRef ? carRef : internalRef;
   const vel = useRef(0);
@@ -287,6 +321,14 @@ function Car({ onSpeedChange, carRef }) {
   const unlockedRef = useRef(false);
   const loadingRef = useRef(false);
   const lastMovingRef = useRef(false);
+  const controlsEnabledRef = useRef(controlsEnabled);
+
+  useEffect(() => {
+    controlsEnabledRef.current = controlsEnabled;
+    if (!controlsEnabled) {
+      vel.current = 0;
+    }
+  }, [controlsEnabled]);
 
   // Setup unlock and preload buffer after first gesture
   useEffect(() => {
@@ -403,24 +445,77 @@ function Car({ onSpeedChange, carRef }) {
   useFrame((_, dt) => {
     const g = ref.current;
     if (!g) return;
-    const up = key('w') || key('arrowup');
-    const down = key('s') || key('arrowdown');
-    const left = key('a') || key('arrowleft');
-    const right = key('d') || key('arrowright');
 
-    const accel = 10;
-    const decel = 12;
-    if (up) vel.current = Math.min(vel.current + accel * dt, 14);
-    else if (down) vel.current = Math.max(vel.current - accel * dt, -8);
-    else {
-      if (vel.current > 0) vel.current = Math.max(0, vel.current - decel * dt);
-      else if (vel.current < 0) vel.current = Math.min(0, vel.current + decel * dt);
+    const controlsAllowed = !!controlsEnabledRef.current;
+    const joystick = getJoystickVector();
+    const jx = controlsAllowed ? joystick.x : 0;
+    const jy = controlsAllowed ? joystick.y : 0;
+    const joystickMagnitude = controlsAllowed ? Math.hypot(jx, jy) : 0;
+    let joystickActive = controlsAllowed && joystickMagnitude > JOYSTICK_DEADZONE;
+
+    const keyboardForward = controlsAllowed ? (key('w') || key('arrowup')) : false;
+    const keyboardBackward = controlsAllowed ? (key('s') || key('arrowdown')) : false;
+    const keyboardLeft = controlsAllowed ? (key('a') || key('arrowleft')) : false;
+    const keyboardRight = controlsAllowed ? (key('d') || key('arrowright')) : false;
+    const usingKeyboard = controlsAllowed && (keyboardForward || keyboardBackward || keyboardLeft || keyboardRight);
+
+    let forwardInput = 0;
+    let backwardInput = 0;
+    let leftInput = 0;
+    let rightInput = 0;
+
+    if (controlsAllowed && joystickActive && !usingKeyboard) {
+      const direction = Math.min(1, joystickMagnitude);
+      if (direction > JOYSTICK_DEADZONE) {
+        const vertical = -jy;
+        const targetHeading = Math.atan2(jx, Math.abs(vertical) < 1e-4 && Math.abs(jx) < 1e-4 ? 1e-4 : vertical);
+        const angleDiff = normalizeAngle(targetHeading - heading.current);
+        const turnSpeed = (4.5 * dt) * (0.55 + direction * 0.75);
+        heading.current += THREE.MathUtils.clamp(angleDiff, -turnSpeed, turnSpeed);
+        const rotationFactor = Math.max(0.12, Math.cos(Math.min(Math.PI, Math.abs(angleDiff))));
+        const desiredSpeed = direction * 13 * rotationFactor;
+        vel.current = THREE.MathUtils.damp(vel.current, desiredSpeed, 5, dt);
+        forwardInput = direction;
+        leftInput = angleDiff < -0.01 ? Math.min(1, Math.abs(angleDiff) / Math.PI) : 0;
+        rightInput = angleDiff > 0.01 ? Math.min(1, Math.abs(angleDiff) / Math.PI) : 0;
+      } else {
+        vel.current = THREE.MathUtils.damp(vel.current, 0, 6, dt);
+      }
+    } else if (controlsAllowed) {
+      const joystickForward = joystickActive ? Math.max(0, -jy) : 0;
+      const joystickBackward = joystickActive ? Math.max(0, jy) : 0;
+      const joystickLeft = joystickActive ? Math.max(0, -jx) : 0;
+      const joystickRight = joystickActive ? Math.max(0, jx) : 0;
+
+      forwardInput = keyboardForward ? 1 : joystickForward;
+      backwardInput = keyboardBackward ? 1 : joystickBackward;
+      leftInput = keyboardLeft ? 1 : joystickLeft;
+      rightInput = keyboardRight ? 1 : joystickRight;
+
+      const accel = 10;
+      const decel = 12;
+      if (forwardInput > 0) {
+        vel.current = Math.min(vel.current + accel * Math.max(0.35, forwardInput) * dt, 14);
+      } else if (backwardInput > 0) {
+        vel.current = Math.max(vel.current - accel * Math.max(0.35, backwardInput) * dt, -8);
+      } else {
+        if (vel.current > 0) vel.current = Math.max(0, vel.current - decel * dt);
+        else if (vel.current < 0) vel.current = Math.min(0, vel.current + decel * dt);
+      }
+
+      const movementIntensity = Math.max(Math.abs(vel.current) / 6, forwardInput * 0.55, backwardInput * 0.5);
+      const turnScale = Math.max(0.25, Math.min(1, movementIntensity));
+      const turnRate = 2.4 * turnScale;
+      const turnInput = THREE.MathUtils.clamp(rightInput - leftInput, -1, 1);
+      if (Math.abs(turnInput) > 0.001) {
+        heading.current -= turnRate * turnInput * dt;
+      }
+    } else {
+      joystickActive = false;
+      if (Math.abs(vel.current) > 0.001) {
+        vel.current = 0;
+      }
     }
-
-    const turnScale = Math.min(1, Math.abs(vel.current) / 6);
-    const turnRate = 2.4 * turnScale;
-    if (left) heading.current += turnRate * dt;
-    if (right) heading.current -= turnRate * dt;
 
     g.rotation.y = heading.current;
 
@@ -435,7 +530,7 @@ function Car({ onSpeedChange, carRef }) {
     const reversing = speedVal < -0.25;
     const ctx = audioCtxRef.current;
     const gain = gainRef.current;
-    const braking = key('s') || key('arrowdown');
+    const braking = usingKeyboard ? backwardInput > 0 : (joystickActive && jy > 0.35);
     if (unlockedRef.current && ctx && gain && bufferRef.current) {
       if (braking) {
         // Fade engine out quickly when braking
@@ -585,7 +680,7 @@ function Car({ onSpeedChange, carRef }) {
   );
 }
 
-function CameraRig({ targetRef }) {
+function CameraRig({ targetRef, mode, stackTarget }) {
   const { camera } = useThree();
   const smoothPos = useRef(new THREE.Vector3());
   const initialized = useRef(false);
@@ -593,9 +688,17 @@ function CameraRig({ targetRef }) {
     const target = targetRef.current;
     if (!target) return;
     const targetPos = target.position.clone();
-  // Bird's-eye offset (raised higher for more top-down view)
-  const offset = new THREE.Vector3(50, 40, 25);
-    const desired = targetPos.clone().add(offset);
+    let desired;
+    let lookAt;
+    if (mode === 'stack' && stackTarget) {
+      desired = stackTarget.position.clone();
+      lookAt = stackTarget.lookAt.clone();
+    } else {
+      // Bird's-eye offset (raised higher for more top-down view)
+      const offset = new THREE.Vector3(50, 40, 25);
+      desired = targetPos.clone().add(offset);
+      lookAt = targetPos.clone().add(new THREE.Vector3(0, 1, 0));
+    }
     if (!initialized.current) {
       smoothPos.current.copy(desired);
       initialized.current = true;
@@ -603,7 +706,6 @@ function CameraRig({ targetRef }) {
       smoothPos.current.lerp(desired, 0.1);
     }
     camera.position.copy(smoothPos.current);
-    const lookAt = targetPos.clone().add(new THREE.Vector3(0, 1, 0));
     camera.lookAt(lookAt);
   });
   return null;
@@ -743,7 +845,7 @@ function GameMarker({
   colors = STACK_MARKER_COLORS,
 }) {
   const planeSize = useMemo(() => [size, size], [size]);
-  const textFontSize = useMemo(() => size * 0.18, [size]);
+  const textFontSize = useMemo(() => size * 0.12, [size]);
   const outerFrameMaterialRef = useRef(null);
   const stripeTextureRef = useRef(null);
   const outerFrameGeometry = useMemo(() => {
@@ -986,6 +1088,151 @@ function FloatingCountdown({ carRef, countdown, active }) {
   );
 }
 
+function StackSlotMarkers({ slots }) {
+  const discRadius = 1.2;
+  const glyphSize = 1.1;
+
+  return (
+    <group>
+      {slots.map(({ id, position }) => (
+        <group key={id} position={position}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
+            <circleGeometry args={[discRadius, 28]} />
+            <meshStandardMaterial color="#0f172a" opacity={0.68} transparent />
+          </mesh>
+          <Text
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.02, 0]}
+            fontSize={glyphSize}
+            color="#e2e8f0"
+            anchorX="center"
+            anchorY="middle"
+            outlineWidth={0.18}
+            outlineColor="#020617"
+          >
+            {id}
+          </Text>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function MobileJoystick({ active }) {
+  const baseRef = useRef(null);
+  const pointerActiveRef = useRef(false);
+  const [thumbPos, setThumbPos] = useState({ x: 0, y: 0 });
+  const [isPressed, setIsPressed] = useState(false);
+  const [isTouchPreferred, setIsTouchPreferred] = useState(false);
+
+  const resetMovement = useCallback(() => {
+    setThumbPos({ x: 0, y: 0 });
+    setIsPressed(false);
+    pointerActiveRef.current = false;
+    setJoystickVector(0, 0);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const evaluate = () => {
+      const coarse = window.matchMedia('(pointer: coarse)').matches;
+      const touchCount = navigator.maxTouchPoints || 0;
+      setIsTouchPreferred(coarse || touchCount > 0 || window.innerWidth < 768);
+    };
+    evaluate();
+    window.addEventListener('resize', evaluate);
+    return () => window.removeEventListener('resize', evaluate);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || active) {
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      resetMovement();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [active, resetMovement]);
+
+  useEffect(() => {
+    return () => {
+      resetMovement();
+    };
+  }, [resetMovement]);
+
+  const updateFromPointer = useCallback((event) => {
+    const base = baseRef.current;
+    if (!base) return;
+    const rect = base.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = event.clientX - centerX;
+    const dy = event.clientY - centerY;
+    const radius = rect.width / 2 - 12;
+    const dist = Math.hypot(dx, dy);
+    const clampedDist = dist > radius ? radius : dist;
+    const angle = dist > 0 ? clampedDist / dist : 0;
+    const offsetX = dx * angle;
+    const offsetY = dy * angle;
+    setThumbPos({ x: offsetX, y: offsetY });
+    const nx = offsetX / radius;
+    const ny = offsetY / radius;
+    setJoystickVector(nx, ny);
+  }, []);
+
+  const handlePointerDown = useCallback((event) => {
+    if (!active) return;
+    event.preventDefault();
+    pointerActiveRef.current = true;
+    setIsPressed(true);
+    const base = baseRef.current;
+    if (base) {
+      base.setPointerCapture?.(event.pointerId);
+    }
+    updateFromPointer(event);
+  }, [active, updateFromPointer]);
+
+  const handlePointerMove = useCallback((event) => {
+    if (!pointerActiveRef.current) return;
+    event.preventDefault();
+    updateFromPointer(event);
+  }, [updateFromPointer]);
+
+  const handlePointerEnd = useCallback((event) => {
+    if (!pointerActiveRef.current) return;
+    const base = baseRef.current;
+    if (base) {
+      base.releasePointerCapture?.(event.pointerId);
+    }
+    resetMovement();
+  }, [resetMovement]);
+
+  if (!isTouchPreferred || !active) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none fixed left-4 bottom-4 z-30 sm:left-6 sm:bottom-6">
+      <div
+        ref={baseRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        className={`pointer-events-auto relative flex h-28 w-28 items-center justify-center rounded-full ${isPressed ? 'bg-black/60' : 'bg-black/40'} ring-2 ring-white/25 backdrop-blur-md transition`}
+        style={{ touchAction: 'none' }}
+      >
+        <div className="absolute inset-2 rounded-full border border-white/20" />
+        <div className="absolute inset-6 rounded-full border border-white/15" />
+        <div
+          className="pointer-events-none h-14 w-14 rounded-full bg-sky-400/70 shadow-[0_0_16px_rgba(56,189,248,0.45)] ring-2 ring-white/40 transition-transform"
+          style={{ transform: `translate3d(${thumbPos.x}px, ${thumbPos.y}px, 0)` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ParkingScene() {
   useEffect(() => {
     useGLTF.preload('/car-show/models/car/scene.gltf');
@@ -1001,7 +1248,7 @@ export default function ParkingScene() {
   const {
     isActive: carOnStackMarker,
     countdown: stackCountdown,
-    handlePresenceChange: handleStackMarkerPresence,
+    handlePresenceChange: rawHandleStackMarkerPresence,
   } = useMarkerController({
     startValue: STACK_COUNTDOWN_START,
     markerSfx: MARKER_SFX_URL,
@@ -1039,6 +1286,13 @@ export default function ParkingScene() {
   const [licenseImageUrl, setLicenseImageUrl] = useState(DEFAULT_LICENSE_IMAGE);
   const currentLicenseImageSrc = licenseImageUrl || DEFAULT_LICENSE_IMAGE;
   const [barrierShouldOpen, setBarrierShouldOpen] = useState(false);
+  const [activeMinigame, setActiveMinigame] = useState(null);
+  const [stackMinigameArmed, setStackMinigameArmed] = useState(true);
+  const minigameStateRef = useRef(null);
+  const joystickActive = useMemo(
+    () => activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
+    [activeMinigame, interactPhase],
+  );
 
   const handleInteractMarkerPresence = useCallback((isInside) => {
     rawHandleInteractPresence(isInside);
@@ -1049,12 +1303,46 @@ export default function ParkingScene() {
     }
   }, [rawHandleInteractPresence]);
 
+  const handleStackMarkerPresence = useCallback((isInside) => {
+    rawHandleStackMarkerPresence(isInside);
+    if (!isInside) {
+      setStackMinigameArmed(true);
+    }
+  }, [rawHandleStackMarkerPresence]);
+
   useEffect(() => {
     if (carOnInteractMarker && interactCountdown <= 0 && interactPhase === 'idle') {
       const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
       schedule(() => setInteractPhase('prompt'));
     }
   }, [carOnInteractMarker, interactCountdown, interactPhase]);
+
+  useEffect(() => {
+    if (!stackMinigameArmed) return;
+    if (carOnStackMarker && stackCountdown <= 0 && activeMinigame !== 'stack') {
+      const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
+      schedule(() => {
+        minigameStateRef.current = {
+          startTime: performance.now(),
+          stacks: [],
+        };
+        setStackMinigameArmed(false);
+        setActiveMinigame('stack');
+      });
+    }
+  }, [carOnStackMarker, stackCountdown, activeMinigame, stackMinigameArmed]);
+
+  useEffect(() => {
+    if (activeMinigame === 'stack') {
+      setJoystickVector(0, 0);
+    }
+  }, [activeMinigame]);
+
+  useEffect(() => {
+    if (activeMinigame !== 'stack') {
+      minigameStateRef.current = null;
+    }
+  }, [activeMinigame]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1288,12 +1576,14 @@ export default function ParkingScene() {
           <FloatingCountdown carRef={carRef} countdown={stackCountdown} active={carOnStackMarker} />
           <FloatingCountdown carRef={carRef} countdown={queueCountdown} active={carOnQueueMarker} />
           <FloatingCountdown carRef={carRef} countdown={interactCountdown} active={carOnInteractMarker} />
-          <Car onSpeedChange={setSpeed} carRef={carRef} />
+          {activeMinigame === 'stack' && <StackSlotMarkers slots={STACK_SLOT_POSITIONS} />}
+          <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'stack'} />
           <Environment preset="sunset" background />
         </Suspense>
-        <CameraRig targetRef={carRef} />
+        <CameraRig targetRef={carRef} mode={activeMinigame} stackTarget={STACK_CAMERA_CONFIG} />
         <Stats />
       </Canvas>
+      <MobileJoystick active={joystickActive} />
       <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
         <div className="text-xs uppercase tracking-wider text-white/80">Speed</div>
         <div className="mt-0.5 flex items-baseline gap-1">
@@ -1317,50 +1607,58 @@ export default function ParkingScene() {
         </div>
       )}
       {interactPhase === 'handover' && (
-        <div className="pointer-events-auto absolute left-1/2 bottom-10 z-20 w-[min(92vw,32rem)] -translate-x-1/2 rounded-3xl shadow-2xl ring-1 ring-white/20">
-          <div className="relative overflow-hidden rounded-3xl bg-slate-900/95">
+        <div className="pointer-events-auto absolute inset-0 z-20 flex flex-col">
+          <div className="relative flex-[0_0_52%] overflow-hidden">
             <div
-              className="pointer-events-none absolute inset-0 opacity-45"
+              className="absolute inset-0 bg-slate-900/90"
               style={{ backgroundImage: "url('/desk_topview.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
             />
-            <div className="relative z-10 px-6 py-5 text-sky-50">
-              <div className="text-xs uppercase tracking-[0.18em] text-sky-200">Security Desk</div>
-              <div className="mt-2 text-sm leading-relaxed text-sky-100">Drag your license onto the tray so I can take a look.</div>
-              <div className="mt-4 flex flex-col gap-4 sm:flex-row">
-                {!licenseDropped && (
+            <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center text-sky-50 sm:gap-5">
+              <div className="text-xs uppercase tracking-[0.22em] text-sky-200">Security Desk</div>
+              <p className="max-w-md text-sm leading-relaxed text-sky-100 sm:text-base">
+                Slide your license up onto the counter so I can inspect it.
+              </p>
+              <div
+                onDragOver={handleDropZoneDragOver}
+                onDrop={handleLicenseDrop}
+                onDragLeave={handleDropZoneDragLeave}
+                className={`flex h-40 w-[min(90vw,28rem)] items-center justify-center rounded-3xl border-2 border-dashed text-base font-semibold tracking-wide shadow-xl transition ${licenseDropped ? 'border-emerald-300 bg-emerald-600/20 text-emerald-100' : isDragOverDropzone ? 'border-sky-300 bg-sky-500/15 text-sky-100' : 'border-white/35 bg-slate-900/40 text-white/70'}`}
+              >
+                {licenseDropped ? (
                   <Image
                     src={currentLicenseImageSrc}
-                    alt="Driver&apos;s license"
-                    width={320}
-                    height={200}
-                    draggable
-                    onDragStart={handleLicenseDragStart}
-                    onDragEnd={handleLicenseDragEnd}
-                    className="h-24 w-auto cursor-grab rounded-xl border border-white/30 bg-white/80 p-2 text-slate-900 shadow-md transition hover:scale-[1.02] active:cursor-grabbing"
-                    sizes="(max-width: 640px) 160px, 200px"
+                    alt="Submitted license"
+                    width={420}
+                    height={260}
+                    draggable={false}
+                    className="h-32 w-auto rounded-2xl border border-white/30 bg-white/90 p-3 text-slate-900 shadow-2xl"
+                    sizes="320px"
                   />
+                ) : (
+                  <span>Drop license here</span>
                 )}
-                <div
-                  onDragOver={handleDropZoneDragOver}
-                  onDrop={handleLicenseDrop}
-                  onDragLeave={handleDropZoneDragLeave}
-                  className={`flex h-28 flex-1 items-center justify-center rounded-2xl border-2 border-dashed transition ${licenseDropped ? 'border-emerald-300 bg-emerald-500/15 text-emerald-100' : isDragOverDropzone ? 'border-sky-300 bg-sky-500/10 text-sky-100' : 'border-white/30 bg-slate-900/50 text-white/70'}`}
-                >
-                  {licenseDropped ? (
-                    <Image
-                      src={currentLicenseImageSrc}
-                      alt="Submitted license"
-                      width={300}
-                      height={190}
-                      draggable={false}
-                      className="h-20 w-auto rounded-md shadow-md"
-                      sizes="180px"
-                    />
-                  ) : (
-                    <span className="text-sm">Drop license here</span>
-                  )}
-                </div>
               </div>
+            </div>
+          </div>
+          <div className="relative flex-1 bg-slate-950/92 px-6 pb-10 pt-8 text-sky-50 sm:pb-12">
+            <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center gap-6 text-center">
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-[0.18em] text-sky-300">Your License</div>
+                <p className="text-sm text-sky-100 sm:text-base">Drag the card upward toward the counter to hand it over.</p>
+              </div>
+              {!licenseDropped && (
+                <Image
+                  src={currentLicenseImageSrc}
+                  alt="Driver&apos;s license"
+                  width={500}
+                  height={310}
+                  draggable
+                  onDragStart={handleLicenseDragStart}
+                  onDragEnd={handleLicenseDragEnd}
+                  className="h-40 w-auto cursor-grab rounded-3xl border-2 border-white/35 bg-white/90 p-4 text-slate-900 shadow-2xl transition hover:scale-[1.05] active:cursor-grabbing"
+                  sizes="(max-width: 640px) 280px, 360px"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1389,6 +1687,18 @@ export default function ParkingScene() {
             className="mt-4 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
           >
             Thanks!
+          </button>
+        </div>
+      )}
+      {activeMinigame === 'stack' && (
+        <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
+          <button
+            type="button"
+            onClick={() => setActiveMinigame(null)}
+            className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-white/25 transition hover:bg-slate-800/80"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            Back to free roam
           </button>
         </div>
       )}
