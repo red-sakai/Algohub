@@ -46,9 +46,13 @@ type Props = {
     issued: string;
     expiry: string;
     signatureDataUrl: string | null;
+    licenseCardPath: string | null;
   }) => void;
   debugRects?: boolean; // optional: show rectangles for alignment tuning
 };
+
+const LICENSE_STORAGE_KEY = "algohub-license-card-path";
+const LICENSE_EVENT = "algohub-license-card-updated";
 
 export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave, debugRects }: Props) {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -316,7 +320,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     }
 
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    await uploadImageDataUrl(dataUrl, { folder: "license-cards", makePublic: true });
+    return uploadImageDataUrl(dataUrl, { folder: "license_cards", makePublic: true });
   }, [isDesktop, name, plate, issued, expiry, photoDataUrl]);
 
   const handleSave = useCallback(async () => {
@@ -325,6 +329,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     try {
       signatureDataUrl = canvasRef.current?.toDataURL("image/png") ?? null;
     } catch {}
+    let licenseCardPath: string | null = null;
     try {
       localStorage.setItem("algohub_license_name", name);
       localStorage.setItem("algohub_license_plate", plate);
@@ -333,8 +338,21 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
       if (signatureDataUrl) localStorage.setItem("algohub_license_signature", signatureDataUrl);
     } catch {}
     // Compose and upload final license image
-    try { await composeAndUpload(); } catch (e) { console.error("License compose/upload failed", e); }
-    onSave?.({ name, plate, issued, expiry, signatureDataUrl });
+    try {
+      const result = await composeAndUpload();
+      if (result?.path) {
+        licenseCardPath = result.path;
+        try {
+          localStorage.setItem(LICENSE_STORAGE_KEY, licenseCardPath);
+        } catch {}
+        try {
+          window.dispatchEvent(new CustomEvent(LICENSE_EVENT, { detail: licenseCardPath }));
+        } catch {}
+      }
+    } catch (e) {
+      console.error("License compose/upload failed", e);
+    }
+    onSave?.({ name, plate, issued, expiry, signatureDataUrl, licenseCardPath });
     onClose();
   }, [expiry, issued, name, onClose, onSave, plate, hasSignature, composeAndUpload]);
 

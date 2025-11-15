@@ -1,8 +1,10 @@
 "use client";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stats, Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { getSupabaseClient } from '@/lib/supabase/client';
 
 // Simple key input
 const pressed = new Set();
@@ -29,6 +31,7 @@ const ROAD_BARRIER_ROTATION = [0, Math.PI * 0, 0];
 const ROAD_BARRIER_SCALE = 5; // tweak to align barrier with the entrance
 const STACK_COUNTDOWN_START = 3;
 const COUNTDOWN_MODEL_SCALE = 4;
+const BARRIER_OPEN_ANGLE = 0.9;
 const COUNTDOWN_MODELS = {
   3: '/models/3.glb',
   2: '/models/2.glb',
@@ -132,6 +135,16 @@ const INTERACT_MARKER_COLORS = Object.freeze({
     highlight: 'rgba(70, 132, 238, 0.55)',
   },
 });
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const LICENSE_STORAGE_KEY = 'algohub-license-card-path';
+const LICENSE_EVENT = 'algohub-license-card-updated';
+const DEFAULT_LICENSE_IMAGE = '/drivers_license.png';
+
+const easeOutCubic = (t) => {
+  const clamped = Math.min(1, Math.max(0, t));
+  return 1 - Math.pow(1 - clamped, 3);
+};
 
 function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume = 0.7, countdownVolume = 0.8 }) {
   const [isActive, setIsActive] = useState(false);
@@ -566,7 +579,7 @@ function Car({ onSpeedChange, carRef }) {
   }, []);
 
   return (
-    <group ref={ref} position={[0, 0.3, 5]}>
+    <group ref={ref} position={[40, 0.3, -100]}>
       <CarModel scale={0.01} />
     </group>
   );
@@ -675,7 +688,7 @@ function ParkingToll() {
   );
 }
 
-function RoadBarrier() {
+function RoadBarrier({ open = false }) {
   const { scene } = useGLTF('/models/road_barrier.glb');
   const barrierScene = useMemo(() => {
     const cloned = scene.clone(true);
@@ -693,9 +706,29 @@ function RoadBarrier() {
     return cloned;
   }, [scene]);
 
+  const pivotRef = useRef(null);
+  const progressRef = useRef(open ? 1 : 0);
+  const targetRef = useRef(0);
+
+  useEffect(() => {
+    targetRef.current = open ? 1 : 0;
+  }, [open]);
+
+  useFrame((_, dt) => {
+    const pivot = pivotRef.current;
+    if (!pivot) return;
+    const lerpSpeed = open ? 6 : 4;
+    progressRef.current = THREE.MathUtils.damp(progressRef.current, targetRef.current, lerpSpeed, dt);
+    const eased = easeOutCubic(progressRef.current);
+    const angle = eased * BARRIER_OPEN_ANGLE;
+    pivot.rotation.set(0, 0, angle);
+  });
+
   return (
     <group position={ROAD_BARRIER_POSITION} rotation={ROAD_BARRIER_ROTATION} scale={ROAD_BARRIER_SCALE}>
-      <primitive object={barrierScene} />
+      <group ref={pivotRef}>
+        <primitive object={barrierScene} />
+      </group>
     </group>
   );
 }
@@ -992,7 +1025,7 @@ export default function ParkingScene() {
   const {
     isActive: carOnInteractMarker,
     countdown: interactCountdown,
-    handlePresenceChange: handleInteractMarkerPresence,
+    handlePresenceChange: rawHandleInteractPresence,
   } = useMarkerController({
     startValue: STACK_COUNTDOWN_START,
     markerSfx: MARKER_SFX_URL,
@@ -1000,6 +1033,217 @@ export default function ParkingScene() {
     markerVolume: 0.7,
     countdownVolume: 0.8,
   });
+  const [interactPhase, setInteractPhase] = useState('idle');
+  const [licenseDropped, setLicenseDropped] = useState(false);
+  const [isDragOverDropzone, setIsDragOverDropzone] = useState(false);
+  const [licenseImageUrl, setLicenseImageUrl] = useState(DEFAULT_LICENSE_IMAGE);
+  const currentLicenseImageSrc = licenseImageUrl || DEFAULT_LICENSE_IMAGE;
+  const [barrierShouldOpen, setBarrierShouldOpen] = useState(false);
+
+  const handleInteractMarkerPresence = useCallback((isInside) => {
+    rawHandleInteractPresence(isInside);
+    if (!isInside) {
+      setInteractPhase('idle');
+      setLicenseDropped(false);
+      setIsDragOverDropzone(false);
+    }
+  }, [rawHandleInteractPresence]);
+
+  useEffect(() => {
+    if (carOnInteractMarker && interactCountdown <= 0 && interactPhase === 'idle') {
+      const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
+      schedule(() => setInteractPhase('prompt'));
+    }
+  }, [carOnInteractMarker, interactCountdown, interactPhase]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let active = true;
+
+    const supabaseClient = SUPABASE_URL && SUPABASE_ANON_KEY ? getSupabaseClient() : null;
+
+    const resolveLicenseUrl = async (objectPath) => {
+      if (!objectPath) return null;
+      if (objectPath.startsWith('http')) return objectPath;
+      if (!supabaseClient) return null;
+      try {
+        const { data: signedData, error: signedError } = await supabaseClient.storage.from('license-photos').createSignedUrl(objectPath, 60 * 60);
+        if (!signedError && signedData?.signedUrl) {
+          return signedData.signedUrl;
+        }
+        const { data: publicData } = supabaseClient.storage.from('license-photos').getPublicUrl(objectPath);
+        return publicData?.publicUrl || null;
+      } catch (err) {
+        console.warn('[InteractMarker] Failed to resolve license URL', err);
+        return null;
+      }
+    };
+
+    const loadFromLocalStorage = async () => {
+      try {
+        const stored = window.localStorage.getItem(LICENSE_STORAGE_KEY);
+        if (stored) {
+          const url = await resolveLicenseUrl(stored);
+          if (url && active) {
+            setLicenseImageUrl(url);
+            return true;
+          }
+        }
+      } catch {}
+      return false;
+    };
+
+    const loadFromSupabase = async () => {
+      if (!supabaseClient) {
+        return;
+      }
+      try {
+        const { data, error } = await supabaseClient.storage.from('license-photos').list('license_cards', {
+          limit: 20,
+          sortBy: { column: 'created_at', order: 'desc' },
+        });
+        if (error) {
+          throw error;
+        }
+        const candidate = data?.find((file) => file.name && !file.name.startsWith('.'));
+        if (!candidate) return;
+        const objectPath = `license_cards/${candidate.name}`;
+        const resolvedUrl = await resolveLicenseUrl(objectPath);
+        if (resolvedUrl && active) {
+          setLicenseImageUrl(resolvedUrl);
+          try {
+            window.localStorage.setItem(LICENSE_STORAGE_KEY, objectPath);
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('[InteractMarker] Failed to load license image from Supabase', err);
+      }
+    };
+
+    const run = async () => {
+      const hasLocal = await loadFromLocalStorage();
+      if (!hasLocal) {
+        await loadFromSupabase();
+      }
+    };
+
+    run();
+
+    const handleLicenseUpdated = (event) => {
+      const detail = event && typeof event === 'object' && 'detail' in event ? event.detail : null;
+      const objectPath = typeof detail === 'string' && detail.trim().length > 0 ? detail : null;
+      if (!objectPath) {
+        setLicenseImageUrl(DEFAULT_LICENSE_IMAGE);
+        try {
+          window.localStorage.removeItem(LICENSE_STORAGE_KEY);
+        } catch {}
+        return;
+      }
+      resolveLicenseUrl(objectPath).then((url) => {
+        if (!url || !active) return;
+        setLicenseImageUrl(url);
+        try {
+          window.localStorage.setItem(LICENSE_STORAGE_KEY, objectPath);
+        } catch {}
+      }).catch(() => {});
+    };
+    window.addEventListener(LICENSE_EVENT, handleLicenseUpdated);
+
+    return () => {
+      active = false;
+      try {
+        window.removeEventListener(LICENSE_EVENT, handleLicenseUpdated);
+      } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (!licenseImageUrl || licenseImageUrl === DEFAULT_LICENSE_IMAGE) {
+      return undefined;
+    }
+    let cancelled = false;
+    const validateImage = async () => {
+      try {
+        const res = await fetch(licenseImageUrl, { method: 'HEAD', cache: 'no-store' });
+        if (!res.ok) {
+          throw new Error(`status ${res.status}`);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('[InteractMarker] License image unreachable, falling back', err);
+        setLicenseImageUrl(DEFAULT_LICENSE_IMAGE);
+        try {
+          window.localStorage.removeItem(LICENSE_STORAGE_KEY);
+        } catch {}
+      }
+    };
+    validateImage();
+    return () => {
+      cancelled = true;
+    };
+  }, [licenseImageUrl]);
+
+  useEffect(() => {
+    if (interactPhase === 'checking') {
+      const timer = window.setTimeout(() => {
+        setInteractPhase('approved');
+      }, 1800);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [interactPhase]);
+
+  useEffect(() => {
+    if (interactPhase === 'approved' || interactPhase === 'complete') {
+      setBarrierShouldOpen(true);
+      return;
+    }
+    if (interactPhase === 'idle') {
+      setBarrierShouldOpen(false);
+    }
+  }, [interactPhase]);
+
+  const handleInteractPromptNext = useCallback(() => {
+    setLicenseDropped(false);
+    setIsDragOverDropzone(false);
+    setInteractPhase('handover');
+  }, []);
+
+  const handleLicenseDragStart = useCallback((event) => {
+    try {
+      event.dataTransfer.setData('text/plain', 'drivers-license');
+    } catch {}
+  }, []);
+
+  const handleDropZoneDragOver = useCallback((event) => {
+    if (interactPhase !== 'handover') return;
+    event.preventDefault();
+    setIsDragOverDropzone(true);
+  }, [interactPhase]);
+
+  const handleDropZoneDragLeave = useCallback((event) => {
+    if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) {
+      return;
+    }
+    setIsDragOverDropzone(false);
+  }, []);
+
+  const handleLicenseDrop = useCallback((event) => {
+    event.preventDefault();
+    setIsDragOverDropzone(false);
+    if (interactPhase !== 'handover') return;
+    setLicenseDropped(true);
+    setInteractPhase('checking');
+  }, [interactPhase]);
+
+  const handleInteractApprovedAcknowledge = useCallback(() => {
+    setInteractPhase('complete');
+  }, []);
+
+  const handleLicenseDragEnd = useCallback(() => {
+    setIsDragOverDropzone(false);
+  }, []);
 
   return (
     <div className="relative w-full h-full">
@@ -1013,7 +1257,7 @@ export default function ParkingScene() {
           <ParkingArea />
           <StreetRoad />
           <ParkingToll />
-          <RoadBarrier />
+          <RoadBarrier open={barrierShouldOpen} />
           <GameMarker
             label="STACK"
             position={STACK_MARKER_POSITION}
@@ -1057,6 +1301,97 @@ export default function ParkingScene() {
           <div className="text-[10px] opacity-80">km/h</div>
         </div>
       </div>
+      {interactPhase === 'prompt' && interactCountdown <= 0 && carOnInteractMarker && (
+        <div className="pointer-events-auto absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2 rounded-3xl bg-slate-900/85 px-5 py-4 text-white shadow-xl ring-1 ring-white/20 backdrop-blur">
+          <div className="text-xs uppercase tracking-[0.18em] text-sky-300">Security Guard</div>
+          <div className="mt-2 text-sm leading-relaxed text-sky-50">
+            Good afternoon! Before you head in, may I see your driver&apos;s license, please?
+          </div>
+          <button
+            type="button"
+            onClick={handleInteractPromptNext}
+            className="mt-4 inline-flex items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+          >
+            Next
+          </button>
+        </div>
+      )}
+      {interactPhase === 'handover' && (
+        <div className="pointer-events-auto absolute left-1/2 bottom-10 z-20 w-[min(92vw,32rem)] -translate-x-1/2 rounded-3xl shadow-2xl ring-1 ring-white/20">
+          <div className="relative overflow-hidden rounded-3xl bg-slate-900/95">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-45"
+              style={{ backgroundImage: "url('/desk_topview.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+            />
+            <div className="relative z-10 px-6 py-5 text-sky-50">
+              <div className="text-xs uppercase tracking-[0.18em] text-sky-200">Security Desk</div>
+              <div className="mt-2 text-sm leading-relaxed text-sky-100">Drag your license onto the tray so I can take a look.</div>
+              <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+                {!licenseDropped && (
+                  <Image
+                    src={currentLicenseImageSrc}
+                    alt="Driver&apos;s license"
+                    width={320}
+                    height={200}
+                    draggable
+                    onDragStart={handleLicenseDragStart}
+                    onDragEnd={handleLicenseDragEnd}
+                    className="h-24 w-auto cursor-grab rounded-xl border border-white/30 bg-white/80 p-2 text-slate-900 shadow-md transition hover:scale-[1.02] active:cursor-grabbing"
+                    sizes="(max-width: 640px) 160px, 200px"
+                  />
+                )}
+                <div
+                  onDragOver={handleDropZoneDragOver}
+                  onDrop={handleLicenseDrop}
+                  onDragLeave={handleDropZoneDragLeave}
+                  className={`flex h-28 flex-1 items-center justify-center rounded-2xl border-2 border-dashed transition ${licenseDropped ? 'border-emerald-300 bg-emerald-500/15 text-emerald-100' : isDragOverDropzone ? 'border-sky-300 bg-sky-500/10 text-sky-100' : 'border-white/30 bg-slate-900/50 text-white/70'}`}
+                >
+                  {licenseDropped ? (
+                    <Image
+                      src={currentLicenseImageSrc}
+                      alt="Submitted license"
+                      width={300}
+                      height={190}
+                      draggable={false}
+                      className="h-20 w-auto rounded-md shadow-md"
+                      sizes="180px"
+                    />
+                  ) : (
+                    <span className="text-sm">Drop license here</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {interactPhase === 'checking' && (
+        <div className="pointer-events-none absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2 rounded-3xl bg-slate-900/85 px-5 py-4 text-white shadow-xl ring-1 ring-white/20 backdrop-blur">
+          <div className="text-xs uppercase tracking-[0.18em] text-sky-300">Security Guard</div>
+          <div className="mt-2 text-sm leading-relaxed text-sky-50">
+            Alright, let me take a quick look at this.
+          </div>
+          <div className="mt-3 flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-sky-200/80">
+            <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-sky-300" />
+            Checking license…
+          </div>
+        </div>
+      )}
+      {interactPhase === 'approved' && (
+        <div className="pointer-events-auto absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2 rounded-3xl bg-slate-900/90 px-5 py-4 text-white shadow-xl ring-1 ring-emerald-300/40 backdrop-blur">
+          <div className="text-xs uppercase tracking-[0.18em] text-emerald-300">Security Guard</div>
+          <div className="mt-2 text-sm leading-relaxed text-emerald-50">
+            Looks good. You&apos;re all set—enjoy your time inside!
+          </div>
+          <button
+            type="button"
+            onClick={handleInteractApprovedAcknowledge}
+            className="mt-4 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+          >
+            Thanks!
+          </button>
+        </div>
+      )}
     </div>
   );
 }

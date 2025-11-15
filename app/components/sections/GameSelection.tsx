@@ -1,6 +1,9 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { playTracks } from "../ui/musicBus";
+
+const LICENSE_STORAGE_KEY = "algohub-license-card-path";
+const LICENSE_EVENT = "algohub-license-card-updated";
 
 type Game = {
   id: string;
@@ -48,12 +51,46 @@ const GAMES: Game[] = [
 
 export default function GameSelection() {
   const [active, setActive] = useState<string | null>(null);
+  const [selectedLicense, setSelectedLicense] = useState<string | null>(null);
   const items = useMemo(() => GAMES, []);
 
   const onPick = (g: Game) => {
     setActive(g.id);
     playTracks([{ title: g.track.title, src: g.track.src }], 0);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(LICENSE_STORAGE_KEY);
+      if (stored) {
+        setSelectedLicense(stored);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (selectedLicense) {
+        window.localStorage.setItem(LICENSE_STORAGE_KEY, selectedLicense);
+      } else {
+        window.localStorage.removeItem(LICENSE_STORAGE_KEY);
+      }
+    } catch {}
+  }, [selectedLicense]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<string | null>).detail ?? null;
+      setSelectedLicense(detail || null);
+    };
+    window.addEventListener(LICENSE_EVENT, handler);
+    return () => {
+      window.removeEventListener(LICENSE_EVENT, handler);
+    };
+  }, []);
 
   return (
     <section className="relative z-10 h-[100dvh] w-full">
