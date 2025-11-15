@@ -13,8 +13,240 @@ if (typeof window !== 'undefined') {
 const key = (k) => pressed.has(k.toLowerCase());
 
 const STACK_MARKER_POSITION = [40, 0.08, -19];
-const STACK_MARKER_SIZE = 4.5;
+const STACK_MARKER_SIZE = 7;
+const QUEUE_MARKER_POSITION = [-40, 0.08, 19];
+const QUEUE_MARKER_SIZE = 7;
+const INTERACT_MARKER_POSITION = [40, 0.2, -53];
+const INTERACT_MARKER_SIZE = 6.5;
+const STREET_ROAD_POSITION = [37, 0.02, -585];
+const STREET_ROAD_ROTATION = [0, Math.PI, 0];
+const STREET_ROAD_SCALE = 1.7; // tweak these three constants to align the road with the garage
+const PARKING_TOLL_POSITION = [22, 0.4, -48];
+const PARKING_TOLL_ROTATION = [0, Math.PI * 0.5, 0];
+const PARKING_TOLL_SCALE = 2; // adjust these to line the toll booth up with the roadway
+const ROAD_BARRIER_POSITION = [38, 0.02, -48];
+const ROAD_BARRIER_ROTATION = [0, Math.PI * 0, 0];
+const ROAD_BARRIER_SCALE = 5; // tweak to align barrier with the entrance
 const STACK_COUNTDOWN_START = 3;
+const COUNTDOWN_MODEL_SCALE = 4;
+const COUNTDOWN_MODELS = {
+  3: '/models/3.glb',
+  2: '/models/2.glb',
+  1: '/models/1.glb',
+};
+const MARKER_SFX_URL = '/marker_sfx.mp3';
+const COUNTDOWN_SFX_URL = '/321countdown.mp3';
+const STACK_MARKER_COLORS = Object.freeze({
+  plane: {
+    color: '#2fffc0',
+    emissive: '#12c68e',
+    intensity: { active: 1.4, inactive: 0.6 },
+  },
+  frame: {
+    color: '#46ffd4',
+    emissive: '#2af8b2',
+    intensity: { active: 0.9, inactive: 0.4 },
+  },
+  baseLine: {
+    active: '#7dffe2',
+    inactive: '#3affc4',
+  },
+  upperLine: {
+    active: '#ffffff',
+    inactive: '#aaffe8',
+  },
+  lowerLine: {
+    active: '#b9fff0',
+    inactive: '#6effd0',
+  },
+  text: {
+    color: '#ffffff',
+    outline: '#1b8064',
+  },
+  stripe: {
+    base: 'rgba(50, 255, 185, 0.12)',
+    highlight: 'rgba(50, 255, 185, 0.55)',
+  },
+});
+const QUEUE_MARKER_COLORS = Object.freeze({
+  plane: {
+    color: '#ffbd66',
+    emissive: '#d97500',
+    intensity: { active: 1.35, inactive: 0.55 },
+  },
+  frame: {
+    color: '#ffc978',
+    emissive: '#ff8c1a',
+    intensity: { active: 0.95, inactive: 0.45 },
+  },
+  baseLine: {
+    active: '#ffe1ad',
+    inactive: '#ffb764',
+  },
+  upperLine: {
+    active: '#fff3d6',
+    inactive: '#ffcfa0',
+  },
+  lowerLine: {
+    active: '#ffd9a1',
+    inactive: '#ffae59',
+  },
+  text: {
+    color: '#ffffff',
+    outline: '#8a4d00',
+  },
+  stripe: {
+    base: 'rgba(255, 196, 120, 0.12)',
+    highlight: 'rgba(255, 153, 0, 0.55)',
+  },
+});
+const INTERACT_MARKER_COLORS = Object.freeze({
+  plane: {
+    color: '#6fb8ff',
+    emissive: '#2265d8',
+    intensity: { active: 1.4, inactive: 0.55 },
+  },
+  frame: {
+    color: '#8accff',
+    emissive: '#3e8bff',
+    intensity: { active: 1, inactive: 0.45 },
+  },
+  baseLine: {
+    active: '#d1e7ff',
+    inactive: '#8fc2ff',
+  },
+  upperLine: {
+    active: '#f0f6ff',
+    inactive: '#b5d7ff',
+  },
+  lowerLine: {
+    active: '#b7d8ff',
+    inactive: '#7db7ff',
+  },
+  text: {
+    color: '#ffffff',
+    outline: '#1b3c66',
+  },
+  stripe: {
+    base: 'rgba(110, 180, 255, 0.12)',
+    highlight: 'rgba(70, 132, 238, 0.55)',
+  },
+});
+
+function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume = 0.7, countdownVolume = 0.8 }) {
+  const [isActive, setIsActive] = useState(false);
+  const [countdown, setCountdown] = useState(startValue);
+  const countdownValueRef = useRef(startValue);
+  const countdownIntervalRef = useRef(null);
+  const markerAudioRef = useRef(null);
+  const countdownAudioRef = useRef(null);
+
+  const playAudio = useCallback((audioRef) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      audio.currentTime = 0;
+    } catch {}
+    audio.play().catch(() => {});
+  }, []);
+
+  const stopAudio = useCallback((audioRef) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const markerAudio = new Audio(markerSfx);
+    markerAudio.preload = 'auto';
+    markerAudio.crossOrigin = 'anonymous';
+    markerAudio.volume = markerVolume;
+    markerAudioRef.current = markerAudio;
+
+    const countdownAudio = new Audio(countdownSfx);
+    countdownAudio.preload = 'auto';
+    countdownAudio.crossOrigin = 'anonymous';
+    countdownAudio.volume = countdownVolume;
+    countdownAudioRef.current = countdownAudio;
+
+    return () => {
+      stopAudio(markerAudioRef);
+      stopAudio(countdownAudioRef);
+      markerAudioRef.current = null;
+      countdownAudioRef.current = null;
+    };
+  }, [markerSfx, countdownSfx, markerVolume, countdownVolume, stopAudio]);
+
+  const handlePresenceChange = useCallback((isInside) => {
+    setIsActive((prev) => {
+      if (prev === isInside) return prev;
+      countdownValueRef.current = startValue;
+      setCountdown(startValue);
+      if (isInside) {
+        playAudio(markerAudioRef);
+        playAudio(countdownAudioRef);
+      } else {
+        stopAudio(countdownAudioRef);
+      }
+      return isInside;
+    });
+  }, [playAudio, stopAudio, startValue]);
+
+  useEffect(() => {
+    if (isActive) {
+      if (countdownIntervalRef.current) {
+        window.clearInterval(countdownIntervalRef.current);
+      }
+      const intervalId = window.setInterval(() => {
+        countdownValueRef.current = Math.max(0, countdownValueRef.current - 1);
+        setCountdown((prev) => {
+          if (prev <= 0) return 0;
+          return Math.max(0, prev - 1);
+        });
+        if (countdownValueRef.current <= 0) {
+          window.clearInterval(intervalId);
+          countdownIntervalRef.current = null;
+        }
+      }, 1000);
+      countdownIntervalRef.current = intervalId;
+      return () => {
+        window.clearInterval(intervalId);
+        countdownIntervalRef.current = null;
+      };
+    }
+
+    if (countdownIntervalRef.current) {
+      window.clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    return undefined;
+  }, [isActive]);
+
+  useEffect(() => {
+    if (countdown <= 0) {
+      stopAudio(countdownAudioRef);
+    }
+  }, [countdown, stopAudio]);
+
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) {
+        window.clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  return {
+    isActive,
+    countdown,
+    handlePresenceChange,
+  };
+}
 
 function CarModel(props) {
   const { scene } = useGLTF('/car-show/models/car/scene.gltf');
@@ -393,18 +625,196 @@ function ParkingArea() {
   return <primitive object={parkingScene} />;
 }
 
-function StackMarker({ position = STACK_MARKER_POSITION, size = STACK_MARKER_SIZE, carRef, onPresenceChange, countdown, active }) {
-  const planeSize = useMemo(() => [size, size], [size]);
-  const textFontSize = useMemo(() => size * 0.32, [size]);
-  const frameGeometry = useMemo(() => {
-    const plane = new THREE.PlaneGeometry(size * 1.15, size * 1.15);
-    const edges = new THREE.EdgesGeometry(plane);
-    plane.dispose();
-    return edges;
-  }, [size]);
-  const lastInsideRef = useRef(false);
+function StreetRoad() {
+  const { scene } = useGLTF('/models/street_road.glb');
+  const roadScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    const tempBox = new THREE.Box3().setFromObject(cloned);
+    const center = new THREE.Vector3();
+    tempBox.getCenter(center);
+    const minY = tempBox.min.y;
+    cloned.position.set(-center.x, -minY, -center.z);
+    cloned.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    return cloned;
+  }, [scene]);
 
-  useFrame(() => {
+  return (
+    <group position={STREET_ROAD_POSITION} rotation={STREET_ROAD_ROTATION} scale={STREET_ROAD_SCALE}>
+      <primitive object={roadScene} />
+    </group>
+  );
+}
+
+function ParkingToll() {
+  const { scene } = useGLTF('/models/parking_toll.glb');
+  const tollScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    const tempBox = new THREE.Box3().setFromObject(cloned);
+    const center = new THREE.Vector3();
+    tempBox.getCenter(center);
+    const minY = tempBox.min.y;
+    cloned.position.set(-center.x, -minY, -center.z);
+    cloned.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    return cloned;
+  }, [scene]);
+
+  return (
+    <group position={PARKING_TOLL_POSITION} rotation={PARKING_TOLL_ROTATION} scale={PARKING_TOLL_SCALE}>
+      <primitive object={tollScene} />
+    </group>
+  );
+}
+
+function RoadBarrier() {
+  const { scene } = useGLTF('/models/road_barrier.glb');
+  const barrierScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    const tempBox = new THREE.Box3().setFromObject(cloned);
+    const center = new THREE.Vector3();
+    tempBox.getCenter(center);
+    const minY = tempBox.min.y;
+    cloned.position.set(-center.x, -minY, -center.z);
+    cloned.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    return cloned;
+  }, [scene]);
+
+  return (
+    <group position={ROAD_BARRIER_POSITION} rotation={ROAD_BARRIER_ROTATION} scale={ROAD_BARRIER_SCALE}>
+      <primitive object={barrierScene} />
+    </group>
+  );
+}
+
+function GameMarker({
+  label,
+  position = STACK_MARKER_POSITION,
+  size = STACK_MARKER_SIZE,
+  carRef,
+  onPresenceChange,
+  active = false,
+  colors = STACK_MARKER_COLORS,
+}) {
+  const planeSize = useMemo(() => [size, size], [size]);
+  const textFontSize = useMemo(() => size * 0.18, [size]);
+  const outerFrameMaterialRef = useRef(null);
+  const stripeTextureRef = useRef(null);
+  const outerFrameGeometry = useMemo(() => {
+    const shape = new THREE.Shape();
+    const half = size * 0.55;
+    shape.moveTo(-half, -half);
+    shape.lineTo(half, -half);
+    shape.lineTo(half, half);
+    shape.lineTo(-half, half);
+    shape.lineTo(-half, -half);
+    const hole = new THREE.Path();
+    const inner = size * 0.4;
+    hole.moveTo(-inner, -inner);
+    hole.lineTo(-inner, inner);
+    hole.lineTo(inner, inner);
+    hole.lineTo(inner, -inner);
+    hole.lineTo(-inner, -inner);
+    shape.holes.push(hole);
+    return new THREE.ShapeGeometry(shape, 1);
+  }, [size]);
+  const upperOutlineGeometry = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(size * 0.88, size * 0.88)), [size]);
+  const lowerOutlineGeometry = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(size * 0.7, size * 0.7)), [size]);
+  const baseOutlineGeometry = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(size, size)), [size]);
+  const lastInsideRef = useRef(false);
+  const liftGroupRef = useRef(null);
+  const liftValueRef = useRef(0.14);
+  const baseLift = 0.14;
+  const raisedLift = baseLift + 0.12;
+  const scrollSpeed = 0.45;
+  const {
+    plane = {
+      color: '#ffffff',
+      emissive: '#ffffff',
+      intensity: { active: 1, inactive: 1 },
+    },
+    frame = {
+      color: '#ffffff',
+      emissive: '#ffffff',
+      intensity: { active: 1, inactive: 1 },
+    },
+    baseLine = { active: '#ffffff', inactive: '#999999' },
+    upperLine = { active: '#ffffff', inactive: '#cccccc' },
+    lowerLine = { active: '#ffffff', inactive: '#bbbbbb' },
+    text = { color: '#ffffff', outline: '#000000' },
+    stripe = { base: 'rgba(255,255,255,0.12)', highlight: 'rgba(255,255,255,0.5)' },
+  } = colors || {};
+  const stripeBaseColor = stripe.base;
+  const stripeHighlightColor = stripe.highlight;
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+    if (stripeTextureRef.current) {
+      stripeTextureRef.current.dispose();
+      stripeTextureRef.current = null;
+    }
+    const canvas = document.createElement('canvas');
+    const px = 128;
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, px, px);
+      ctx.fillStyle = stripeBaseColor;
+      ctx.fillRect(0, 0, px, px);
+      ctx.save();
+      ctx.translate(px / 2, px / 2);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = stripeHighlightColor;
+      const band = px * 0.34;
+      ctx.fillRect(-px, -band / 2, px * 2, band);
+      ctx.translate(0, px * 0.75);
+      ctx.fillRect(-px, -band / 2, px * 2, band);
+      ctx.restore();
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 4);
+    texture.center.set(0.5, 0.5);
+    texture.rotation = Math.PI / 4;
+    texture.anisotropy = 4;
+    stripeTextureRef.current = texture;
+    const material = outerFrameMaterialRef.current;
+    if (material) {
+      material.map = texture;
+      material.needsUpdate = true;
+    }
+    return () => {
+      texture.dispose();
+      stripeTextureRef.current = null;
+      if (material && material.map === texture) {
+        material.map = null;
+      }
+    };
+  }, [stripeBaseColor, stripeHighlightColor]);
+
+  useEffect(() => {
+    if (liftGroupRef.current) {
+      liftGroupRef.current.position.y = liftValueRef.current;
+    }
+  }, []);
+
+  useFrame((_, dt) => {
     const car = carRef?.current;
     if (!car) return;
     const carPos = car.position;
@@ -419,6 +829,18 @@ function StackMarker({ position = STACK_MARKER_POSITION, size = STACK_MARKER_SIZ
         onPresenceChange(inside);
       }
     }
+
+    const targetLift = active ? raisedLift : baseLift;
+    const lerpFactor = Math.min(1, dt * 6.5);
+    liftValueRef.current = THREE.MathUtils.lerp(liftValueRef.current, targetLift, lerpFactor);
+    if (liftGroupRef.current) {
+      liftGroupRef.current.position.y = liftValueRef.current;
+    }
+
+    if (stripeTextureRef.current) {
+      stripeTextureRef.current.offset.x = (stripeTextureRef.current.offset.x + dt * scrollSpeed) % 1;
+      stripeTextureRef.current.needsUpdate = true;
+    }
   });
 
   return (
@@ -426,45 +848,107 @@ function StackMarker({ position = STACK_MARKER_POSITION, size = STACK_MARKER_SIZ
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
         <planeGeometry args={planeSize} />
         <meshStandardMaterial
-          color="#0bff9b"
-          emissive="#0bff9b"
-          emissiveIntensity={active ? 4.2 : 2.2}
-          roughness={0.12}
-          metalness={0.08}
-          opacity={0.96}
+          color={plane.color}
+          emissive={plane.emissive}
+          emissiveIntensity={active ? plane.intensity.active : plane.intensity.inactive}
+          roughness={0.35}
+          metalness={0.1}
+          opacity={0.25}
           transparent
           side={THREE.DoubleSide}
         />
       </mesh>
-      <lineSegments rotation={[-Math.PI / 2, 0, 0]} geometry={frameGeometry}>
-        <lineBasicMaterial color={active ? '#4dffcf' : '#0bff9b'} linewidth={2} />
-      </lineSegments>
-      <Text
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.08, 0]}
-        fontSize={textFontSize}
-        color="#ffffff"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.08}
-        outlineColor="#024d31"
-        letterSpacing={0.06}
-      >
-        STACK
-      </Text>
-      <Text
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.36, 0]}
-        fontSize={textFontSize * 0.9}
-        color={active ? '#ffffff' : '#d9ffe9'}
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.12}
-        outlineColor={active ? '#069363' : '#1b664a'}
-        letterSpacing={0.04}
-      >
-        {Math.max(0, countdown).toString()}
-      </Text>
+      <group ref={liftGroupRef}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={outerFrameGeometry}>
+          <meshStandardMaterial
+            ref={outerFrameMaterialRef}
+            color={frame.color}
+            emissive={frame.emissive}
+            emissiveIntensity={active ? frame.intensity.active : frame.intensity.inactive}
+            transparent
+            opacity={0.55}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <lineSegments rotation={[-Math.PI / 2, 0, 0]} geometry={baseOutlineGeometry} position={[0, -0.11, 0]}>
+          <lineBasicMaterial color={active ? baseLine.active : baseLine.inactive} linewidth={1} />
+        </lineSegments>
+        <lineSegments rotation={[-Math.PI / 2, 0, 0]} geometry={upperOutlineGeometry} position={[0, 0.08, 0]}>
+          <lineBasicMaterial color={active ? upperLine.active : upperLine.inactive} linewidth={1} />
+        </lineSegments>
+        <lineSegments rotation={[-Math.PI / 2, 0, 0]} geometry={lowerOutlineGeometry} position={[0, -0.04, 0]}>
+          <lineBasicMaterial color={active ? lowerLine.active : lowerLine.inactive} linewidth={1} />
+        </lineSegments>
+        <Text
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.1, 0]}
+          fontSize={textFontSize}
+          color={text.color}
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.08}
+          outlineColor={text.outline}
+          letterSpacing={0.12}
+        >
+          {label}
+        </Text>
+      </group>
+    </group>
+  );
+}
+
+function FloatingCountdown({ carRef, countdown, active }) {
+  const groupRef = useRef(null);
+  const offset = useMemo(() => new THREE.Vector3(0, 4.5, 0), []);
+  const lerpTarget = useRef(new THREE.Vector3());
+  const smoothPos = useRef(new THREE.Vector3());
+  const initializedRef = useRef(false);
+  const scaleValueRef = useRef(0);
+  const rotationOffsetRef = useRef(0);
+  const lookTargetRef = useRef(new THREE.Vector3());
+  const displayValue = Math.max(1, Math.min(3, Math.ceil(Math.max(0, countdown))));
+  const { scene } = useGLTF(COUNTDOWN_MODELS[displayValue]);
+  const countdownScene = useMemo(() => scene.clone(true), [scene]);
+
+  useEffect(() => {
+    initializedRef.current = false;
+    scaleValueRef.current = 0;
+    rotationOffsetRef.current = 0;
+    if (groupRef.current) {
+      groupRef.current.scale.setScalar(0);
+    }
+  }, [active]);
+
+  useFrame(({ camera }, dt) => {
+    const car = carRef?.current;
+    if (!car || !groupRef.current) return;
+    lerpTarget.current.copy(car.position).add(offset);
+    if (!initializedRef.current) {
+      smoothPos.current.copy(lerpTarget.current);
+      initializedRef.current = true;
+    } else {
+      smoothPos.current.lerp(lerpTarget.current, Math.min(1, dt * 8));
+    }
+    groupRef.current.position.copy(smoothPos.current);
+    const shouldShow = active && countdown > 0;
+    const targetScale = shouldShow ? COUNTDOWN_MODEL_SCALE : 0;
+    scaleValueRef.current = THREE.MathUtils.lerp(scaleValueRef.current, targetScale, Math.min(1, dt * 9));
+    groupRef.current.scale.setScalar(scaleValueRef.current);
+    rotationOffsetRef.current = (rotationOffsetRef.current + dt * 0.9) % (Math.PI * 2);
+    if (camera) {
+      const group = groupRef.current;
+      const target = lookTargetRef.current;
+      target.copy(camera.position);
+      target.y = group.position.y;
+      group.lookAt(target);
+      group.rotateY(rotationOffsetRef.current);
+    }
+    groupRef.current.visible = scaleValueRef.current > COUNTDOWN_MODEL_SCALE * 0.08;
+  });
+
+  return (
+    <group ref={groupRef}>
+      <primitive object={countdownScene} />
     </group>
   );
 }
@@ -473,52 +957,49 @@ export default function ParkingScene() {
   useEffect(() => {
     useGLTF.preload('/car-show/models/car/scene.gltf');
     useGLTF.preload('/models/modern_parking_area.glb');
+    useGLTF.preload('/models/street_road.glb');
+    useGLTF.preload('/models/parking_toll.glb');
+    useGLTF.preload('/models/road_barrier.glb');
+    Object.values(COUNTDOWN_MODELS).forEach((path) => useGLTF.preload(path));
   }, []);
   const [speed, setSpeed] = useState(0);
-  const [carOnMarker, setCarOnMarker] = useState(false);
-  const [stackCountdown, setStackCountdown] = useState(STACK_COUNTDOWN_START);
-  const countdownValueRef = useRef(STACK_COUNTDOWN_START);
-  const countdownIntervalRef = useRef(null);
   const carRef = useRef(null);
 
-  const handleMarkerPresence = useCallback((isInside) => {
-    setCarOnMarker((prev) => {
-      if (prev === isInside) return prev;
-      countdownValueRef.current = STACK_COUNTDOWN_START;
-      setStackCountdown(STACK_COUNTDOWN_START);
-      return isInside;
-    });
-  }, []);
+  const {
+    isActive: carOnStackMarker,
+    countdown: stackCountdown,
+    handlePresenceChange: handleStackMarkerPresence,
+  } = useMarkerController({
+    startValue: STACK_COUNTDOWN_START,
+    markerSfx: MARKER_SFX_URL,
+    countdownSfx: COUNTDOWN_SFX_URL,
+    markerVolume: 0.7,
+    countdownVolume: 0.8,
+  });
 
-  useEffect(() => {
-    if (carOnMarker) {
-      if (countdownIntervalRef.current) {
-        window.clearInterval(countdownIntervalRef.current);
-      }
-      const intervalId = window.setInterval(() => {
-        countdownValueRef.current = Math.max(0, countdownValueRef.current - 1);
-        setStackCountdown((prev) => {
-          if (prev <= 0) return 0;
-          return Math.max(0, prev - 1);
-        });
-        if (countdownValueRef.current <= 0) {
-          window.clearInterval(intervalId);
-          countdownIntervalRef.current = null;
-        }
-      }, 1000);
-      countdownIntervalRef.current = intervalId;
-      return () => {
-        window.clearInterval(intervalId);
-        countdownIntervalRef.current = null;
-      };
-    }
+  const {
+    isActive: carOnQueueMarker,
+    countdown: queueCountdown,
+    handlePresenceChange: handleQueueMarkerPresence,
+  } = useMarkerController({
+    startValue: STACK_COUNTDOWN_START,
+    markerSfx: MARKER_SFX_URL,
+    countdownSfx: COUNTDOWN_SFX_URL,
+    markerVolume: 0.7,
+    countdownVolume: 0.8,
+  });
 
-    if (countdownIntervalRef.current) {
-      window.clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-    return undefined;
-  }, [carOnMarker]);
+  const {
+    isActive: carOnInteractMarker,
+    countdown: interactCountdown,
+    handlePresenceChange: handleInteractMarkerPresence,
+  } = useMarkerController({
+    startValue: STACK_COUNTDOWN_START,
+    markerSfx: MARKER_SFX_URL,
+    countdownSfx: COUNTDOWN_SFX_URL,
+    markerVolume: 0.7,
+    countdownVolume: 0.8,
+  });
 
   return (
     <div className="relative w-full h-full">
@@ -530,12 +1011,39 @@ export default function ParkingScene() {
         <Suspense fallback={null}>
           <Sky sunPosition={[30, 160, -20]} turbidity={6} rayleigh={2.2} mieCoefficient={0.005} mieDirectionalG={0.7} inclination={0.38} azimuth={0.12} />
           <ParkingArea />
-          <StackMarker
+          <StreetRoad />
+          <ParkingToll />
+          <RoadBarrier />
+          <GameMarker
+            label="STACK"
+            position={STACK_MARKER_POSITION}
+            size={STACK_MARKER_SIZE}
             carRef={carRef}
-            onPresenceChange={handleMarkerPresence}
-            countdown={stackCountdown}
-            active={carOnMarker}
+            onPresenceChange={handleStackMarkerPresence}
+            active={carOnStackMarker}
+            colors={STACK_MARKER_COLORS}
           />
+          <GameMarker
+            label="QUEUE"
+            position={QUEUE_MARKER_POSITION}
+            size={QUEUE_MARKER_SIZE}
+            carRef={carRef}
+            onPresenceChange={handleQueueMarkerPresence}
+            active={carOnQueueMarker}
+            colors={QUEUE_MARKER_COLORS}
+          />
+          <GameMarker
+            label="INTERACT"
+            position={INTERACT_MARKER_POSITION}
+            size={INTERACT_MARKER_SIZE}
+            carRef={carRef}
+            onPresenceChange={handleInteractMarkerPresence}
+            active={carOnInteractMarker}
+            colors={INTERACT_MARKER_COLORS}
+          />
+          <FloatingCountdown carRef={carRef} countdown={stackCountdown} active={carOnStackMarker} />
+          <FloatingCountdown carRef={carRef} countdown={queueCountdown} active={carOnQueueMarker} />
+          <FloatingCountdown carRef={carRef} countdown={interactCountdown} active={carOnInteractMarker} />
           <Car onSpeedChange={setSpeed} carRef={carRef} />
           <Environment preset="sunset" background />
         </Suspense>
@@ -548,14 +1056,6 @@ export default function ParkingScene() {
           <div className="text-2xl font-extrabold tabular-nums">{Math.max(0, Math.round(Math.abs(speed) * 6))}</div>
           <div className="text-[10px] opacity-80">km/h</div>
         </div>
-      </div>
-      <div className="pointer-events-none absolute left-4 bottom-24 z-10 select-none rounded-2xl bg-emerald-500/40 px-3 py-2 text-white ring-1 ring-white/30 backdrop-blur-sm sm:left-6 sm:bottom-28">
-        <div className="text-xs uppercase tracking-wider text-white/80">Stack Timer</div>
-        <div className="mt-0.5 flex items-baseline gap-1">
-          <div className="text-2xl font-extrabold tabular-nums">{Math.max(0, stackCountdown)}</div>
-          <div className="text-[10px] opacity-80">secs</div>
-        </div>
-        <div className="text-[10px] opacity-75">{carOnMarker ? 'Holding position…' : 'Drive onto STACK zone'}</div>
       </div>
     </div>
   );
