@@ -26,25 +26,35 @@ const STACK_CAMERA_CONFIG = {
 };
 const STACK_SLOT_HEIGHT = 0.2;
 const STACK_SLOT_POSITIONS = Object.freeze([
-  { id: 1, position: [68, STACK_SLOT_HEIGHT, -7] },
-  { id: 2, position: [60.5, STACK_SLOT_HEIGHT, -7] },
-  { id: 3, position: [53, STACK_SLOT_HEIGHT, -7] },
-  { id: 4, position: [45, STACK_SLOT_HEIGHT, -7] },
-  { id: 5, position: [37, STACK_SLOT_HEIGHT, -7] },
-  { id: 6, position: [29.5, STACK_SLOT_HEIGHT, -7] },
-  { id: 7, position: [21.8, STACK_SLOT_HEIGHT, -7] },
-  { id: 8, position: [14, STACK_SLOT_HEIGHT, -7] },
-  { id: 9, position: [6, STACK_SLOT_HEIGHT, -7] },
-  { id: 10, position: [6, STACK_SLOT_HEIGHT, 37] },
-  { id: 11, position: [13.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 12, position: [21.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 13, position: [29.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 14, position: [37.3, STACK_SLOT_HEIGHT, 37] },
-  { id: 15, position: [45, STACK_SLOT_HEIGHT, 37] },
-  { id: 16, position: [52.7, STACK_SLOT_HEIGHT, 37] },
-  { id: 17, position: [60.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 18, position: [68.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 1, position: [6, STACK_SLOT_HEIGHT, 37] },
+  { id: 2, position: [13.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 3, position: [21.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 4, position: [29.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 5, position: [37.3, STACK_SLOT_HEIGHT, 37] },
+  { id: 6, position: [45, STACK_SLOT_HEIGHT, 37] },
+  { id: 7, position: [52.7, STACK_SLOT_HEIGHT, 37] },
+  { id: 8, position: [60.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 9, position: [68.5, STACK_SLOT_HEIGHT, 37] },
+  { id: 10, position: [68, STACK_SLOT_HEIGHT, -7] },
+  { id: 11, position: [60.5, STACK_SLOT_HEIGHT, -7] },
+  { id: 12, position: [53, STACK_SLOT_HEIGHT, -7] },
+  { id: 13, position: [45, STACK_SLOT_HEIGHT, -7] },
+  { id: 14, position: [37, STACK_SLOT_HEIGHT, -7] },
+  { id: 15, position: [29.5, STACK_SLOT_HEIGHT, -7] },
+  { id: 16, position: [21.8, STACK_SLOT_HEIGHT, -7] },
+  { id: 17, position: [14, STACK_SLOT_HEIGHT, -7] },
+  { id: 18, position: [6, STACK_SLOT_HEIGHT, -7] },
 ]);
+const STACK_SLOT_LOOKUP = Object.freeze(
+  STACK_SLOT_POSITIONS.reduce((acc, slot) => {
+    acc[slot.id] = slot.position;
+    return acc;
+  }, {}),
+);
+const STACK_CAR_SPAWN_POSITION = Object.freeze([40, 0.3, -100]);
+const STACK_CAR_ANIMATION_DURATION = 4500;
+const STACK_CAR_RELOCATION_STAGGER = STACK_CAR_ANIMATION_DURATION + 300;
+const STACK_CAR_RELOCATION_TURN_OFFSET = 3.6;
 
 const STACK_MARKER_POSITION = [40, 0.08, -19];
 const STACK_MARKER_SIZE = 7;
@@ -178,6 +188,58 @@ const easeOutCubic = (t) => {
   return 1 - Math.pow(1 - clamped, 3);
 };
 
+function buildStackCarPath(startVector, targetVector) {
+  const start = startVector.clone();
+  const target = targetVector.clone();
+
+  if (start.distanceToSquared(target) < 1e-6) {
+    return [start, target];
+  }
+
+  if (start.z < -40) {
+    const midHeight = Math.max(start.y, target.y ?? STACK_SLOT_HEIGHT) + 1.4;
+
+    if ((target.z ?? 0) <= 0) {
+      const midZ1 = THREE.MathUtils.lerp(start.z, target.z, 0.25);
+      const midZ2 = THREE.MathUtils.lerp(start.z, target.z, 0.6);
+      const midZ3 = THREE.MathUtils.lerp(start.z, target.z, 0.88);
+      const midX = THREE.MathUtils.lerp(start.x, target.x, 0.55);
+
+      return [
+        start,
+        new THREE.Vector3(start.x, midHeight, midZ1),
+        new THREE.Vector3(midX, midHeight, midZ2),
+        new THREE.Vector3(target.x, midHeight, midZ3),
+        target,
+      ];
+    }
+
+    const approachZ = -60;
+    const turnEntryZ = -18;
+    const alignZ = THREE.MathUtils.lerp(turnEntryZ, target.z, 0.55);
+    return [
+      start,
+      new THREE.Vector3(start.x, midHeight, approachZ),
+      new THREE.Vector3(start.x, midHeight, turnEntryZ),
+      new THREE.Vector3(target.x, midHeight, turnEntryZ),
+      new THREE.Vector3(target.x, midHeight, alignZ),
+      target,
+    ];
+  }
+
+  const pullOutZ = start.z >= 0 ? start.z - STACK_CAR_RELOCATION_TURN_OFFSET : start.z + STACK_CAR_RELOCATION_TURN_OFFSET;
+  const approachZ = target.z >= 0 ? target.z - STACK_CAR_RELOCATION_TURN_OFFSET : target.z + STACK_CAR_RELOCATION_TURN_OFFSET;
+  const pullOut = new THREE.Vector3(start.x, start.y, pullOutZ);
+  const approach = new THREE.Vector3(target.x, target.y ?? STACK_SLOT_HEIGHT, approachZ);
+  const midpoint = new THREE.Vector3(
+    THREE.MathUtils.lerp(pullOut.x, approach.x, 0.5),
+    Math.max(start.y, target.y ?? STACK_SLOT_HEIGHT),
+    THREE.MathUtils.lerp(pullOut.z, approach.z, 0.5),
+  );
+
+  return [start, pullOut, midpoint, approach, target];
+}
+
 const normalizeAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
 
 function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume = 0.7, countdownVolume = 0.8 }) {
@@ -297,7 +359,8 @@ function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume
 
 function CarModel(props) {
   const { scene } = useGLTF('/car-show/models/car/scene.gltf');
-  return <primitive object={scene} {...props} />;
+  const clonedScene = useMemo(() => scene.clone(true), [scene]);
+  return <primitive object={clonedScene} {...props} />;
 }
 
 function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
@@ -1118,6 +1181,99 @@ function StackSlotMarkers({ slots }) {
   );
 }
 
+function StackCar({ id, slotId, spawnTime, fromPosition, onRemove }) {
+  const groupRef = useRef(null);
+  const forwardVector = useMemo(() => new THREE.Vector3(0, 0, 1), []);
+  const tempPosition = useMemo(() => new THREE.Vector3(), []);
+  const tempTangent = useMemo(() => new THREE.Vector3(), []);
+  const tempQuaternion = useMemo(() => new THREE.Quaternion(), []);
+  const startPosition = useMemo(() => {
+    if (Array.isArray(fromPosition)) {
+      return new THREE.Vector3(fromPosition[0], fromPosition[1], fromPosition[2]);
+    }
+    return new THREE.Vector3(...STACK_CAR_SPAWN_POSITION);
+  }, [fromPosition]);
+  const targetPosition = useMemo(() => {
+    const raw = STACK_SLOT_LOOKUP[slotId];
+    return raw ? new THREE.Vector3(raw[0], raw[1], raw[2]) : null;
+  }, [slotId]);
+  const pathCurve = useMemo(() => {
+    if (!targetPosition || !startPosition) {
+      return null;
+    }
+    const pathPoints = buildStackCarPath(startPosition, targetPosition);
+    return new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.3);
+  }, [startPosition, targetPosition]);
+  const animationDoneRef = useRef(false);
+
+  useEffect(() => {
+    animationDoneRef.current = false;
+    const group = groupRef.current;
+    if (group) {
+      group.position.copy(startPosition);
+      group.quaternion.set(0, 0, 0, 1);
+      if (pathCurve) {
+        pathCurve.getTangent(0, tempTangent).normalize();
+        tempQuaternion.setFromUnitVectors(forwardVector, tempTangent);
+        group.quaternion.copy(tempQuaternion);
+      }
+    }
+  }, [spawnTime, startPosition, slotId, pathCurve, tempQuaternion, forwardVector, tempTangent]);
+
+  const handlePointerDown = useCallback((event) => {
+    event.stopPropagation();
+    if (typeof onRemove === 'function') {
+      onRemove(id);
+    }
+  }, [id, onRemove]);
+
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group || !pathCurve || !targetPosition) return;
+    if (animationDoneRef.current) return;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const elapsed = Math.max(0, now - spawnTime);
+    const progress = Math.min(1, elapsed / STACK_CAR_ANIMATION_DURATION);
+    const easedProgress = easeOutCubic(progress);
+    pathCurve.getPoint(easedProgress, tempPosition);
+    group.position.copy(tempPosition);
+
+    const tangentSample = Math.min(0.999, Math.max(0, easedProgress));
+    pathCurve.getTangent(tangentSample, tempTangent).normalize();
+    tempQuaternion.setFromUnitVectors(forwardVector, tempTangent);
+    group.quaternion.slerp(tempQuaternion, 0.4);
+
+    if (progress >= 1) {
+      animationDoneRef.current = true;
+      group.position.copy(targetPosition);
+      group.quaternion.copy(tempQuaternion);
+    }
+  });
+
+  return (
+    <group ref={groupRef} onPointerDown={handlePointerDown}>
+      <CarModel scale={0.01} />
+    </group>
+  );
+}
+
+function StackCarFleet({ cars, onRemove }) {
+  return (
+    <group>
+      {cars.map((car) => (
+        <StackCar
+          key={car.id}
+          id={car.id}
+          slotId={car.slotId}
+          spawnTime={car.spawnTime}
+          fromPosition={car.fromPosition}
+          onRemove={onRemove}
+        />
+      ))}
+    </group>
+  );
+}
+
 function MobileJoystick({ active }) {
   const baseRef = useRef(null);
   const pointerActiveRef = useRef(false);
@@ -1288,7 +1444,9 @@ export default function ParkingScene() {
   const [barrierShouldOpen, setBarrierShouldOpen] = useState(false);
   const [activeMinigame, setActiveMinigame] = useState(null);
   const [stackMinigameArmed, setStackMinigameArmed] = useState(true);
+  const [stackCars, setStackCars] = useState([]);
   const minigameStateRef = useRef(null);
+  const stackIsFull = stackCars.length >= STACK_SLOT_POSITIONS.length;
   const joystickActive = useMemo(
     () => activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
     [activeMinigame, interactPhase],
@@ -1310,6 +1468,69 @@ export default function ParkingScene() {
     }
   }, [rawHandleStackMarkerPresence]);
 
+  const handleAddStackCar = useCallback(() => {
+    setStackCars((prev) => {
+      if (prev.length >= STACK_SLOT_POSITIONS.length) {
+        return prev;
+      }
+      const occupied = new Set(prev.map((entry) => entry.slotId));
+      const nextSlot = STACK_SLOT_POSITIONS.find((slot) => !occupied.has(slot.id));
+      if (!nextSlot) {
+        return prev;
+      }
+      const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+      const generatedId = globalCrypto && typeof globalCrypto.randomUUID === 'function'
+        ? globalCrypto.randomUUID()
+        : `stack-car-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const spawnTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      return [
+        ...prev,
+        {
+          slotId: nextSlot.id,
+          id: generatedId,
+          spawnTime: spawnTimestamp,
+          fromPosition: STACK_CAR_SPAWN_POSITION.slice(),
+        },
+      ];
+    });
+  }, []);
+
+  const handleRemoveStackCar = useCallback((carId) => {
+    if (activeMinigame !== 'stack') {
+      return;
+    }
+    setStackCars((prev) => {
+      const filtered = prev.filter((entry) => entry.id !== carId);
+      if (filtered.length === prev.length) {
+        return prev;
+      }
+      const sorted = filtered.slice().sort((a, b) => a.slotId - b.slotId);
+      const timestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      let relocationIndex = 0;
+      return sorted.map((entry, index) => {
+        const nextSlot = STACK_SLOT_POSITIONS[index];
+        if (!nextSlot) {
+          return entry;
+        }
+        if (entry.slotId === nextSlot.id) {
+          return entry;
+        }
+        const currentSlotPosition = STACK_SLOT_LOOKUP[entry.slotId] || STACK_CAR_SPAWN_POSITION;
+        const clonePosition = Array.isArray(currentSlotPosition)
+          ? currentSlotPosition.slice()
+          : [currentSlotPosition[0], currentSlotPosition[1], currentSlotPosition[2]];
+        const scheduledStart = timestamp + relocationIndex * STACK_CAR_RELOCATION_STAGGER;
+        relocationIndex += 1;
+        return {
+          ...entry,
+          slotId: nextSlot.id,
+          spawnTime: scheduledStart,
+          fromPosition: clonePosition,
+        };
+      });
+    });
+  }, [activeMinigame]);
+
   useEffect(() => {
     if (carOnInteractMarker && interactCountdown <= 0 && interactPhase === 'idle') {
       const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
@@ -1327,6 +1548,7 @@ export default function ParkingScene() {
           stacks: [],
         };
         setStackMinigameArmed(false);
+        setStackCars([]);
         setActiveMinigame('stack');
       });
     }
@@ -1341,6 +1563,7 @@ export default function ParkingScene() {
   useEffect(() => {
     if (activeMinigame !== 'stack') {
       minigameStateRef.current = null;
+      setStackCars([]);
     }
   }, [activeMinigame]);
 
@@ -1576,7 +1799,12 @@ export default function ParkingScene() {
           <FloatingCountdown carRef={carRef} countdown={stackCountdown} active={carOnStackMarker} />
           <FloatingCountdown carRef={carRef} countdown={queueCountdown} active={carOnQueueMarker} />
           <FloatingCountdown carRef={carRef} countdown={interactCountdown} active={carOnInteractMarker} />
-          {activeMinigame === 'stack' && <StackSlotMarkers slots={STACK_SLOT_POSITIONS} />}
+          {activeMinigame === 'stack' && (
+            <>
+              <StackSlotMarkers slots={STACK_SLOT_POSITIONS} />
+              <StackCarFleet cars={stackCars} onRemove={handleRemoveStackCar} />
+            </>
+          )}
           <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'stack'} />
           <Environment preset="sunset" background />
         </Suspense>
@@ -1692,14 +1920,25 @@ export default function ParkingScene() {
       )}
       {activeMinigame === 'stack' && (
         <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
-          <button
-            type="button"
-            onClick={() => setActiveMinigame(null)}
-            className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-white/25 transition hover:bg-slate-800/80"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-            Back to free roam
-          </button>
+          <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAddStackCar}
+              disabled={stackIsFull}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-emerald-300/40 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+              Add car
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMinigame(null)}
+              className="inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-white/25 transition hover:bg-slate-800/80"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              Back to free roam
+            </button>
+          </div>
         </div>
       )}
     </div>
