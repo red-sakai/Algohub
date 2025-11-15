@@ -1,7 +1,7 @@
 "use client";
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Stats, useGLTF } from '@react-three/drei';
+import { Environment, Sky, Stats, Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Simple key input
@@ -11,6 +11,10 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keyup', (e) => { pressed.delete(e.key.toLowerCase()); });
 }
 const key = (k) => pressed.has(k.toLowerCase());
+
+const STACK_MARKER_POSITION = [40, 0.08, -19];
+const STACK_MARKER_SIZE = 4.5;
+const STACK_COUNTDOWN_START = 3;
 
 function CarModel(props) {
   const { scene } = useGLTF('/car-show/models/car/scene.gltf');
@@ -360,52 +364,207 @@ function CameraRig({ targetRef }) {
   return null;
 }
 
-function ParkingLot() {
+function ParkingArea() {
+  const { scene } = useGLTF('/models/modern_parking_area.glb');
+  const parkingScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    const tempBox = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    tempBox.getSize(size);
+    const targetSpan = 150;
+    const maxSpan = Math.max(size.x || 1, size.z || 1);
+    const scale = maxSpan > 0 ? targetSpan / maxSpan : 1;
+    cloned.scale.setScalar(scale);
+    cloned.updateMatrixWorld(true);
+
+    const adjustedBox = new THREE.Box3().setFromObject(cloned);
+    const center = new THREE.Vector3();
+    adjustedBox.getCenter(center);
+    const minY = adjustedBox.min.y;
+    cloned.position.set(-center.x, -minY, -center.z);
+    cloned.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    return cloned;
+  }, [scene]);
+  return <primitive object={parkingScene} />;
+}
+
+function StackMarker({ position = STACK_MARKER_POSITION, size = STACK_MARKER_SIZE, carRef, onPresenceChange, countdown, active }) {
+  const planeSize = useMemo(() => [size, size], [size]);
+  const textFontSize = useMemo(() => size * 0.32, [size]);
+  const frameGeometry = useMemo(() => {
+    const plane = new THREE.PlaneGeometry(size * 1.15, size * 1.15);
+    const edges = new THREE.EdgesGeometry(plane);
+    plane.dispose();
+    return edges;
+  }, [size]);
+  const lastInsideRef = useRef(false);
+
+  useFrame(() => {
+    const car = carRef?.current;
+    if (!car) return;
+    const carPos = car.position;
+    const half = size * 0.5;
+    const dx = carPos.x - position[0];
+    const dz = carPos.z - position[2];
+    const dy = Math.abs((carPos.y || 0) - (position[1] || 0));
+    const inside = Math.abs(dx) <= half && Math.abs(dz) <= half && dy <= 2.2;
+    if (inside !== lastInsideRef.current) {
+      lastInsideRef.current = inside;
+      if (typeof onPresenceChange === 'function') {
+        onPresenceChange(inside);
+      }
+    }
+  });
+
   return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#141414" roughness={0.95} />
+    <group position={position}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
+        <planeGeometry args={planeSize} />
+        <meshStandardMaterial
+          color="#0bff9b"
+          emissive="#0bff9b"
+          emissiveIntensity={active ? 4.2 : 2.2}
+          roughness={0.12}
+          metalness={0.08}
+          opacity={0.96}
+          transparent
+          side={THREE.DoubleSide}
+        />
       </mesh>
-      {Array.from({ length: 8 }).map((_, i) => (
-        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[-10 + i * 2.6, 0.01, 0]}>
-          <planeGeometry args={[2.2, 4.8]} />
-          <meshStandardMaterial color="#2b2b2b" />
-        </mesh>
-      ))}
+      <lineSegments rotation={[-Math.PI / 2, 0, 0]} geometry={frameGeometry}>
+        <lineBasicMaterial color={active ? '#4dffcf' : '#0bff9b'} linewidth={2} />
+      </lineSegments>
+      <Text
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.08, 0]}
+        fontSize={textFontSize}
+        color="#ffffff"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.08}
+        outlineColor="#024d31"
+        letterSpacing={0.06}
+      >
+        STACK
+      </Text>
+      <Text
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.36, 0]}
+        fontSize={textFontSize * 0.9}
+        color={active ? '#ffffff' : '#d9ffe9'}
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.12}
+        outlineColor={active ? '#069363' : '#1b664a'}
+        letterSpacing={0.04}
+      >
+        {Math.max(0, countdown).toString()}
+      </Text>
     </group>
   );
 }
 
 export default function ParkingScene() {
-  // Preload glTF once
-  useEffect(() => { useGLTF.preload('/car-show/models/car/scene.gltf'); }, []);
+  useEffect(() => {
+    useGLTF.preload('/car-show/models/car/scene.gltf');
+    useGLTF.preload('/models/modern_parking_area.glb');
+  }, []);
   const [speed, setSpeed] = useState(0);
+  const [carOnMarker, setCarOnMarker] = useState(false);
+  const [stackCountdown, setStackCountdown] = useState(STACK_COUNTDOWN_START);
+  const countdownValueRef = useRef(STACK_COUNTDOWN_START);
+  const countdownIntervalRef = useRef(null);
   const carRef = useRef(null);
+
+  const handleMarkerPresence = useCallback((isInside) => {
+    setCarOnMarker((prev) => {
+      if (prev === isInside) return prev;
+      countdownValueRef.current = STACK_COUNTDOWN_START;
+      setStackCountdown(STACK_COUNTDOWN_START);
+      return isInside;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (carOnMarker) {
+      if (countdownIntervalRef.current) {
+        window.clearInterval(countdownIntervalRef.current);
+      }
+      const intervalId = window.setInterval(() => {
+        countdownValueRef.current = Math.max(0, countdownValueRef.current - 1);
+        setStackCountdown((prev) => {
+          if (prev <= 0) return 0;
+          return Math.max(0, prev - 1);
+        });
+        if (countdownValueRef.current <= 0) {
+          window.clearInterval(intervalId);
+          countdownIntervalRef.current = null;
+        }
+      }, 1000);
+      countdownIntervalRef.current = intervalId;
+      return () => {
+        window.clearInterval(intervalId);
+        countdownIntervalRef.current = null;
+      };
+    }
+
+    if (countdownIntervalRef.current) {
+      window.clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    return undefined;
+  }, [carOnMarker]);
+
   return (
     <div className="relative w-full h-full">
-  <Canvas shadows camera={{ position: [10, 18, 15], fov: 50 }} style={{ width: '100%', height: '100%' }}>
-        <color attach="background" args={[ '#101010' ]} />
-        <ambientLight intensity={0.35} />
-        <directionalLight position={[8, 12, 6]} intensity={1.2} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+      <Canvas shadows camera={{ position: [10, 18, 15], fov: 50 }} style={{ width: '100%', height: '100%' }}>
+        <color attach="background" args={[ '#9cc9ff' ]} />
+        <fog attach="fog" args={[ '#cde4ff', 80, 260 ]} />
+        <ambientLight intensity={0.55} />
+        <directionalLight position={[38, 52, 24]} intensity={1.6} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
         <Suspense fallback={null}>
-          <ParkingLot />
+          <Sky sunPosition={[30, 160, -20]} turbidity={6} rayleigh={2.2} mieCoefficient={0.005} mieDirectionalG={0.7} inclination={0.38} azimuth={0.12} />
+          <ParkingArea />
+          <StackMarker
+            carRef={carRef}
+            onPresenceChange={handleMarkerPresence}
+            countdown={stackCountdown}
+            active={carOnMarker}
+          />
           <Car onSpeedChange={setSpeed} carRef={carRef} />
-          <Environment preset="warehouse" />
+          <Environment preset="sunset" background />
         </Suspense>
         <CameraRig targetRef={carRef} />
         <Stats />
       </Canvas>
-  <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
+      <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
         <div className="text-xs uppercase tracking-wider text-white/80">Speed</div>
         <div className="mt-0.5 flex items-baseline gap-1">
           <div className="text-2xl font-extrabold tabular-nums">{Math.max(0, Math.round(Math.abs(speed) * 6))}</div>
           <div className="text-[10px] opacity-80">km/h</div>
         </div>
       </div>
+      <div className="pointer-events-none absolute left-4 bottom-24 z-10 select-none rounded-2xl bg-emerald-500/40 px-3 py-2 text-white ring-1 ring-white/30 backdrop-blur-sm sm:left-6 sm:bottom-28">
+        <div className="text-xs uppercase tracking-wider text-white/80">Stack Timer</div>
+        <div className="mt-0.5 flex items-baseline gap-1">
+          <div className="text-2xl font-extrabold tabular-nums">{Math.max(0, stackCountdown)}</div>
+          <div className="text-[10px] opacity-80">secs</div>
+        </div>
+        <div className="text-[10px] opacity-75">{carOnMarker ? 'Holding position…' : 'Drive onto STACK zone'}</div>
+      </div>
     </div>
   );
 }
 
 // Ensure model is preloaded when module evaluated (optional redundancy)
-try { if (useGLTF.preload) useGLTF.preload('/car-show/models/car/scene.gltf'); } catch {}
+try {
+  if (useGLTF.preload) {
+    useGLTF.preload('/car-show/models/car/scene.gltf');
+    useGLTF.preload('/models/modern_parking_area.glb');
+  }
+} catch {}
