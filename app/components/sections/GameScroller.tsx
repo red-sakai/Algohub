@@ -11,6 +11,9 @@ import { setIrisPoint } from "../ui/transitionBus";
 import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
 import { playSfx } from "../ui/sfx";
 
+const LICENSE_STORAGE_KEY = "algohub-license-card-path";
+const LICENSE_EVENT = "algohub-license-card-updated";
+
 type Game = {
   id: string;
   title: string;
@@ -313,6 +316,12 @@ export default function GameScroller() {
         onSave={async (data) => {
           // Save license first visually: close iris, then show loader, then change route.
           setShowLicense(false);
+          if (data.licenseCardPath) {
+            try {
+              localStorage.setItem(LICENSE_STORAGE_KEY, data.licenseCardPath);
+              window.dispatchEvent(new CustomEvent(LICENSE_EVENT, { detail: data.licenseCardPath }));
+            } catch {}
+          }
           // Capture a center point for iris
           try { setIrisPoint(window.innerWidth / 2, window.innerHeight / 2); } catch {}
           irisRef.current?.start({
