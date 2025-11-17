@@ -89,7 +89,13 @@ const QUEUE_CAR_ANIMATION_DURATION = 4500;
 const QUEUE_FAST_FORWARD_MULTIPLIER = 6;
 const QUEUE_EXIT_POSITION = Object.freeze([40, 0.3, -140]);
 const SLOT_PARKING_QUATERNION = new THREE.Quaternion();
-const SLOT_PARKING_HEADING = Object.freeze([SLOT_PARKING_QUATERNION.x, SLOT_PARKING_QUATERNION.y, SLOT_PARKING_QUATERNION.z, SLOT_PARKING_QUATERNION.w]);
+const SLOT_PARKING_HEADING = Object.freeze([
+  SLOT_PARKING_QUATERNION.x,
+  SLOT_PARKING_QUATERNION.y,
+  SLOT_PARKING_QUATERNION.z,
+  SLOT_PARKING_QUATERNION.w,
+]);
+const SELECTED_QUEUE_CAR_HIGHLIGHT = '#43ff9a';
 const DEFAULT_QUEUE_CAR_MODEL = '/car-show/models/car/scene.gltf';
 const QUEUE_CAR_MODEL_PATHS = Object.freeze([
   '/car-models/red_car.glb',
@@ -620,24 +626,40 @@ function useMarkerController({
   };
 }
 
-function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, ...props }) {
+function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, highlightColor = null, ...props }) {
   const { scene } = useGLTF(modelUrl);
   const clonedScene = useMemo(() => {
     const cloned = scene.clone(true);
-    if (typeof colorOverride === 'string' && colorOverride.length) {
-      const tint = new THREE.Color(colorOverride);
-      cloned.traverse((child) => {
-        if (!child.isMesh || !child.material) return;
-        const material = child.material.clone();
-        if (material.color) {
-          material.color = material.color.clone();
-          material.color.set(tint);
-        }
-        child.material = material;
-      });
+    const colorTint = typeof colorOverride === 'string' && colorOverride.length ? new THREE.Color(colorOverride) : null;
+    const highlightTint = typeof highlightColor === 'string' && highlightColor.length ? new THREE.Color(highlightColor) : null;
+    if (!colorTint && !highlightTint) {
+      return cloned;
     }
+    cloned.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const material = child.material.clone();
+      if (colorTint && material.color) {
+        material.color = material.color.clone();
+        material.color.set(colorTint);
+      }
+      if (highlightTint) {
+        if (material.emissive) {
+          material.emissive = material.emissive.clone();
+          material.emissive.set(highlightTint);
+          if (typeof material.emissiveIntensity === 'number') {
+            material.emissiveIntensity = Math.max(material.emissiveIntensity, 0.75);
+          } else {
+            material.emissiveIntensity = 0.75;
+          }
+        } else if (material.color) {
+          material.color = material.color.clone();
+          material.color.lerp(highlightTint, 0.35);
+        }
+      }
+      child.material = material;
+    });
     return cloned;
-  }, [scene, colorOverride]);
+  }, [scene, colorOverride, highlightColor]);
   return <primitive object={clonedScene} {...props} />;
 }
 
@@ -1498,7 +1520,7 @@ function QueueCar({
   spawnTime,
   fromPosition,
   travelDuration = QUEUE_CAR_ANIMATION_DURATION,
-  onRemove,
+  onToggleSelect,
   fastForward,
   targetOverride,
   phase = QUEUE_CAR_PHASE_SLOT,
@@ -1506,6 +1528,7 @@ function QueueCar({
   headingLock = null,
   modelUrl = DEFAULT_QUEUE_CAR_MODEL,
   colorOverride = null,
+  isSelected = false,
 }) {
   const groupRef = useRef(null);
   const forwardVector = useMemo(() => new THREE.Vector3(0, 0, 1), []);
@@ -1604,17 +1627,17 @@ function QueueCar({
     prevPhaseRef.current = phase;
   }, [spawnTime, startPosition, slotId, phase, pathCurve, tempQuaternion, forwardVector, tempTangent, headingLockQuaternion]);
 
-  const isRemovable = phase === QUEUE_CAR_PHASE_SLOT;
+  const isSelectable = (phase ?? QUEUE_CAR_PHASE_SLOT) === QUEUE_CAR_PHASE_SLOT;
 
   const handlePointerDown = useCallback((event) => {
-    if (!isRemovable) {
+    event.stopPropagation();
+    if (!isSelectable) {
       return;
     }
-    event.stopPropagation();
-    if (typeof onRemove === 'function') {
-      onRemove(id);
+    if (typeof onToggleSelect === 'function') {
+      onToggleSelect(id);
     }
-  }, [id, onRemove, isRemovable]);
+  }, [id, onToggleSelect, isSelectable]);
 
   useFrame((_, dt) => {
     const group = groupRef.current;
@@ -1692,6 +1715,7 @@ function QueueCar({
   });
 
   const modelSettings = useMemo(() => getQueueCarModelSettings(modelUrl), [modelUrl]);
+  const highlightColor = isSelected ? SELECTED_QUEUE_CAR_HIGHLIGHT : null;
 
   return (
     <group ref={groupRef} onPointerDown={handlePointerDown}>
@@ -1700,12 +1724,13 @@ function QueueCar({
         rotation={modelSettings.rotation}
         modelUrl={modelUrl}
         colorOverride={colorOverride}
+        highlightColor={highlightColor}
       />
     </group>
   );
 }
 
-function QueueCarFleet({ cars, onRemove, fastForward }) {
+function QueueCarFleet({ cars, onToggleSelect, selectedCarIds = [], fastForward }) {
   return (
     <group>
       {cars.map((car) => (
@@ -1716,7 +1741,7 @@ function QueueCarFleet({ cars, onRemove, fastForward }) {
           spawnTime={car.spawnTime}
           fromPosition={car.fromPosition}
           travelDuration={car.travelDuration}
-          onRemove={onRemove}
+          onToggleSelect={onToggleSelect}
           fastForward={fastForward}
           targetOverride={car.targetOverride}
           orientationOverride={car.orientationOverride}
@@ -1724,6 +1749,7 @@ function QueueCarFleet({ cars, onRemove, fastForward }) {
           phase={car.phase}
           modelUrl={car.modelUrl}
           colorOverride={car.colorOverride}
+          isSelected={selectedCarIds.includes(car.id)}
         />
       ))}
     </group>
@@ -1903,12 +1929,16 @@ export default function ParkingScene() {
   const [queueMinigameArmed, setQueueMinigameArmed] = useState(true);
   const [queueCars, setQueueCars] = useState([]);
   const [queueFastForward, setQueueFastForward] = useState(false);
+  const [selectedQueueCarIds, setSelectedQueueCarIds] = useState([]);
+  const queuedRemovalIdsRef = useRef([]);
+  const processQueuedRemovalsRef = useRef(() => {});
   const minigameStateRef = useRef(null);
   const queueRemovalInProgressRef = useRef(false);
   const queueRemovalTimeoutRef = useRef(null);
   const queueExitCleanupTimeoutRef = useRef(null);
   const queueFastForwardRef = useRef(queueFastForward);
   const currentRemovalPlanRef = useRef(null);
+  const queueCarsRef = useRef(queueCars);
   const queueIsFull = queueCars.length >= QUEUE_SLOT_POSITIONS.length;
   const joystickActive = useMemo(
     () => activeMinigame !== 'queue' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
@@ -1930,6 +1960,59 @@ export default function ParkingScene() {
       setQueueMinigameArmed(true);
     }
   }, [rawHandleQueueMarkerPresence]);
+
+  useEffect(() => {
+    queueCarsRef.current = queueCars;
+  }, [queueCars]);
+
+  useEffect(() => {
+    if (!queueRemovalInProgressRef.current && queuedRemovalIdsRef.current.length) {
+      processQueuedRemovalsRef.current();
+    }
+  }, [queueCars]);
+
+  const handleToggleQueueCarSelection = useCallback((carId) => {
+    const target = queueCars.find((entry) => entry.id === carId);
+    if (!target) {
+      return;
+    }
+    const phaseValue = target.phase ?? QUEUE_CAR_PHASE_SLOT;
+    if (phaseValue !== QUEUE_CAR_PHASE_SLOT) {
+      return;
+    }
+    setSelectedQueueCarIds((prev) => {
+      if (prev.includes(carId)) {
+        queuedRemovalIdsRef.current = queuedRemovalIdsRef.current.filter((id) => id !== carId);
+        return prev.filter((id) => id !== carId);
+      }
+      return [...prev, carId];
+    });
+  }, [queueCars]);
+
+  const handleQueueMoveSelected = useCallback(() => {
+    if (!selectedQueueCarIds.length) {
+      return;
+    }
+    const selectableCars = queueCars
+      .filter((car) => selectedQueueCarIds.includes(car.id) && (car.phase ?? QUEUE_CAR_PHASE_SLOT) === QUEUE_CAR_PHASE_SLOT)
+      .sort((a, b) => a.slotId - b.slotId);
+
+    if (!selectableCars.length) {
+      return;
+    }
+
+    const queuedSet = new Set(queuedRemovalIdsRef.current);
+    selectableCars.forEach((car) => {
+      if (!queuedSet.has(car.id)) {
+        queuedRemovalIdsRef.current.push(car.id);
+        queuedSet.add(car.id);
+      }
+    });
+
+    if (!queueRemovalInProgressRef.current) {
+      processQueuedRemovalsRef.current();
+    }
+  }, [queueCars, selectedQueueCarIds]);
 
   const handleAddQueueCar = useCallback(() => {
     setQueueCars((prev) => {
@@ -1984,10 +2067,13 @@ export default function ParkingScene() {
       }
       queueExitCleanupTimeoutRef.current = null;
       setQueueCars((current) => current.filter((car) => car.id !== plan.carId));
+      setSelectedQueueCarIds((current) => current.filter((id) => id !== plan.carId));
+      queuedRemovalIdsRef.current = queuedRemovalIdsRef.current.filter((id) => id !== plan.carId);
       queueRemovalInProgressRef.current = false;
       currentRemovalPlanRef.current = null;
+      processQueuedRemovalsRef.current();
     }, cleanupDelay);
-  }, [setQueueCars]);
+  }, [setQueueCars, setSelectedQueueCarIds]);
 
   const triggerRemovalRejoin = useCallback(() => {
     const plan = currentRemovalPlanRef.current;
@@ -2307,6 +2393,41 @@ export default function ParkingScene() {
     });
   }, [activeMinigame, applyRemovalPlanTimeline]);
 
+  const processQueuedRemovals = useCallback(() => {
+    if (queueRemovalInProgressRef.current) {
+      return;
+    }
+    const pending = queuedRemovalIdsRef.current;
+    if (!pending.length) {
+      return;
+    }
+
+    const attempts = pending.length;
+    for (let i = 0; i < attempts; i += 1) {
+      const nextId = pending.shift();
+      if (!nextId) {
+        continue;
+      }
+      const nextCar = queueCarsRef.current.find((car) => car.id === nextId);
+      if (!nextCar) {
+        setSelectedQueueCarIds((current) => current.filter((id) => id !== nextId));
+        continue;
+      }
+      if ((nextCar.phase ?? QUEUE_CAR_PHASE_SLOT) !== QUEUE_CAR_PHASE_SLOT) {
+        pending.push(nextId);
+        continue;
+      }
+      handleRemoveQueueCar(nextId);
+      if (!queueRemovalInProgressRef.current) {
+        // Removal failed to start; retry later without losing selection
+        pending.push(nextId);
+        continue;
+      }
+      break;
+    }
+  }, [handleRemoveQueueCar, setSelectedQueueCarIds]);
+  processQueuedRemovalsRef.current = processQueuedRemovals;
+
   const handleQueueFastForwardPress = useCallback(() => {
     setQueueFastForward(true);
   }, []);
@@ -2333,6 +2454,8 @@ export default function ParkingScene() {
         };
         setQueueMinigameArmed(false);
         setQueueCars([]);
+        setSelectedQueueCarIds([]);
+        queuedRemovalIdsRef.current = [];
         setActiveMinigame('queue');
       });
     }
@@ -2364,6 +2487,8 @@ export default function ParkingScene() {
       minigameStateRef.current = null;
       setQueueCars([]);
       setQueueFastForward(false);
+      setSelectedQueueCarIds([]);
+      queuedRemovalIdsRef.current = [];
       queueRemovalInProgressRef.current = false;
       if (queueRemovalTimeoutRef.current) {
         window.clearTimeout(queueRemovalTimeoutRef.current);
@@ -2404,6 +2529,7 @@ export default function ParkingScene() {
       queueExitCleanupTimeoutRef.current = null;
     }
     currentRemovalPlanRef.current = null;
+    queuedRemovalIdsRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -2642,7 +2768,12 @@ export default function ParkingScene() {
             <>
               <QueueSlotMarkers slots={QUEUE_SLOT_POSITIONS} />
               <FreeSlotMarkers slots={FREE_MARKER_POSITIONS} />
-              <QueueCarFleet cars={queueCars} onRemove={handleRemoveQueueCar} fastForward={queueFastForward} />
+              <QueueCarFleet
+                cars={queueCars}
+                onToggleSelect={handleToggleQueueCarSelection}
+                selectedCarIds={selectedQueueCarIds}
+                fastForward={queueFastForward}
+              />
             </>
           )}
           <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'queue'} />
@@ -2784,6 +2915,20 @@ export default function ParkingScene() {
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5v14l6-7zm8 0v14l6-7z"/></svg>
               Fast forward
+            </button>
+            <button
+              type="button"
+              onClick={handleQueueMoveSelected}
+              disabled={selectedQueueCarIds.length === 0}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold shadow ring-1 transition focus:outline-none focus:ring-2 focus:ring-amber-200 ${selectedQueueCarIds.length ? 'bg-amber-500/90 text-white ring-amber-300/40 hover:bg-amber-400/90' : 'cursor-not-allowed bg-amber-500/40 text-amber-100/70 ring-amber-200/30'}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4h2v16H5zm12 0h2v16h-2zM9 4l8 8-8 8z"/></svg>
+              Move selected
+              {selectedQueueCarIds.length > 0 && (
+                <span className="inline-flex h-5 min-w-[1.5rem] items-center justify-center rounded-full bg-white/20 px-2 text-xs font-semibold">
+                  {selectedQueueCarIds.length}
+                </span>
+              )}
             </button>
             <button
               type="button"
