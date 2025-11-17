@@ -19,42 +19,207 @@ const setJoystickVector = (x, y) => {
   joystickVector.y = THREE.MathUtils.clamp(Number.isFinite(y) ? y : 0, -1, 1);
 };
 const getJoystickVector = () => joystickVector;
-const JOYSTICK_DEADZONE = 0.22;
-const STACK_CAMERA_CONFIG = {
-  position: new THREE.Vector3(42, 74, 70),
-  lookAt: new THREE.Vector3(42, 0, 4),
+const easeOutCubic = (t) => {
+  const clamped = THREE.MathUtils.clamp(t, 0, 1);
+  return 1 - ((1 - clamped) ** 3);
 };
-const STACK_SLOT_HEIGHT = 0.2;
-const STACK_SLOT_POSITIONS = Object.freeze([
-  { id: 1, position: [6, STACK_SLOT_HEIGHT, 37] },
-  { id: 2, position: [13.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 3, position: [21.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 4, position: [29.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 5, position: [37.3, STACK_SLOT_HEIGHT, 37] },
-  { id: 6, position: [45, STACK_SLOT_HEIGHT, 37] },
-  { id: 7, position: [52.7, STACK_SLOT_HEIGHT, 37] },
-  { id: 8, position: [60.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 9, position: [68.5, STACK_SLOT_HEIGHT, 37] },
-  { id: 10, position: [68, STACK_SLOT_HEIGHT, -7] },
-  { id: 11, position: [60.5, STACK_SLOT_HEIGHT, -7] },
-  { id: 12, position: [53, STACK_SLOT_HEIGHT, -7] },
-  { id: 13, position: [45, STACK_SLOT_HEIGHT, -7] },
-  { id: 14, position: [37, STACK_SLOT_HEIGHT, -7] },
-  { id: 15, position: [29.5, STACK_SLOT_HEIGHT, -7] },
-  { id: 16, position: [21.8, STACK_SLOT_HEIGHT, -7] },
-  { id: 17, position: [14, STACK_SLOT_HEIGHT, -7] },
-  { id: 18, position: [6, STACK_SLOT_HEIGHT, -7] },
+const JOYSTICK_DEADZONE = 0.22;
+const QUEUE_CAMERA_CONFIG = {
+  position: new THREE.Vector3(-40, 74, -58),
+  lookAt: new THREE.Vector3(-40, 0, -10),
+};
+const QUEUE_SLOT_HEIGHT = 0.2;
+const QUEUE_SLOT_POSITIONS = Object.freeze([
+  { id: 1, position: [-68.5, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 2, position: [-61, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 3, position: [-53, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 4, position: [-45, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 5, position: [-37, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 6, position: [-29.4, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 7, position: [-21.5, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 8, position: [-14, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 9, position: [-6, QUEUE_SLOT_HEIGHT, -37] },
+  { id: 10, position: [-68.5, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 11, position: [-61, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 12, position: [-53, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 13, position: [-45, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 14, position: [-37, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 15, position: [-29.4, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 16, position: [-21.5, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 17, position: [-14, QUEUE_SLOT_HEIGHT, 7] },
+  { id: 18, position: [-6, QUEUE_SLOT_HEIGHT, 7] },
 ]);
-const STACK_SLOT_LOOKUP = Object.freeze(
-  STACK_SLOT_POSITIONS.reduce((acc, slot) => {
+const QUEUE_SLOT_LOOKUP = Object.freeze(
+  QUEUE_SLOT_POSITIONS.reduce((acc, slot) => {
     acc[slot.id] = slot.position;
     return acc;
   }, {}),
 );
-const STACK_CAR_SPAWN_POSITION = Object.freeze([40, 0.3, -100]);
-const STACK_CAR_ANIMATION_DURATION = 4500;
-const STACK_CAR_RELOCATION_STAGGER = STACK_CAR_ANIMATION_DURATION + 300;
-const STACK_CAR_RELOCATION_TURN_OFFSET = 3.6;
+const QUEUE_CAR_PHASE_SLOT = 'slot';
+const QUEUE_CAR_PHASE_HOLD = 'hold';
+const QUEUE_CAR_PHASE_EXIT = 'exit';
+const FREE_MARKER_POSITIONS = Object.freeze([
+  { id: 1, position: [-64, QUEUE_SLOT_HEIGHT, -18] },
+  { id: 2, position: [-64, QUEUE_SLOT_HEIGHT, -11.5] },
+  { id: 3, position: [-64, QUEUE_SLOT_HEIGHT, -4.5] },
+  { id: 4, position: [-10, QUEUE_SLOT_HEIGHT, -18] },
+  { id: 5, position: [-10, QUEUE_SLOT_HEIGHT, -11.5] },
+  { id: 6, position: [-10, QUEUE_SLOT_HEIGHT, -4.5] },
+  { id: 7, position: [-64, QUEUE_SLOT_HEIGHT, 40] },
+  { id: 8, position: [-64, QUEUE_SLOT_HEIGHT, 33] },
+  { id: 9, position: [-64, QUEUE_SLOT_HEIGHT, 26.5] },
+  { id: 10, position: [-10, QUEUE_SLOT_HEIGHT, 40] },
+  { id: 11, position: [-10, QUEUE_SLOT_HEIGHT, 33] },
+  { id: 12, position: [-10, QUEUE_SLOT_HEIGHT, 26] },
+  { id: 13, position: [11, QUEUE_SLOT_HEIGHT, -40] },
+  { id: 14, position: [11, QUEUE_SLOT_HEIGHT, -33.5] },
+  { id: 15, position: [11, QUEUE_SLOT_HEIGHT, -26.5] },
+  { id: 16, position: [11, QUEUE_SLOT_HEIGHT, 4] },
+  { id: 17, position: [11, QUEUE_SLOT_HEIGHT, 11] },
+  { id: 18, position: [11, QUEUE_SLOT_HEIGHT, 18] },
+]);
+const FREE_MARKER_LOOKUP = Object.freeze(
+  FREE_MARKER_POSITIONS.reduce((acc, marker) => {
+    acc[marker.id] = marker.position;
+    return acc;
+  }, {}),
+);
+const QUEUE_CAR_SPAWN_POSITION = Object.freeze([40, 0.3, -100]);
+const QUEUE_CAR_ANIMATION_DURATION = 4500;
+const QUEUE_FAST_FORWARD_MULTIPLIER = 6;
+const QUEUE_EXIT_POSITION = Object.freeze([40, 0.3, -140]);
+const SLOT_PARKING_QUATERNION = new THREE.Quaternion();
+const QUEUE_HOLD_GAP_MS = 260;
+const QUEUE_EXIT_START_GAP_MS = 280;
+const QUEUE_CLEANUP_BUFFER_MS = 600;
+const QUEUE_MIN_REMOVAL_TIMELINE_SCALE = QUEUE_FAST_FORWARD_MULTIPLIER > 1 ? 1 / QUEUE_FAST_FORWARD_MULTIPLIER : 1;
+const QUEUE_REJOIN_MIN_BUFFER_MS = 600;
+const QUEUE_REJOIN_BUFFER_SCALE_MS = 540;
+const QUEUE_EXIT_CLEAR_MIN_MS = 520;
+const QUEUE_EXIT_CLEAR_SCALE = 0.06;
+const getQueueTravelDuration = (slotId) => {
+  if (!Number.isFinite(slotId)) {
+    return QUEUE_CAR_ANIMATION_DURATION;
+  }
+  const base = QUEUE_CAR_ANIMATION_DURATION;
+  const extra = Math.max(0, slotId - 1) * 210;
+  return base + extra;
+};
+const getQueueRelocationDuration = (slotId) => {
+  const travel = getQueueTravelDuration(slotId);
+  return Math.max(1800, Math.round(travel * 0.72));
+};
+
+const clonePositionArray = (source) => {
+  if (Array.isArray(source)) {
+    return source.slice(0, 3);
+  }
+  if (source && typeof source === 'object') {
+    if (Array.isArray(source.position)) {
+      return source.position.slice(0, 3);
+    }
+    const { x, y, z } = source;
+    if (typeof x === 'number' && typeof y === 'number' && typeof z === 'number') {
+      return [x, y, z];
+    }
+  }
+  return QUEUE_CAR_SPAWN_POSITION.slice(0, 3);
+};
+
+const buildQueueCarPath = (start, target) => {
+  const toVector3 = (value) => {
+    if (value instanceof THREE.Vector3) {
+      return value.clone();
+    }
+    if (Array.isArray(value)) {
+      return new THREE.Vector3(value[0] ?? 0, value[1] ?? 0, value[2] ?? 0);
+    }
+    if (value && typeof value === 'object') {
+      const { x = 0, y = 0, z = 0 } = value;
+      return new THREE.Vector3(x, y, z);
+    }
+    return new THREE.Vector3();
+  };
+
+  const origin = toVector3(start);
+  const destination = toVector3(target);
+  if (origin.distanceToSquared(destination) < 0.0001) {
+    return [origin.clone(), destination.clone()];
+  }
+
+  const points = [origin.clone()];
+  const baseY = Math.max(origin.y, destination.y);
+  const isEnteringQueue = origin.x > 5 && destination.x < -5;
+  const isExitingQueue = origin.x < -5 && destination.x > 5;
+  const matchesFreeMarker = FREE_MARKER_POSITIONS.some(({ position }) => {
+    const [mx, , mz] = position;
+    return Math.abs(destination.x - mx) <= 0.75 && Math.abs(destination.z - mz) <= 0.75;
+  });
+
+  if (matchesFreeMarker) {
+    const forwardPoint = new THREE.Vector3(origin.x, baseY, destination.z);
+    if (Math.abs(destination.z - origin.z) < 1) {
+      const forwardDir = destination.z >= origin.z ? 1 : -1;
+      forwardPoint.z = origin.z + (forwardDir || 1) * 6;
+    }
+
+    const alignPoint = new THREE.Vector3(destination.x, baseY, destination.z);
+
+    if (forwardPoint.distanceToSquared(points[points.length - 1]) > 1e-4) {
+      points.push(forwardPoint);
+    }
+    if (alignPoint.distanceToSquared(forwardPoint) > 1e-4) {
+      points.push(alignPoint);
+    }
+  } else if (isEnteringQueue) {
+    const laneZOffset = destination.z >= 0 ? 12 : -12;
+    const roadPoint = new THREE.Vector3(origin.x, baseY, destination.z + laneZOffset);
+    const cornerOffset = Math.min(16, Math.abs(origin.x - destination.x) * 0.6);
+    const cornerX = destination.x + Math.sign(origin.x - destination.x || 1) * cornerOffset;
+    const cornerPoint = new THREE.Vector3(cornerX, baseY, roadPoint.z);
+    const alignPoint = new THREE.Vector3(destination.x, baseY, roadPoint.z);
+    points.push(roadPoint, cornerPoint, alignPoint);
+  } else if (isExitingQueue) {
+    const laneX = Math.min(-8, destination.x - 28);
+    const lanePoint = new THREE.Vector3(laneX, baseY, origin.z);
+    const zDirection = destination.z >= origin.z ? 1 : -1;
+    const mergePoint = new THREE.Vector3(laneX, baseY, destination.z - (zDirection * 24));
+    points.push(lanePoint, mergePoint);
+  } else {
+    const midpoint = origin.clone().lerp(destination, 0.5);
+    const lateral = destination.clone().sub(origin);
+    lateral.y = 0;
+    const lateralLength = lateral.length();
+    const bendStrength = Math.min(12, lateralLength * 0.25);
+    const lateralDir = lateralLength > 0 ? new THREE.Vector3(lateral.z, 0, -lateral.x).normalize() : new THREE.Vector3();
+    const bendOffset = lateralDir.multiplyScalar(bendStrength);
+    const entry = origin.clone();
+    entry.y = baseY;
+    const apex = midpoint.clone().add(bendOffset);
+    apex.y = baseY + 0.4;
+    points.push(entry, apex);
+  }
+
+  points.push(destination.clone());
+
+  for (let i = 1; i < points.length - 1; i += 1) {
+    points[i].y = Math.max(points[i].y, baseY + (matchesFreeMarker ? 0.01 : 0.05));
+  }
+
+  for (let i = points.length - 2; i >= 1; i -= 1) {
+    if (points[i].distanceToSquared(points[i + 1]) < 1e-4) {
+      points.splice(i, 1);
+    }
+  }
+
+  if (points.length < 4) {
+    const filler = origin.clone().lerp(destination, 0.5);
+    filler.y = baseY + 0.22;
+    points.splice(1, 0, filler);
+  }
+
+  return points;
+};
 
 const STACK_MARKER_POSITION = [40, 0.08, -19];
 const STACK_MARKER_SIZE = 7;
@@ -183,89 +348,36 @@ const LICENSE_STORAGE_KEY = 'algohub-license-card-path';
 const LICENSE_EVENT = 'algohub-license-card-updated';
 const DEFAULT_LICENSE_IMAGE = '/drivers_license.png';
 
-const easeOutCubic = (t) => {
-  const clamped = Math.min(1, Math.max(0, t));
-  return 1 - Math.pow(1 - clamped, 3);
-};
-
-function buildStackCarPath(startVector, targetVector) {
-  const start = startVector.clone();
-  const target = targetVector.clone();
-
-  if (start.distanceToSquared(target) < 1e-6) {
-    return [start, target];
-  }
-
-  if (start.z < -40) {
-    const midHeight = Math.max(start.y, target.y ?? STACK_SLOT_HEIGHT) + 1.4;
-
-    if ((target.z ?? 0) <= 0) {
-      const midZ1 = THREE.MathUtils.lerp(start.z, target.z, 0.25);
-      const midZ2 = THREE.MathUtils.lerp(start.z, target.z, 0.6);
-      const midZ3 = THREE.MathUtils.lerp(start.z, target.z, 0.88);
-      const midX = THREE.MathUtils.lerp(start.x, target.x, 0.55);
-
-      return [
-        start,
-        new THREE.Vector3(start.x, midHeight, midZ1),
-        new THREE.Vector3(midX, midHeight, midZ2),
-        new THREE.Vector3(target.x, midHeight, midZ3),
-        target,
-      ];
-    }
-
-    const approachZ = -60;
-    const turnEntryZ = -18;
-    const alignZ = THREE.MathUtils.lerp(turnEntryZ, target.z, 0.55);
-    return [
-      start,
-      new THREE.Vector3(start.x, midHeight, approachZ),
-      new THREE.Vector3(start.x, midHeight, turnEntryZ),
-      new THREE.Vector3(target.x, midHeight, turnEntryZ),
-      new THREE.Vector3(target.x, midHeight, alignZ),
-      target,
-    ];
-  }
-
-  const pullOutZ = start.z >= 0 ? start.z - STACK_CAR_RELOCATION_TURN_OFFSET : start.z + STACK_CAR_RELOCATION_TURN_OFFSET;
-  const approachZ = target.z >= 0 ? target.z - STACK_CAR_RELOCATION_TURN_OFFSET : target.z + STACK_CAR_RELOCATION_TURN_OFFSET;
-  const pullOut = new THREE.Vector3(start.x, start.y, pullOutZ);
-  const approach = new THREE.Vector3(target.x, target.y ?? STACK_SLOT_HEIGHT, approachZ);
-  const midpoint = new THREE.Vector3(
-    THREE.MathUtils.lerp(pullOut.x, approach.x, 0.5),
-    Math.max(start.y, target.y ?? STACK_SLOT_HEIGHT),
-    THREE.MathUtils.lerp(pullOut.z, approach.z, 0.5),
-  );
-
-  return [start, pullOut, midpoint, approach, target];
-}
-
-const normalizeAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
-
-function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume = 0.7, countdownVolume = 0.8 }) {
-  const [isActive, setIsActive] = useState(false);
-  const [countdown, setCountdown] = useState(startValue);
-  const countdownValueRef = useRef(startValue);
-  const countdownIntervalRef = useRef(null);
+function useMarkerController({
+  startValue = STACK_COUNTDOWN_START,
+  markerSfx = MARKER_SFX_URL,
+  countdownSfx = COUNTDOWN_SFX_URL,
+  markerVolume = 0.7,
+  countdownVolume = 0.8,
+}) {
   const markerAudioRef = useRef(null);
   const countdownAudioRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const countdownValueRef = useRef(startValue);
+  const [isActive, setIsActive] = useState(false);
+  const [countdown, setCountdown] = useState(startValue);
 
   const playAudio = useCallback((audioRef) => {
     const audio = audioRef.current;
-    if (!audio) return;
-    try {
-      audio.currentTime = 0;
-    } catch {}
-    audio.play().catch(() => {});
+    if (!audio) {
+      return;
+    }
+    try { audio.currentTime = 0; } catch {}
+    try { audio.play().catch(() => {}); } catch {}
   }, []);
 
   const stopAudio = useCallback((audioRef) => {
     const audio = audioRef.current;
-    if (!audio) return;
-    audio.pause();
-    try {
-      audio.currentTime = 0;
-    } catch {}
+    if (!audio) {
+      return;
+    }
+    try { audio.pause(); } catch {}
+    try { audio.currentTime = 0; } catch {}
   }, []);
 
   useEffect(() => {
@@ -290,9 +402,22 @@ function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume
     };
   }, [markerSfx, countdownSfx, markerVolume, countdownVolume, stopAudio]);
 
+  useEffect(() => {
+    const markerAudio = markerAudioRef.current;
+    const countdownAudio = countdownAudioRef.current;
+    if (markerAudio) {
+      markerAudio.volume = markerVolume;
+    }
+    if (countdownAudio) {
+      countdownAudio.volume = countdownVolume;
+    }
+  }, [markerVolume, countdownVolume]);
+
   const handlePresenceChange = useCallback((isInside) => {
     setIsActive((prev) => {
-      if (prev === isInside) return prev;
+      if (prev === isInside) {
+        return prev;
+      }
       countdownValueRef.current = startValue;
       setCountdown(startValue);
       if (isInside) {
@@ -306,33 +431,33 @@ function useMarkerController({ startValue, markerSfx, countdownSfx, markerVolume
   }, [playAudio, stopAudio, startValue]);
 
   useEffect(() => {
-    if (isActive) {
+    if (!isActive) {
       if (countdownIntervalRef.current) {
         window.clearInterval(countdownIntervalRef.current);
-      }
-      const intervalId = window.setInterval(() => {
-        countdownValueRef.current = Math.max(0, countdownValueRef.current - 1);
-        setCountdown((prev) => {
-          if (prev <= 0) return 0;
-          return Math.max(0, prev - 1);
-        });
-        if (countdownValueRef.current <= 0) {
-          window.clearInterval(intervalId);
-          countdownIntervalRef.current = null;
-        }
-      }, 1000);
-      countdownIntervalRef.current = intervalId;
-      return () => {
-        window.clearInterval(intervalId);
         countdownIntervalRef.current = null;
-      };
+      }
+      return undefined;
     }
 
     if (countdownIntervalRef.current) {
       window.clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
     }
-    return undefined;
+    const intervalId = window.setInterval(() => {
+      countdownValueRef.current = Math.max(0, countdownValueRef.current - 1);
+      setCountdown((prev) => {
+        if (prev <= 0) return 0;
+        return Math.max(0, prev - 1);
+      });
+      if (countdownValueRef.current <= 0) {
+        window.clearInterval(intervalId);
+        countdownIntervalRef.current = null;
+      }
+    }, 1000);
+    countdownIntervalRef.current = intervalId;
+    return () => {
+      window.clearInterval(intervalId);
+      countdownIntervalRef.current = null;
+    };
   }, [isActive]);
 
   useEffect(() => {
@@ -743,7 +868,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   );
 }
 
-function CameraRig({ targetRef, mode, stackTarget }) {
+function CameraRig({ targetRef, mode, queueTarget }) {
   const { camera } = useThree();
   const smoothPos = useRef(new THREE.Vector3());
   const initialized = useRef(false);
@@ -753,9 +878,9 @@ function CameraRig({ targetRef, mode, stackTarget }) {
     const targetPos = target.position.clone();
     let desired;
     let lookAt;
-    if (mode === 'stack' && stackTarget) {
-      desired = stackTarget.position.clone();
-      lookAt = stackTarget.lookAt.clone();
+    if (mode === 'queue' && queueTarget) {
+      desired = queueTarget.position.clone();
+      lookAt = queueTarget.lookAt.clone();
     } else {
       // Bird's-eye offset (raised higher for more top-down view)
       const offset = new THREE.Vector3(50, 40, 25);
@@ -1151,7 +1276,7 @@ function FloatingCountdown({ carRef, countdown, active }) {
   );
 }
 
-function StackSlotMarkers({ slots }) {
+function QueueSlotMarkers({ slots }) {
   const discRadius = 1.2;
   const glyphSize = 1.1;
 
@@ -1159,94 +1284,233 @@ function StackSlotMarkers({ slots }) {
     <group>
       {slots.map(({ id, position }) => (
         <group key={id} position={position}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
-            <circleGeometry args={[discRadius, 28]} />
-            <meshStandardMaterial color="#0f172a" opacity={0.68} transparent />
-          </mesh>
-          <Text
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, 0.02, 0]}
-            fontSize={glyphSize}
-            color="#e2e8f0"
-            anchorX="center"
-            anchorY="middle"
-            outlineWidth={0.18}
-            outlineColor="#020617"
-          >
-            {id}
-          </Text>
+          <group rotation={[0, Math.PI, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
+              <circleGeometry args={[discRadius, 28]} />
+              <meshStandardMaterial color="#0f172a" opacity={0.68} transparent />
+            </mesh>
+            <Text
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, 0.02, 0]}
+              fontSize={glyphSize}
+              color="#e2e8f0"
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.18}
+              outlineColor="#020617"
+            >
+              {id}
+            </Text>
+          </group>
         </group>
       ))}
     </group>
   );
 }
 
-function StackCar({ id, slotId, spawnTime, fromPosition, onRemove }) {
+function FreeSlotMarkers({ slots }) {
+  const discRadius = 1;
+  const glyphSize = 0.9;
+
+  return (
+    <group>
+      {slots.map(({ id, position }) => (
+        <group key={`free-${id}`} position={position}>
+          <group rotation={[0, Math.PI / 2, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
+              <ringGeometry args={[discRadius * 0.55, discRadius, 28]} />
+              <meshStandardMaterial color="#f97316" opacity={0.6} transparent />
+            </mesh>
+            <Text
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, 0.02, 0]}
+              fontSize={glyphSize}
+              color="#ffedd5"
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.12}
+              outlineColor="#7c2d12"
+            >
+              F{id}
+            </Text>
+          </group>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function QueueCar({
+  id,
+  slotId,
+  spawnTime,
+  fromPosition,
+  travelDuration = QUEUE_CAR_ANIMATION_DURATION,
+  onRemove,
+  fastForward,
+  targetOverride,
+  phase = QUEUE_CAR_PHASE_SLOT,
+  orientationOverride = null,
+}) {
   const groupRef = useRef(null);
   const forwardVector = useMemo(() => new THREE.Vector3(0, 0, 1), []);
   const tempPosition = useMemo(() => new THREE.Vector3(), []);
   const tempTangent = useMemo(() => new THREE.Vector3(), []);
   const tempQuaternion = useMemo(() => new THREE.Quaternion(), []);
+  const tempBlendQuaternion = useMemo(() => new THREE.Quaternion(), []);
+  const extraTimeRef = useRef(0);
+  const prevSpawnTimeRef = useRef(spawnTime);
+  const prevPhaseRef = useRef(phase);
   const startPosition = useMemo(() => {
     if (Array.isArray(fromPosition)) {
       return new THREE.Vector3(fromPosition[0], fromPosition[1], fromPosition[2]);
     }
-    return new THREE.Vector3(...STACK_CAR_SPAWN_POSITION);
+    return new THREE.Vector3(...QUEUE_CAR_SPAWN_POSITION);
   }, [fromPosition]);
   const targetPosition = useMemo(() => {
-    const raw = STACK_SLOT_LOOKUP[slotId];
+    const override = Array.isArray(targetOverride) ? targetOverride : null;
+    const raw = override || QUEUE_SLOT_LOOKUP[slotId];
     return raw ? new THREE.Vector3(raw[0], raw[1], raw[2]) : null;
-  }, [slotId]);
+  }, [slotId, targetOverride]);
   const pathCurve = useMemo(() => {
     if (!targetPosition || !startPosition) {
       return null;
     }
-    const pathPoints = buildStackCarPath(startPosition, targetPosition);
+    const pathPoints = buildQueueCarPath(startPosition, targetPosition);
     return new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.3);
   }, [startPosition, targetPosition]);
   const animationDoneRef = useRef(false);
+  const durationMs = useMemo(() => Math.max(600, Number.isFinite(travelDuration) ? travelDuration : QUEUE_CAR_ANIMATION_DURATION), [travelDuration]);
+  const orientationQuaternion = useMemo(() => {
+    if (phase !== QUEUE_CAR_PHASE_HOLD) {
+      return null;
+    }
+    if (typeof orientationOverride === 'number') {
+      const q = new THREE.Quaternion();
+      q.setFromEuler(new THREE.Euler(0, orientationOverride, 0));
+      return q;
+    }
+    if (Array.isArray(orientationOverride) && orientationOverride.length === 4) {
+      const [x, y, z, w] = orientationOverride;
+      const quat = new THREE.Quaternion(x, y, z, w);
+      quat.normalize();
+      return quat;
+    }
+    return null;
+  }, [orientationOverride, phase]);
 
   useEffect(() => {
+    const nowTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const spawnInPast = spawnTime <= nowTime - 16;
+    const prevSpawnInPast = prevSpawnTimeRef.current <= nowTime - 16;
+    if (spawnInPast && prevSpawnInPast && phase === prevPhaseRef.current) {
+      prevSpawnTimeRef.current = spawnTime;
+      return;
+    }
+
     animationDoneRef.current = false;
+    extraTimeRef.current = 0;
     const group = groupRef.current;
     if (group) {
       group.position.copy(startPosition);
-      group.quaternion.set(0, 0, 0, 1);
-      if (pathCurve) {
-        pathCurve.getTangent(0, tempTangent).normalize();
-        tempQuaternion.setFromUnitVectors(forwardVector, tempTangent);
-        group.quaternion.copy(tempQuaternion);
+      if (phase !== QUEUE_CAR_PHASE_EXIT) {
+        group.quaternion.set(0, 0, 0, 1);
+        if (pathCurve) {
+          pathCurve.getTangent(0, tempTangent);
+          const planarLength = Math.hypot(tempTangent.x, tempTangent.z);
+          if (planarLength > 1e-3) {
+            tempTangent.set(tempTangent.x / planarLength, 0, tempTangent.z / planarLength);
+          } else {
+            tempTangent.set(0, 0, 1);
+          }
+          tempQuaternion.setFromUnitVectors(forwardVector, tempTangent);
+          group.quaternion.copy(tempQuaternion);
+        }
       }
     }
-  }, [spawnTime, startPosition, slotId, pathCurve, tempQuaternion, forwardVector, tempTangent]);
+    prevSpawnTimeRef.current = spawnTime;
+    prevPhaseRef.current = phase;
+  }, [spawnTime, startPosition, slotId, phase, pathCurve, tempQuaternion, forwardVector, tempTangent]);
+
+  const isRemovable = phase === QUEUE_CAR_PHASE_SLOT;
 
   const handlePointerDown = useCallback((event) => {
+    if (!isRemovable) {
+      return;
+    }
     event.stopPropagation();
     if (typeof onRemove === 'function') {
       onRemove(id);
     }
-  }, [id, onRemove]);
+  }, [id, onRemove, isRemovable]);
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const group = groupRef.current;
     if (!group || !pathCurve || !targetPosition) return;
     if (animationDoneRef.current) return;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const elapsed = Math.max(0, now - spawnTime);
-    const progress = Math.min(1, elapsed / STACK_CAR_ANIMATION_DURATION);
+    if (fastForward) {
+      extraTimeRef.current += dt * 1000 * Math.max(0, QUEUE_FAST_FORWARD_MULTIPLIER - 1);
+    }
+    const elapsed = Math.max(0, (now - spawnTime) + extraTimeRef.current);
+    if (elapsed <= 0) {
+      return;
+    }
+    const progress = Math.min(1, elapsed / durationMs);
     const easedProgress = easeOutCubic(progress);
     pathCurve.getPoint(easedProgress, tempPosition);
     group.position.copy(tempPosition);
 
     const tangentSample = Math.min(0.999, Math.max(0, easedProgress));
-    pathCurve.getTangent(tangentSample, tempTangent).normalize();
+    pathCurve.getTangent(tangentSample, tempTangent);
+    const planarLength = Math.hypot(tempTangent.x, tempTangent.z);
+    if (planarLength > 1e-3) {
+      tempTangent.set(tempTangent.x / planarLength, 0, tempTangent.z / planarLength);
+    } else {
+      tempTangent.set(0, 0, 1);
+    }
     tempQuaternion.setFromUnitVectors(forwardVector, tempTangent);
-    group.quaternion.slerp(tempQuaternion, 0.4);
+
+    let finalOrientation = tempQuaternion;
+
+    if (phase === QUEUE_CAR_PHASE_HOLD && orientationQuaternion) {
+      const blendRatio = Math.min(1, Math.max(0, easedProgress));
+      tempBlendQuaternion.copy(tempQuaternion).slerp(orientationQuaternion, blendRatio);
+      group.quaternion.slerp(tempBlendQuaternion, 0.35);
+      finalOrientation = orientationQuaternion;
+    } else if (phase === QUEUE_CAR_PHASE_SLOT) {
+      if (targetOverride) {
+        const slotBlendStart = 0.55;
+        if (easedProgress >= slotBlendStart) {
+          const normalized = Math.min(1, (easedProgress - slotBlendStart) / (1 - slotBlendStart));
+          tempBlendQuaternion.copy(tempQuaternion).slerp(SLOT_PARKING_QUATERNION, normalized);
+          group.quaternion.slerp(tempBlendQuaternion, 0.35);
+          finalOrientation = SLOT_PARKING_QUATERNION;
+        } else {
+          group.quaternion.slerp(tempQuaternion, 0.35);
+          finalOrientation = tempQuaternion;
+        }
+      } else {
+        group.quaternion.slerp(SLOT_PARKING_QUATERNION, 0.25);
+        finalOrientation = SLOT_PARKING_QUATERNION;
+      }
+    } else if (phase === QUEUE_CAR_PHASE_EXIT) {
+      const exitBlendStart = 0.12;
+      if (easedProgress >= exitBlendStart) {
+        const normalized = Math.min(1, (easedProgress - exitBlendStart) / (1 - exitBlendStart));
+        const blendStrength = 0.1 + (normalized * 0.28);
+        group.quaternion.slerp(tempQuaternion, blendStrength);
+      }
+      finalOrientation = tempQuaternion;
+    } else {
+      group.quaternion.slerp(tempQuaternion, 0.35);
+      finalOrientation = tempQuaternion;
+    }
 
     if (progress >= 1) {
       animationDoneRef.current = true;
       group.position.copy(targetPosition);
-      group.quaternion.copy(tempQuaternion);
+      group.quaternion.copy(finalOrientation);
     }
   });
 
@@ -1257,17 +1521,22 @@ function StackCar({ id, slotId, spawnTime, fromPosition, onRemove }) {
   );
 }
 
-function StackCarFleet({ cars, onRemove }) {
+function QueueCarFleet({ cars, onRemove, fastForward }) {
   return (
     <group>
       {cars.map((car) => (
-        <StackCar
+        <QueueCar
           key={car.id}
           id={car.id}
           slotId={car.slotId}
           spawnTime={car.spawnTime}
           fromPosition={car.fromPosition}
+          travelDuration={car.travelDuration}
           onRemove={onRemove}
+          fastForward={fastForward}
+          targetOverride={car.targetOverride}
+          orientationOverride={car.orientationOverride}
+          phase={car.phase}
         />
       ))}
     </group>
@@ -1402,9 +1671,9 @@ export default function ParkingScene() {
   const carRef = useRef(null);
 
   const {
-    isActive: carOnStackMarker,
-    countdown: stackCountdown,
-    handlePresenceChange: rawHandleStackMarkerPresence,
+    isActive: carOnQueueMarker,
+    countdown: queueCountdown,
+    handlePresenceChange: rawHandleQueueMarkerPresence,
   } = useMarkerController({
     startValue: STACK_COUNTDOWN_START,
     markerSfx: MARKER_SFX_URL,
@@ -1414,9 +1683,9 @@ export default function ParkingScene() {
   });
 
   const {
-    isActive: carOnQueueMarker,
-    countdown: queueCountdown,
-    handlePresenceChange: handleQueueMarkerPresence,
+    isActive: carOnStackMarker,
+    countdown: stackCountdown,
+    handlePresenceChange: rawHandleStackMarkerPresence,
   } = useMarkerController({
     startValue: STACK_COUNTDOWN_START,
     markerSfx: MARKER_SFX_URL,
@@ -1443,12 +1712,18 @@ export default function ParkingScene() {
   const currentLicenseImageSrc = licenseImageUrl || DEFAULT_LICENSE_IMAGE;
   const [barrierShouldOpen, setBarrierShouldOpen] = useState(false);
   const [activeMinigame, setActiveMinigame] = useState(null);
-  const [stackMinigameArmed, setStackMinigameArmed] = useState(true);
-  const [stackCars, setStackCars] = useState([]);
+  const [queueMinigameArmed, setQueueMinigameArmed] = useState(true);
+  const [queueCars, setQueueCars] = useState([]);
+  const [queueFastForward, setQueueFastForward] = useState(false);
   const minigameStateRef = useRef(null);
-  const stackIsFull = stackCars.length >= STACK_SLOT_POSITIONS.length;
+  const queueRemovalInProgressRef = useRef(false);
+  const queueRemovalTimeoutRef = useRef(null);
+  const queueExitCleanupTimeoutRef = useRef(null);
+  const queueFastForwardRef = useRef(queueFastForward);
+  const currentRemovalPlanRef = useRef(null);
+  const queueIsFull = queueCars.length >= QUEUE_SLOT_POSITIONS.length;
   const joystickActive = useMemo(
-    () => activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
+    () => activeMinigame !== 'queue' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
     [activeMinigame, interactPhase],
   );
 
@@ -1461,27 +1736,27 @@ export default function ParkingScene() {
     }
   }, [rawHandleInteractPresence]);
 
-  const handleStackMarkerPresence = useCallback((isInside) => {
-    rawHandleStackMarkerPresence(isInside);
+  const handleQueueMarkerPresence = useCallback((isInside) => {
+    rawHandleQueueMarkerPresence(isInside);
     if (!isInside) {
-      setStackMinigameArmed(true);
+      setQueueMinigameArmed(true);
     }
-  }, [rawHandleStackMarkerPresence]);
+  }, [rawHandleQueueMarkerPresence]);
 
-  const handleAddStackCar = useCallback(() => {
-    setStackCars((prev) => {
-      if (prev.length >= STACK_SLOT_POSITIONS.length) {
+  const handleAddQueueCar = useCallback(() => {
+    setQueueCars((prev) => {
+      if (prev.length >= QUEUE_SLOT_POSITIONS.length) {
         return prev;
       }
       const occupied = new Set(prev.map((entry) => entry.slotId));
-      const nextSlot = STACK_SLOT_POSITIONS.find((slot) => !occupied.has(slot.id));
+      const nextSlot = QUEUE_SLOT_POSITIONS.find((slot) => !occupied.has(slot.id));
       if (!nextSlot) {
         return prev;
       }
       const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
       const generatedId = globalCrypto && typeof globalCrypto.randomUUID === 'function'
         ? globalCrypto.randomUUID()
-        : `stack-car-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        : `queue-car-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const spawnTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
       return [
         ...prev,
@@ -1489,47 +1764,337 @@ export default function ParkingScene() {
           slotId: nextSlot.id,
           id: generatedId,
           spawnTime: spawnTimestamp,
-          fromPosition: STACK_CAR_SPAWN_POSITION.slice(),
+          fromPosition: QUEUE_CAR_SPAWN_POSITION.slice(),
+          travelDuration: getQueueTravelDuration(nextSlot.id),
+          phase: QUEUE_CAR_PHASE_SLOT,
+          targetOverride: null,
         },
       ];
     });
   }, []);
 
-  const handleRemoveStackCar = useCallback((carId) => {
-    if (activeMinigame !== 'stack') {
+  const scheduleCleanupTimer = useCallback((plan) => {
+    if (!plan || currentRemovalPlanRef.current !== plan) return;
+    if (queueExitCleanupTimeoutRef.current) {
+      window.clearTimeout(queueExitCleanupTimeoutRef.current);
+      queueExitCleanupTimeoutRef.current = null;
+    }
+    const nowTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const cleanupTarget = plan.cleanupTimestamp ?? (plan.startTime + plan.scheduleCleanupOffset);
+    const cleanupDelay = Math.max(0, cleanupTarget - nowTime);
+    queueExitCleanupTimeoutRef.current = window.setTimeout(() => {
+      if (currentRemovalPlanRef.current !== plan) {
+        return;
+      }
+      queueExitCleanupTimeoutRef.current = null;
+      setQueueCars((current) => current.filter((car) => car.id !== plan.carId));
+      queueRemovalInProgressRef.current = false;
+      currentRemovalPlanRef.current = null;
+    }, cleanupDelay);
+  }, [setQueueCars]);
+
+  const triggerRemovalRejoin = useCallback(() => {
+    const plan = currentRemovalPlanRef.current;
+    if (!plan) {
+      if (queueRemovalTimeoutRef.current) {
+        window.clearTimeout(queueRemovalTimeoutRef.current);
+        queueRemovalTimeoutRef.current = null;
+      }
       return;
     }
-    setStackCars((prev) => {
-      const filtered = prev.filter((entry) => entry.id !== carId);
-      if (filtered.length === prev.length) {
-        return prev;
+    if (currentRemovalPlanRef.current !== plan || plan.rejoinCompleted) {
+      if (queueRemovalTimeoutRef.current) {
+        window.clearTimeout(queueRemovalTimeoutRef.current);
+        queueRemovalTimeoutRef.current = null;
       }
-      const sorted = filtered.slice().sort((a, b) => a.slotId - b.slotId);
-      const timestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      let relocationIndex = 0;
-      return sorted.map((entry, index) => {
-        const nextSlot = STACK_SLOT_POSITIONS[index];
+      return;
+    }
+    queueRemovalTimeoutRef.current = null;
+    plan.rejoinCompleted = true;
+    const holdMetaMap = new Map(plan.holdDetails.map((detail) => [detail.id, detail]));
+    setQueueCars((current) => {
+      if (currentRemovalPlanRef.current !== plan) {
+        return current;
+      }
+      const exitEntry = current.find((car) => car.id === plan.carId);
+      const filtered = current.filter((car) => car.id !== plan.carId);
+      const nowRejoin = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const resorted = filtered.slice().sort((a, b) => a.slotId - b.slotId);
+      let rejoinCursor = nowRejoin;
+      const effectiveScale = plan.spacingScale || plan.currentScale || 1;
+      const rejoinBuffer = Math.max(
+        QUEUE_REJOIN_MIN_BUFFER_MS,
+        Math.round(QUEUE_REJOIN_BUFFER_SCALE_MS * effectiveScale),
+      ); // Keep stagger wide enough to prevent path overlap
+      const nextCars = resorted.map((car, index) => {
+        const nextSlot = QUEUE_SLOT_POSITIONS[index];
         if (!nextSlot) {
-          return entry;
+          return car;
         }
-        if (entry.slotId === nextSlot.id) {
-          return entry;
+        const holdMeta = holdMetaMap.get(car.id);
+        if (holdMeta) {
+          const startSource = clonePositionArray(holdMeta.freeMarkerPosition || FREE_MARKER_LOOKUP[holdMeta.originalSlotId] || QUEUE_CAR_SPAWN_POSITION);
+          const travelDuration = getQueueRelocationDuration(nextSlot.id);
+          const spawnTime = rejoinCursor;
+          rejoinCursor += travelDuration + rejoinBuffer;
+          return {
+            ...car,
+            slotId: nextSlot.id,
+            phase: QUEUE_CAR_PHASE_SLOT,
+            targetOverride: clonePositionArray(nextSlot.position),
+            fromPosition: startSource,
+            spawnTime,
+            travelDuration,
+            orientationOverride: null,
+          };
         }
-        const currentSlotPosition = STACK_SLOT_LOOKUP[entry.slotId] || STACK_CAR_SPAWN_POSITION;
-        const clonePosition = Array.isArray(currentSlotPosition)
-          ? currentSlotPosition.slice()
-          : [currentSlotPosition[0], currentSlotPosition[1], currentSlotPosition[2]];
-        const scheduledStart = timestamp + relocationIndex * STACK_CAR_RELOCATION_STAGGER;
-        relocationIndex += 1;
         return {
-          ...entry,
+          ...car,
           slotId: nextSlot.id,
-          spawnTime: scheduledStart,
-          fromPosition: clonePosition,
+          phase: QUEUE_CAR_PHASE_SLOT,
+          targetOverride: null,
+          orientationOverride: null,
         };
       });
+      return exitEntry ? [...nextCars, exitEntry] : nextCars;
     });
-  }, [activeMinigame]);
+    scheduleCleanupTimer(plan);
+  }, [scheduleCleanupTimer, setQueueCars]);
+
+  const schedulePlanTimers = useCallback((plan) => {
+    if (!plan || plan.rejoinCompleted || currentRemovalPlanRef.current !== plan) {
+      return;
+    }
+    if (queueRemovalTimeoutRef.current) {
+      window.clearTimeout(queueRemovalTimeoutRef.current);
+      queueRemovalTimeoutRef.current = null;
+    }
+    const nowTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const rejoinTarget = plan.rejoinTimestamp ?? (plan.startTime + plan.scheduleRejoinOffset);
+    const rejoinDelay = Math.max(0, rejoinTarget - nowTime);
+    queueRemovalTimeoutRef.current = window.setTimeout(triggerRemovalRejoin, rejoinDelay);
+  }, [triggerRemovalRejoin]);
+
+  const applyRemovalPlanTimeline = useCallback((plan, scale, options = {}) => {
+    if (!plan) return Array.isArray(options.sourceCars) ? options.sourceCars : undefined;
+    const resolvedScale = Number.isFinite(scale) ? Math.max(0.001, scale) : 1;
+    const spacingScale = Math.max(resolvedScale, QUEUE_MIN_REMOVAL_TIMELINE_SCALE);
+    plan.currentScale = resolvedScale;
+    plan.spacingScale = spacingScale;
+    plan.scheduleExitStartOffset = plan.baseExitStartOffset * spacingScale;
+    const exitClearWindow = Math.max(plan.exitClearWindowBase * spacingScale, plan.exitClearWindowMin || QUEUE_EXIT_CLEAR_MIN_MS);
+    plan.scheduleRejoinOffset = (plan.baseExitStartOffset * spacingScale) + exitClearWindow;
+    const scaledExitDuration = Math.max(plan.exitDuration * resolvedScale, plan.exitDuration * QUEUE_MIN_REMOVAL_TIMELINE_SCALE);
+    plan.scheduleCleanupOffset = (plan.baseExitStartOffset * spacingScale) + scaledExitDuration + plan.cleanupBuffer;
+    plan.holdDetails.forEach((detail) => {
+      detail.scheduleStartOffset = detail.baseStartOffset * spacingScale;
+    });
+
+    const rejoinCandidate = plan.startTime + plan.scheduleRejoinOffset;
+    plan.rejoinTimestamp = plan.rejoinTimestamp == null ? rejoinCandidate : Math.min(plan.rejoinTimestamp, rejoinCandidate);
+    const cleanupCandidate = plan.startTime + plan.scheduleCleanupOffset;
+    plan.cleanupTimestamp = plan.cleanupTimestamp == null ? cleanupCandidate : Math.min(plan.cleanupTimestamp, cleanupCandidate);
+
+    const wasApplied = Boolean(plan.applied);
+
+    const transform = (input, referenceNow) => {
+      const nowRef = Number.isFinite(referenceNow)
+        ? referenceNow
+        : (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+      return input.map((entry) => {
+        if (entry.id === plan.carId) {
+          const spawnTime = plan.startTime + plan.scheduleExitStartOffset;
+          if (!wasApplied) {
+            return {
+              ...entry,
+              phase: QUEUE_CAR_PHASE_EXIT,
+              targetOverride: clonePositionArray(plan.exitTargetPosition),
+              fromPosition: clonePositionArray(plan.exitFromPosition),
+              spawnTime,
+              travelDuration: plan.exitDuration,
+              orientationOverride: null,
+            };
+          }
+          if (!plan.rejoinCompleted && entry.phase === QUEUE_CAR_PHASE_EXIT && entry.spawnTime > nowRef) {
+            const desiredSpawn = Math.min(entry.spawnTime, spawnTime);
+            if (desiredSpawn <= nowRef + 8) {
+              return entry;
+            }
+            if (Math.abs(desiredSpawn - entry.spawnTime) < 0.5) {
+              return entry;
+            }
+            return {
+              ...entry,
+              spawnTime: desiredSpawn,
+            };
+          }
+          return entry;
+        }
+
+        const detail = plan.holdDetailsById.get(entry.id);
+        if (detail) {
+          const spawnTime = plan.startTime + detail.scheduleStartOffset;
+          if (!wasApplied) {
+            return {
+              ...entry,
+              phase: QUEUE_CAR_PHASE_HOLD,
+              targetOverride: clonePositionArray(detail.markerPosition),
+              fromPosition: clonePositionArray(detail.startPosition),
+              spawnTime,
+              travelDuration: detail.travelDuration,
+              orientationOverride: Math.PI / 2,
+            };
+          }
+          if (!plan.rejoinCompleted && entry.phase === QUEUE_CAR_PHASE_HOLD && entry.spawnTime > nowRef) {
+            const desiredSpawn = Math.min(entry.spawnTime, spawnTime);
+            if (desiredSpawn <= nowRef + 8) {
+              return entry;
+            }
+            if (Math.abs(desiredSpawn - entry.spawnTime) < 0.5) {
+              return entry;
+            }
+            return {
+              ...entry,
+              spawnTime: desiredSpawn,
+            };
+          }
+          return entry;
+        }
+
+        if (!wasApplied && ((entry.phase ?? QUEUE_CAR_PHASE_SLOT) !== QUEUE_CAR_PHASE_SLOT || entry.targetOverride || entry.orientationOverride)) {
+          return {
+            ...entry,
+            phase: QUEUE_CAR_PHASE_SLOT,
+            targetOverride: null,
+            orientationOverride: null,
+          };
+        }
+
+        return entry;
+      });
+    };
+
+    if (Array.isArray(options.sourceCars)) {
+      const result = transform(options.sourceCars, options.referenceNow);
+      plan.applied = true;
+      if (!plan.rejoinCompleted) {
+        schedulePlanTimers(plan);
+      }
+      return result;
+    }
+
+    setQueueCars((prev) => transform(prev));
+    plan.applied = true;
+    if (!plan.rejoinCompleted) {
+      schedulePlanTimers(plan);
+    }
+    return undefined;
+  }, [schedulePlanTimers, setQueueCars]);
+
+  const handleRemoveQueueCar = useCallback((carId) => {
+    if (activeMinigame !== 'queue' || queueRemovalInProgressRef.current) {
+      return;
+    }
+
+    setQueueCars((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+
+      const sorted = prev.slice().sort((a, b) => a.slotId - b.slotId);
+      const exitIndex = sorted.findIndex((car) => car.id === carId);
+      if (exitIndex === -1) {
+        return prev;
+      }
+      if (sorted.some((car) => (car.phase ?? QUEUE_CAR_PHASE_SLOT) !== QUEUE_CAR_PHASE_SLOT)) {
+        return prev;
+      }
+
+      const exitCar = sorted[exitIndex];
+      const trailingCars = sorted.filter((car) => car.slotId > exitCar.slotId);
+      const holdOrder = trailingCars.slice().reverse();
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+      const plan = {
+        carId,
+        startTime: now,
+        exitDuration: getQueueTravelDuration(exitCar.slotId) + 9600,
+        exitTargetPosition: clonePositionArray(QUEUE_EXIT_POSITION),
+        exitFromPosition: clonePositionArray(QUEUE_SLOT_LOOKUP[exitCar.slotId] || QUEUE_CAR_SPAWN_POSITION),
+        holdDetails: [],
+        holdDetailsById: new Map(),
+        baseExitStartOffset: 0,
+        baseRejoinOffset: 0,
+        scheduleExitStartOffset: 0,
+        scheduleRejoinOffset: 0,
+        scheduleCleanupOffset: 0,
+        applied: false,
+        rejoinCompleted: false,
+        currentScale: 1,
+        spacingScale: 1,
+        cleanupBuffer: QUEUE_CLEANUP_BUFFER_MS,
+        exitClearWindowBase: 0,
+        exitClearWindowMin: QUEUE_EXIT_CLEAR_MIN_MS,
+        rejoinTimestamp: null,
+        cleanupTimestamp: null,
+      };
+      let holdAccumBase = 0;
+
+      holdOrder.forEach((car, idx) => {
+        const marker = FREE_MARKER_POSITIONS[idx] || FREE_MARKER_POSITIONS[FREE_MARKER_POSITIONS.length - 1];
+        const markerPosition = clonePositionArray(marker?.position || QUEUE_SLOT_LOOKUP[car.slotId] || QUEUE_CAR_SPAWN_POSITION);
+        const startPosition = clonePositionArray(QUEUE_SLOT_LOOKUP[car.slotId] || QUEUE_CAR_SPAWN_POSITION);
+        const travelDuration = getQueueTravelDuration(car.slotId);
+        const detail = {
+          id: car.id,
+          baseStartOffset: holdAccumBase,
+          scheduleStartOffset: 0,
+          travelDuration,
+          markerPosition,
+          freeMarkerPosition: clonePositionArray(markerPosition),
+          startPosition,
+          originalSlotId: car.slotId,
+        };
+        plan.holdDetails.push(detail);
+        plan.holdDetailsById.set(detail.id, detail);
+        holdAccumBase += travelDuration + QUEUE_HOLD_GAP_MS;
+      });
+
+      const exitClearWindowBase = Math.max(QUEUE_EXIT_CLEAR_MIN_MS, Math.round(plan.exitDuration * QUEUE_EXIT_CLEAR_SCALE));
+      plan.baseExitStartOffset = holdAccumBase + QUEUE_EXIT_START_GAP_MS;
+      plan.baseRejoinOffset = plan.baseExitStartOffset + exitClearWindowBase;
+      plan.exitClearWindowBase = exitClearWindowBase;
+
+      if (queueRemovalTimeoutRef.current) {
+        window.clearTimeout(queueRemovalTimeoutRef.current);
+        queueRemovalTimeoutRef.current = null;
+      }
+      if (queueExitCleanupTimeoutRef.current) {
+        window.clearTimeout(queueExitCleanupTimeoutRef.current);
+        queueExitCleanupTimeoutRef.current = null;
+      }
+
+      currentRemovalPlanRef.current = plan;
+      queueRemovalInProgressRef.current = true;
+
+      const scale = queueFastForwardRef.current && QUEUE_FAST_FORWARD_MULTIPLIER > 1
+        ? 1 / QUEUE_FAST_FORWARD_MULTIPLIER
+        : 1;
+
+      const updated = applyRemovalPlanTimeline(plan, scale, { sourceCars: prev, referenceNow: now });
+
+      return Array.isArray(updated) ? updated : prev;
+    });
+  }, [activeMinigame, applyRemovalPlanTimeline]);
+
+  const handleQueueFastForwardPress = useCallback(() => {
+    setQueueFastForward(true);
+  }, []);
+
+  const handleQueueFastForwardRelease = useCallback(() => {
+    setQueueFastForward(false);
+  }, []);
 
   useEffect(() => {
     if (carOnInteractMarker && interactCountdown <= 0 && interactPhase === 'idle') {
@@ -1539,33 +2104,88 @@ export default function ParkingScene() {
   }, [carOnInteractMarker, interactCountdown, interactPhase]);
 
   useEffect(() => {
-    if (!stackMinigameArmed) return;
-    if (carOnStackMarker && stackCountdown <= 0 && activeMinigame !== 'stack') {
+    if (!queueMinigameArmed) return;
+    if (carOnQueueMarker && queueCountdown <= 0 && activeMinigame !== 'queue') {
       const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
       schedule(() => {
         minigameStateRef.current = {
           startTime: performance.now(),
           stacks: [],
         };
-        setStackMinigameArmed(false);
-        setStackCars([]);
-        setActiveMinigame('stack');
+        setQueueMinigameArmed(false);
+        setQueueCars([]);
+        setActiveMinigame('queue');
       });
     }
-  }, [carOnStackMarker, stackCountdown, activeMinigame, stackMinigameArmed]);
+  }, [carOnQueueMarker, queueCountdown, activeMinigame, queueMinigameArmed]);
 
   useEffect(() => {
-    if (activeMinigame === 'stack') {
+    if (activeMinigame === 'queue') {
       setJoystickVector(0, 0);
     }
   }, [activeMinigame]);
 
   useEffect(() => {
-    if (activeMinigame !== 'stack') {
+    queueFastForwardRef.current = queueFastForward;
+    const plan = currentRemovalPlanRef.current;
+    if (!plan || plan.rejoinCompleted) {
+      return;
+    }
+    const scale = queueFastForward && QUEUE_FAST_FORWARD_MULTIPLIER > 1
+      ? 1 / QUEUE_FAST_FORWARD_MULTIPLIER
+      : 1;
+    if (Math.abs((plan.currentScale ?? 1) - scale) < 0.001) {
+      return;
+    }
+    applyRemovalPlanTimeline(plan, scale);
+  }, [queueFastForward, applyRemovalPlanTimeline]);
+
+  useEffect(() => {
+    if (activeMinigame !== 'queue') {
       minigameStateRef.current = null;
-      setStackCars([]);
+      setQueueCars([]);
+      setQueueFastForward(false);
+      queueRemovalInProgressRef.current = false;
+      if (queueRemovalTimeoutRef.current) {
+        window.clearTimeout(queueRemovalTimeoutRef.current);
+        queueRemovalTimeoutRef.current = null;
+      }
+      if (queueExitCleanupTimeoutRef.current) {
+        window.clearTimeout(queueExitCleanupTimeoutRef.current);
+        queueExitCleanupTimeoutRef.current = null;
+      }
+      currentRemovalPlanRef.current = null;
     }
   }, [activeMinigame]);
+
+  useEffect(() => {
+    if (!queueFastForward) {
+      return undefined;
+    }
+    const stop = () => {
+      setQueueFastForward(false);
+    };
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    window.addEventListener('blur', stop);
+    return () => {
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      window.removeEventListener('blur', stop);
+    };
+  }, [queueFastForward]);
+
+  useEffect(() => () => {
+    if (queueRemovalTimeoutRef.current) {
+      window.clearTimeout(queueRemovalTimeoutRef.current);
+      queueRemovalTimeoutRef.current = null;
+    }
+    if (queueExitCleanupTimeoutRef.current) {
+      window.clearTimeout(queueExitCleanupTimeoutRef.current);
+      queueExitCleanupTimeoutRef.current = null;
+    }
+    currentRemovalPlanRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1774,7 +2394,7 @@ export default function ParkingScene() {
             position={STACK_MARKER_POSITION}
             size={STACK_MARKER_SIZE}
             carRef={carRef}
-            onPresenceChange={handleStackMarkerPresence}
+            onPresenceChange={rawHandleStackMarkerPresence}
             active={carOnStackMarker}
             colors={STACK_MARKER_COLORS}
           />
@@ -1799,16 +2419,17 @@ export default function ParkingScene() {
           <FloatingCountdown carRef={carRef} countdown={stackCountdown} active={carOnStackMarker} />
           <FloatingCountdown carRef={carRef} countdown={queueCountdown} active={carOnQueueMarker} />
           <FloatingCountdown carRef={carRef} countdown={interactCountdown} active={carOnInteractMarker} />
-          {activeMinigame === 'stack' && (
+          {activeMinigame === 'queue' && (
             <>
-              <StackSlotMarkers slots={STACK_SLOT_POSITIONS} />
-              <StackCarFleet cars={stackCars} onRemove={handleRemoveStackCar} />
+              <QueueSlotMarkers slots={QUEUE_SLOT_POSITIONS} />
+              <FreeSlotMarkers slots={FREE_MARKER_POSITIONS} />
+              <QueueCarFleet cars={queueCars} onRemove={handleRemoveQueueCar} fastForward={queueFastForward} />
             </>
           )}
-          <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'stack'} />
+          <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'queue'} />
           <Environment preset="sunset" background />
         </Suspense>
-        <CameraRig targetRef={carRef} mode={activeMinigame} stackTarget={STACK_CAMERA_CONFIG} />
+        <CameraRig targetRef={carRef} mode={activeMinigame} queueTarget={QUEUE_CAMERA_CONFIG} />
         <Stats />
       </Canvas>
       <MobileJoystick active={joystickActive} />
@@ -1918,13 +2539,37 @@ export default function ParkingScene() {
           </button>
         </div>
       )}
-      {activeMinigame === 'stack' && (
+      {activeMinigame === 'queue' && (
         <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
           <div className="pointer-events-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleAddStackCar}
-              disabled={stackIsFull}
+              aria-pressed={queueFastForward}
+              onPointerDown={handleQueueFastForwardPress}
+              onPointerUp={handleQueueFastForwardRelease}
+              onPointerLeave={handleQueueFastForwardRelease}
+              onPointerCancel={handleQueueFastForwardRelease}
+              onKeyDown={(event) => {
+                if (!event.repeat && (event.key === ' ' || event.key === 'Enter')) {
+                  event.preventDefault();
+                  handleQueueFastForwardPress();
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                  handleQueueFastForwardRelease();
+                }
+              }}
+              onBlur={handleQueueFastForwardRelease}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold shadow ring-1 transition focus:outline-none focus:ring-2 focus:ring-sky-200 ${queueFastForward ? 'bg-sky-300 text-slate-900 ring-sky-100/60' : 'bg-sky-500/90 text-white ring-sky-300/40 hover:bg-sky-400/90'}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5v14l6-7zm8 0v14l6-7z"/></svg>
+              Fast forward
+            </button>
+            <button
+              type="button"
+              onClick={handleAddQueueCar}
+              disabled={queueIsFull}
               className="inline-flex items-center gap-2 rounded-full bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-emerald-300/40 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-55"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
