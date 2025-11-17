@@ -89,6 +89,144 @@ const QUEUE_CAR_ANIMATION_DURATION = 4500;
 const QUEUE_FAST_FORWARD_MULTIPLIER = 6;
 const QUEUE_EXIT_POSITION = Object.freeze([40, 0.3, -140]);
 const SLOT_PARKING_QUATERNION = new THREE.Quaternion();
+const SLOT_PARKING_HEADING = Object.freeze([SLOT_PARKING_QUATERNION.x, SLOT_PARKING_QUATERNION.y, SLOT_PARKING_QUATERNION.z, SLOT_PARKING_QUATERNION.w]);
+const DEFAULT_QUEUE_CAR_MODEL = '/car-show/models/car/scene.gltf';
+const QUEUE_CAR_MODEL_PATHS = Object.freeze([
+  '/car-models/red_car.glb',
+  '/car-models/white_car.glb',
+]);
+const DEFAULT_QUEUE_CAR_MODEL_SETTINGS = Object.freeze({
+  scale: 0.01,
+  rotation: Object.freeze([0, 0, 0]),
+});
+const QUEUE_CAR_MODEL_SETTINGS = Object.freeze({
+  '/car-models/red_car.glb': Object.freeze({
+    scale: 0.018,
+    rotation: Object.freeze([0, 1.56, 0]),
+  }),
+  '/car-models/white_car.glb': Object.freeze({
+    scale: 0.05,
+    rotation: Object.freeze([0, 0, 0]),
+  }),
+});
+const QUEUE_CAR_MODEL_COLOR_OPTIONS = Object.freeze({
+  '/car-models/red_car.glb': Object.freeze([
+    '#ff5252',
+    '#ff7043',
+    '#ff8a65',
+    '#ffb74d',
+  ]),
+  '/car-models/white_car.glb': Object.freeze([
+    '#f5f5f5',
+    '#b3e5fc',
+    '#c5e1a5',
+    '#d1c4e9',
+  ]),
+});
+const getQueueCarModelSettings = (modelUrl) => {
+  const override = modelUrl ? QUEUE_CAR_MODEL_SETTINGS[modelUrl] : null;
+  const scale = Number.isFinite(override?.scale) ? override.scale : DEFAULT_QUEUE_CAR_MODEL_SETTINGS.scale;
+  const rotationSource = Array.isArray(override?.rotation) && override.rotation.length === 3
+    ? override.rotation
+    : DEFAULT_QUEUE_CAR_MODEL_SETTINGS.rotation;
+  return {
+    scale,
+    rotation: [rotationSource[0], rotationSource[1], rotationSource[2]],
+  };
+};
+const pickQueueCarColor = (modelUrl) => {
+  const palette = modelUrl ? QUEUE_CAR_MODEL_COLOR_OPTIONS[modelUrl] : null;
+  if (!Array.isArray(palette) || !palette.length) {
+    return null;
+  }
+  const index = Math.floor(Math.random() * palette.length);
+  return palette[index] || null;
+};
+const pickRandomQueueCarModel = () => {
+  if (!QUEUE_CAR_MODEL_PATHS.length) {
+    return DEFAULT_QUEUE_CAR_MODEL;
+  }
+  const index = Math.floor(Math.random() * QUEUE_CAR_MODEL_PATHS.length);
+  return QUEUE_CAR_MODEL_PATHS[index] || DEFAULT_QUEUE_CAR_MODEL;
+};
+
+const logQueueCarAssignment = (event, car, slotId) => {
+  if (!car || !slotId) return;
+  const label = typeof event === 'string' && event.length ? event : 'assignment';
+  const modelPath = car.modelUrl || DEFAULT_QUEUE_CAR_MODEL;
+  const colorLabel = typeof car.colorOverride === 'string' && car.colorOverride.length
+    ? ` color ${car.colorOverride}`
+    : '';
+  console.info(`[Queue] ${label}: slot ${slotId} ← ${modelPath}${colorLabel} (car ${car.id})`);
+};
+
+const coerceSlotId = (value) => {
+  if (Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+};
+
+const ensureUniqueSlotAssignments = (cars, label = 'dedupe') => {
+  if (!Array.isArray(cars) || cars.length <= 1) {
+    return cars;
+  }
+  const seen = new Set();
+  const available = QUEUE_SLOT_POSITIONS.map((slot) => slot.id);
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+  return cars.map((car) => {
+    const normalizedSlotId = coerceSlotId(car.slotId);
+    if (!Number.isFinite(normalizedSlotId)) {
+      return car;
+    }
+    const baseEntry = car.slotId === normalizedSlotId ? car : { ...car, slotId: normalizedSlotId };
+    if (!seen.has(normalizedSlotId)) {
+      seen.add(normalizedSlotId);
+      const idx = available.indexOf(normalizedSlotId);
+      if (idx !== -1) {
+        available.splice(idx, 1);
+      }
+      return baseEntry;
+    }
+
+    let fallbackSlotId = null;
+    while (available.length) {
+      const candidate = available.shift();
+      if (!seen.has(candidate)) {
+        fallbackSlotId = candidate;
+        break;
+      }
+    }
+
+    if (!fallbackSlotId) {
+      console.warn(`[Queue] ${label}: duplicate slot ${normalizedSlotId} for car ${car.id} with no fallback slot available`);
+      return baseEntry;
+    }
+
+    seen.add(fallbackSlotId);
+    const fallbackPosition = clonePositionArray(QUEUE_SLOT_LOOKUP[fallbackSlotId] || QUEUE_CAR_SPAWN_POSITION);
+    const reassigned = {
+      ...baseEntry,
+      slotId: fallbackSlotId,
+      phase: QUEUE_CAR_PHASE_SLOT,
+      targetOverride: clonePositionArray(fallbackPosition),
+      orientationOverride: null,
+      spawnTime: Math.max(now, Number.isFinite(car.spawnTime) ? car.spawnTime : now),
+    };
+    logQueueCarAssignment(`${label}-fallback`, reassigned, fallbackSlotId);
+    return reassigned;
+  });
+};
 const QUEUE_HOLD_GAP_MS = 260;
 const QUEUE_EXIT_START_GAP_MS = 280;
 const QUEUE_CLEANUP_BUFFER_MS = 600;
@@ -482,9 +620,24 @@ function useMarkerController({
   };
 }
 
-function CarModel(props) {
-  const { scene } = useGLTF('/car-show/models/car/scene.gltf');
-  const clonedScene = useMemo(() => scene.clone(true), [scene]);
+function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, ...props }) {
+  const { scene } = useGLTF(modelUrl);
+  const clonedScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    if (typeof colorOverride === 'string' && colorOverride.length) {
+      const tint = new THREE.Color(colorOverride);
+      cloned.traverse((child) => {
+        if (!child.isMesh || !child.material) return;
+        const material = child.material.clone();
+        if (material.color) {
+          material.color = material.color.clone();
+          material.color.set(tint);
+        }
+        child.material = material;
+      });
+    }
+    return cloned;
+  }, [scene, colorOverride]);
   return <primitive object={clonedScene} {...props} />;
 }
 
@@ -498,7 +651,6 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   const gainRef = useRef(null);
   const bufferRef = useRef(null);
   const sourceRef = useRef(null);
-  // Brake sound refs
   const brakeGainRef = useRef(null);
   const brakeBufferRef = useRef(null);
   const brakeSourceRef = useRef(null);
@@ -1351,6 +1503,9 @@ function QueueCar({
   targetOverride,
   phase = QUEUE_CAR_PHASE_SLOT,
   orientationOverride = null,
+  headingLock = null,
+  modelUrl = DEFAULT_QUEUE_CAR_MODEL,
+  colorOverride = null,
 }) {
   const groupRef = useRef(null);
   const forwardVector = useMemo(() => new THREE.Vector3(0, 0, 1), []);
@@ -1398,6 +1553,20 @@ function QueueCar({
     }
     return null;
   }, [orientationOverride, phase]);
+  const headingLockQuaternion = useMemo(() => {
+    if (typeof headingLock === 'number') {
+      const q = new THREE.Quaternion();
+      q.setFromEuler(new THREE.Euler(0, headingLock, 0));
+      return q;
+    }
+    if (Array.isArray(headingLock) && headingLock.length === 4) {
+      const [x, y, z, w] = headingLock;
+      const quat = new THREE.Quaternion(x, y, z, w);
+      quat.normalize();
+      return quat;
+    }
+    return null;
+  }, [headingLock]);
 
   useEffect(() => {
     const nowTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -1426,11 +1595,14 @@ function QueueCar({
           tempQuaternion.setFromUnitVectors(forwardVector, tempTangent);
           group.quaternion.copy(tempQuaternion);
         }
+        if (headingLockQuaternion && (phase === QUEUE_CAR_PHASE_SLOT || phase === QUEUE_CAR_PHASE_HOLD)) {
+          group.quaternion.copy(headingLockQuaternion);
+        }
       }
     }
     prevSpawnTimeRef.current = spawnTime;
     prevPhaseRef.current = phase;
-  }, [spawnTime, startPosition, slotId, phase, pathCurve, tempQuaternion, forwardVector, tempTangent]);
+  }, [spawnTime, startPosition, slotId, phase, pathCurve, tempQuaternion, forwardVector, tempTangent, headingLockQuaternion]);
 
   const isRemovable = phase === QUEUE_CAR_PHASE_SLOT;
 
@@ -1481,9 +1653,14 @@ function QueueCar({
     } else if (phase === QUEUE_CAR_PHASE_SLOT) {
       if (targetOverride) {
         const slotBlendStart = 0.55;
-        if (easedProgress >= slotBlendStart) {
+        const lockActive = headingLockQuaternion && easedProgress < slotBlendStart;
+        if (lockActive) {
+          group.quaternion.slerp(headingLockQuaternion, 0.35);
+          finalOrientation = headingLockQuaternion;
+        } else if (easedProgress >= slotBlendStart) {
           const normalized = Math.min(1, (easedProgress - slotBlendStart) / (1 - slotBlendStart));
-          tempBlendQuaternion.copy(tempQuaternion).slerp(SLOT_PARKING_QUATERNION, normalized);
+          const blendSource = headingLockQuaternion || tempQuaternion;
+          tempBlendQuaternion.copy(blendSource).slerp(SLOT_PARKING_QUATERNION, normalized);
           group.quaternion.slerp(tempBlendQuaternion, 0.35);
           finalOrientation = SLOT_PARKING_QUATERNION;
         } else {
@@ -1514,9 +1691,16 @@ function QueueCar({
     }
   });
 
+  const modelSettings = useMemo(() => getQueueCarModelSettings(modelUrl), [modelUrl]);
+
   return (
     <group ref={groupRef} onPointerDown={handlePointerDown}>
-      <CarModel scale={0.01} />
+      <CarModel
+        scale={modelSettings.scale}
+        rotation={modelSettings.rotation}
+        modelUrl={modelUrl}
+        colorOverride={colorOverride}
+      />
     </group>
   );
 }
@@ -1536,7 +1720,10 @@ function QueueCarFleet({ cars, onRemove, fastForward }) {
           fastForward={fastForward}
           targetOverride={car.targetOverride}
           orientationOverride={car.orientationOverride}
+          headingLock={car.headingLock}
           phase={car.phase}
+          modelUrl={car.modelUrl}
+          colorOverride={car.colorOverride}
         />
       ))}
     </group>
@@ -1666,6 +1853,7 @@ export default function ParkingScene() {
     useGLTF.preload('/models/parking_toll.glb');
     useGLTF.preload('/models/road_barrier.glb');
     Object.values(COUNTDOWN_MODELS).forEach((path) => useGLTF.preload(path));
+    QUEUE_CAR_MODEL_PATHS.forEach((path) => useGLTF.preload(path));
   }, []);
   const [speed, setSpeed] = useState(0);
   const carRef = useRef(null);
@@ -1758,18 +1946,26 @@ export default function ParkingScene() {
         ? globalCrypto.randomUUID()
         : `queue-car-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const spawnTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      return [
-        ...prev,
-        {
-          slotId: nextSlot.id,
-          id: generatedId,
-          spawnTime: spawnTimestamp,
-          fromPosition: QUEUE_CAR_SPAWN_POSITION.slice(),
-          travelDuration: getQueueTravelDuration(nextSlot.id),
-          phase: QUEUE_CAR_PHASE_SLOT,
-          targetOverride: null,
-        },
-      ];
+      const modelUrl = pickRandomQueueCarModel();
+      const colorOverride = pickQueueCarColor(modelUrl);
+      const newCar = {
+        slotId: nextSlot.id,
+        id: generatedId,
+        spawnTime: spawnTimestamp,
+        fromPosition: QUEUE_CAR_SPAWN_POSITION.slice(),
+        travelDuration: getQueueTravelDuration(nextSlot.id),
+        phase: QUEUE_CAR_PHASE_SLOT,
+        targetOverride: null,
+        modelUrl,
+        colorOverride,
+        headingLock: null,
+      };
+      const next = ensureUniqueSlotAssignments([...prev, newCar], 'spawn');
+      const inserted = next.find((entry) => entry.id === newCar.id) || newCar;
+      if (Number.isFinite(inserted.slotId)) {
+        logQueueCarAssignment('spawn', inserted, inserted.slotId);
+      }
+      return next;
     });
   }, []);
 
@@ -1826,7 +2022,8 @@ export default function ParkingScene() {
         QUEUE_REJOIN_MIN_BUFFER_MS,
         Math.round(QUEUE_REJOIN_BUFFER_SCALE_MS * effectiveScale),
       ); // Keep stagger wide enough to prevent path overlap
-      const nextCars = resorted.map((car, index) => {
+      const rejoinLogIds = new Set();
+      const remappedCars = resorted.map((car, index) => {
         const nextSlot = QUEUE_SLOT_POSITIONS[index];
         if (!nextSlot) {
           return car;
@@ -1837,7 +2034,10 @@ export default function ParkingScene() {
           const travelDuration = getQueueRelocationDuration(nextSlot.id);
           const spawnTime = rejoinCursor;
           rejoinCursor += travelDuration + rejoinBuffer;
-          return {
+          const preservedHeading = typeof holdMeta.holdOrientation === 'number'
+            ? holdMeta.holdOrientation
+            : (Array.isArray(car.headingLock) ? car.headingLock.slice() : car.headingLock);
+          const reassigned = {
             ...car,
             slotId: nextSlot.id,
             phase: QUEUE_CAR_PHASE_SLOT,
@@ -1846,7 +2046,10 @@ export default function ParkingScene() {
             spawnTime,
             travelDuration,
             orientationOverride: null,
+            headingLock: preservedHeading,
           };
+          rejoinLogIds.add(reassigned.id);
+          return reassigned;
         }
         return {
           ...car,
@@ -1854,9 +2057,17 @@ export default function ParkingScene() {
           phase: QUEUE_CAR_PHASE_SLOT,
           targetOverride: null,
           orientationOverride: null,
+          headingLock: null,
         };
       });
-      return exitEntry ? [...nextCars, exitEntry] : nextCars;
+      const nextCars = ensureUniqueSlotAssignments(remappedCars, 'rejoin');
+      nextCars.forEach((entry) => {
+        if (rejoinLogIds.has(entry.id) && Number.isFinite(entry.slotId)) {
+          logQueueCarAssignment('rejoin', entry, entry.slotId);
+        }
+      });
+      const exitCarEntry = exitEntry ? { ...exitEntry, slotId: null } : null;
+      return exitCarEntry ? [...nextCars, exitCarEntry] : nextCars;
     });
     scheduleCleanupTimer(plan);
   }, [scheduleCleanupTimer, setQueueCars]);
@@ -1902,7 +2113,7 @@ export default function ParkingScene() {
         ? referenceNow
         : (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-      return input.map((entry) => {
+      const mapped = input.map((entry) => {
         if (entry.id === plan.carId) {
           const spawnTime = plan.startTime + plan.scheduleExitStartOffset;
           if (!wasApplied) {
@@ -1943,7 +2154,10 @@ export default function ParkingScene() {
               fromPosition: clonePositionArray(detail.startPosition),
               spawnTime,
               travelDuration: detail.travelDuration,
-              orientationOverride: Math.PI / 2,
+              orientationOverride: detail.holdOrientation,
+              headingLock: Array.isArray(detail.initialHeading)
+                ? detail.initialHeading.slice()
+                : detail.initialHeading,
             };
           }
           if (!plan.rejoinCompleted && entry.phase === QUEUE_CAR_PHASE_HOLD && entry.spawnTime > nowRef) {
@@ -1968,11 +2182,14 @@ export default function ParkingScene() {
             phase: QUEUE_CAR_PHASE_SLOT,
             targetOverride: null,
             orientationOverride: null,
+            headingLock: null,
           };
         }
 
         return entry;
       });
+
+      return ensureUniqueSlotAssignments(mapped, wasApplied ? 'reschedule' : 'apply');
     };
 
     if (Array.isArray(options.sourceCars)) {
@@ -1984,7 +2201,7 @@ export default function ParkingScene() {
       return result;
     }
 
-    setQueueCars((prev) => transform(prev));
+  setQueueCars((prev) => transform(prev));
     plan.applied = true;
     if (!plan.rejoinCompleted) {
       schedulePlanTimers(plan);
@@ -2055,6 +2272,8 @@ export default function ParkingScene() {
           freeMarkerPosition: clonePositionArray(markerPosition),
           startPosition,
           originalSlotId: car.slotId,
+          holdOrientation: Math.PI / 2,
+          initialHeading: Array.isArray(car.headingLock) ? car.headingLock.slice() : SLOT_PARKING_HEADING,
         };
         plan.holdDetails.push(detail);
         plan.holdDetailsById.set(detail.id, detail);
@@ -2595,5 +2814,6 @@ try {
   if (useGLTF.preload) {
     useGLTF.preload('/car-show/models/car/scene.gltf');
     useGLTF.preload('/models/modern_parking_area.glb');
+    QUEUE_CAR_MODEL_PATHS.forEach((path) => useGLTF.preload(path));
   }
 } catch {}
