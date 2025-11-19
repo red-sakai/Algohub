@@ -6,17 +6,87 @@ import Squares from "./components/ui/Squares";
 import { useRouter } from "next/navigation";
 import { playSfx } from "./components/ui/sfx";
 import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
-import { useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IrisOpenOnMount from "./components/ui/IrisOpenOnMount";
 import { setIrisPoint } from "./components/ui/transitionBus";
 import LoadingOverlay from "./components/ui/LoadingOverlay";
-import { useState } from "react";
+import TargetCursor from "./components/ui/TargetCursor";
 
 export default function Home() {
   const router = useRouter();
   const irisRef = useRef<IrisHandle | null>(null);
   const transitioningRef = useRef(false);
   const [showLoader, setShowLoader] = useState(false);
+  const [isFlashing, setIsFlashing] = useState(false);
+  const [flashOpacity, setFlashOpacity] = useState(0);
+  const [defaultLogoAnimation, setDefaultLogoAnimation] = useState<"idle" | "slideIn" | "hidden">("idle");
+  const [bulletStage, setBulletStage] = useState<"hidden" | "bounce" | "fall">("hidden");
+  const [bulletCycle, setBulletCycle] = useState(0);
+  const [isShaking, setIsShaking] = useState(false);
+  const animationTimeoutsRef = useRef<number[]>([]);
+  const logoLockRef = useRef(false);
+  const bounceDuration = 450;
+  const fallDuration = 4000;
+  const slideInDuration = 1000;
+  const clearLogoTimeouts = useCallback(() => {
+    animationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    animationTimeoutsRef.current = [];
+  }, []);
+  const scheduleLogoTimeout = useCallback((fn: () => void, delay: number) => {
+    if (typeof window === "undefined") {
+      return -1;
+    }
+    const id = window.setTimeout(() => {
+      fn();
+    }, delay);
+    animationTimeoutsRef.current.push(id);
+    return id;
+  }, []);
+  useEffect(() => {
+    return () => {
+      clearLogoTimeouts();
+    };
+  }, [clearLogoTimeouts]);
+  const handleButtonHover = useCallback(() => {
+    playSfx("/gun_sfx.mp3", 0.6);
+  }, []);
+  const handleLogoClick = useCallback(() => {
+    if (logoLockRef.current) return;
+    logoLockRef.current = true;
+    clearLogoTimeouts();
+    setIsShaking(false);
+    playSfx("/gun_shot_sfx.mp3", 0.8);
+    playSfx("/algohub_falling.mp3", 0.8);
+    setFlashOpacity(1);
+    setIsFlashing(true);
+    scheduleLogoTimeout(() => setFlashOpacity(0), 420);
+    scheduleLogoTimeout(() => {
+      setIsFlashing(false);
+      setFlashOpacity(0);
+    }, 1200);
+    setBulletCycle((prev) => prev + 1);
+    setBulletStage("bounce");
+    setDefaultLogoAnimation("hidden");
+    scheduleLogoTimeout(() => {
+      setBulletStage("fall");
+    }, bounceDuration);
+    scheduleLogoTimeout(() => {
+      setIsShaking(true);
+    }, 4000);
+    scheduleLogoTimeout(() => {
+      setIsShaking(false);
+    }, 5000);
+    scheduleLogoTimeout(() => {
+      setBulletStage("hidden");
+      setDefaultLogoAnimation("slideIn");
+    }, bounceDuration + fallDuration);
+    scheduleLogoTimeout(() => {
+      setDefaultLogoAnimation("idle");
+      logoLockRef.current = false;
+      clearLogoTimeouts();
+      setIsShaking(false);
+    }, bounceDuration + fallDuration + slideInDuration + 200);
+  }, [clearLogoTimeouts, scheduleLogoTimeout]);
   const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     // Respect new-tab/modified clicks and non-left clicks
     if (e.defaultPrevented) return;
@@ -28,8 +98,8 @@ export default function Home() {
     transitioningRef.current = true;
 
     // Determine center from click position; fallback to button center
-  let x = e.clientX as number | undefined;
-  let y = e.clientY as number | undefined;
+    let x = e.clientX as number | undefined;
+    let y = e.clientY as number | undefined;
     if (typeof x !== "number" || typeof y !== "number" || x === 0 && y === 0) {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       x = rect.left + rect.width / 2;
@@ -53,31 +123,94 @@ export default function Home() {
       },
     });
   };
+  const defaultLogoAnimationValue = useMemo(() => {
+    if (defaultLogoAnimation === "slideIn") return "logoSlideIn 1s ease-out forwards";
+    if (defaultLogoAnimation === "idle") return "logoFloat 8s ease-in-out infinite";
+    return "none";
+  }, [defaultLogoAnimation]);
+  const defaultLogoOpacity = defaultLogoAnimation === "hidden" ? 0 : 1;
+  const defaultLogoOpacityTransition =
+    defaultLogoAnimation === "hidden" ? "opacity 120ms ease-in" : "opacity 200ms ease-out";
+  const isBulletVisible = bulletStage !== "hidden";
+  const bulletAnimationValue = useMemo(() => {
+    if (bulletStage === "bounce") return "logoBounce 450ms ease-out forwards";
+    if (bulletStage === "fall") return "logoFall 4s cubic-bezier(0.25, 0.82, 0.25, 1) forwards";
+    return "none";
+  }, [bulletStage]);
   return (
-    <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white">
-  {/* animated squares background */}
-  <Squares
-    speed={0.5}
-    squareSize={40}
-    direction="diagonal"
-    borderColor="#ffffff22"
-    hoverFillColor="#ffffff"
-    className="pointer-events-none fixed inset-0 z-0"
-  />
-  {/* decorative background doodles */}
-  <BackgroundDoodles />
+    <main
+      className={`relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white ${
+        isShaking ? "site-shake" : ""
+      }`}
+    >
+      {isFlashing && (
+        <div
+          className="pointer-events-none fixed inset-0 z-40"
+          style={{
+            opacity: flashOpacity,
+            background:
+              "radial-gradient(circle at center, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.92) 32%, rgba(255,255,255,0.85) 48%, rgba(255,255,255,0.55) 70%, rgba(255,255,255,0.1) 100%)",
+            backdropFilter: "brightness(1.35)",
+            transition: flashOpacity === 1 ? "none" : "opacity 800ms ease-out",
+            willChange: "opacity"
+          }}
+        />
+      )}
+      <TargetCursor spinDuration={2} hideDefaultCursor parallaxOn />
+      {/* animated squares background */}
+      <Squares
+        speed={0.5}
+        squareSize={40}
+        direction="diagonal"
+        borderColor="#ffffff22"
+        hoverFillColor="#ffffff"
+        className="pointer-events-none fixed inset-0 z-0"
+      />
+      {/* decorative background doodles */}
+      <BackgroundDoodles />
 
       <section className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col items-center justify-center px-4 sm:px-6 text-center">
-        {/* logo - no box, just the mark */}
-        <div className="mb-6 motion-safe:animate-[popIn_500ms_ease-out_forwards] motion-safe:opacity-0 transition-transform duration-300 will-change-transform hover:scale-[1.06] active:scale-[0.99]">
-          <Image
-            src="/algohub-transparent.png"
-            alt="AlgoHub logo"
-            width={360}
-            height={360}
-            priority
-            className="h-auto w-[200px] sm:w-[300px] md:w-[360px] drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)] motion-safe:animate-[logoFloat_8s_ease-in-out_infinite]"
-          />
+        {/* logo - default mark with falling bullet overlay */}
+        <div className="mb-6 motion-safe:animate-[popIn_500ms_ease-out_forwards] motion-safe:opacity-0 transition-transform duration-300 will-change-transform">
+          <button
+            type="button"
+            onClick={handleLogoClick}
+            className="group relative inline-flex items-center justify-center rounded-[2.75rem] bg-transparent transition-transform duration-300 hover:scale-[1.06] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70 cursor-target"
+            aria-label="Trigger AlgoHub logo transformation"
+          >
+            <Image
+              src="/algohub-transparent.png"
+              alt="AlgoHub logo"
+              width={360}
+              height={360}
+              priority
+              className="h-auto w-[200px] sm:w-[300px] md:w-[360px] drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+              style={{
+                animation: defaultLogoAnimationValue,
+                opacity: defaultLogoOpacity,
+                transition: defaultLogoOpacityTransition,
+                willChange: "transform, opacity"
+              }}
+              draggable={false}
+            />
+            {isBulletVisible && (
+              <div key={bulletCycle} className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <Image
+                  src="/algohub-bullet.png"
+                  alt="AlgoHub bullet logo"
+                  width={360}
+                  height={360}
+                  className="h-auto w-[200px] sm:w-[300px] md:w-[360px] drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                  style={{
+                    animation: bulletAnimationValue,
+                    willChange: "transform",
+                    transformOrigin: "center"
+                  }}
+                  draggable={false}
+                />
+              </div>
+            )}
+          </button>
         </div>
 
         <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-yellow-100 ring-1 ring-white/20 motion-safe:animate-[fadeUp_550ms_ease-out_forwards] motion-safe:[animation-delay:120ms] motion-safe:opacity-0 sm:text-sm">
@@ -97,7 +230,8 @@ export default function Home() {
           <Link
             href="/learn"
             onClick={handleStartClick}
-            className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-600 px-6 py-3 text-base font-extrabold tracking-wide shadow-[0_10px_0_0_rgb(2,132,199)] transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_8px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_5px_0_0_rgb(2,132,199)] sm:px-8 sm:py-4 sm:text-xl motion-safe:animate-[fadeUp_700ms_ease-out_forwards]"
+            onMouseEnter={handleButtonHover}
+            className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-600 px-6 py-3 text-base font-extrabold tracking-wide shadow-[0_10px_0_0_rgb(2,132,199)] transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_8px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_5px_0_0_rgb(2,132,199)] sm:px-8 sm:py-4 sm:text-xl motion-safe:animate-[fadeUp_700ms_ease-out_forwards] cursor-target"
           >
             START LEARNING
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-0.5">
@@ -106,7 +240,8 @@ export default function Home() {
           </Link>
           <Link
             href="#roadmap"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-6 py-3 text-base font-bold text-white ring-1 ring-white/25 transition-all duration-200 hover:bg-white/25 hover:scale-[1.015] sm:px-8 sm:py-4 sm:text-xl"
+            onMouseEnter={handleButtonHover}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-6 py-3 text-base font-bold text-white ring-1 ring-white/25 transition-all duration-200 hover:bg-white/25 hover:scale-[1.015] sm:px-8 sm:py-4 sm:text-xl cursor-target"
           >
             VIEW ROADMAP
           </Link>
