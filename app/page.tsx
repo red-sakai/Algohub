@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { playSfx } from "./components/ui/sfx";
 import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { gsap } from "gsap";
 import IrisOpenOnMount from "./components/ui/IrisOpenOnMount";
 import { setIrisPoint } from "./components/ui/transitionBus";
 import LoadingOverlay from "./components/ui/LoadingOverlay";
@@ -19,15 +20,33 @@ export default function Home() {
   const [showLoader, setShowLoader] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
   const [flashOpacity, setFlashOpacity] = useState(0);
-  const [defaultLogoAnimation, setDefaultLogoAnimation] = useState<"idle" | "slideIn" | "hidden">("idle");
+  const [defaultLogoAnimation, setDefaultLogoAnimation] = useState<"idle" | "rollIn" | "hidden">("idle");
   const [bulletStage, setBulletStage] = useState<"hidden" | "bounce" | "fall">("hidden");
   const [bulletCycle, setBulletCycle] = useState(0);
+  const [logoEntryDirection, setLogoEntryDirection] = useState<"left" | "right">("left");
   const [isShaking, setIsShaking] = useState(false);
+  const [isLogoShining, setIsLogoShining] = useState(false);
+  const [logoShineCycle, setLogoShineCycle] = useState(0);
+  const defaultLogoRef = useRef<HTMLImageElement>(null);
+  const rollTweenRef = useRef<gsap.core.Tween | null>(null);
+  const logoShineRef = useRef<HTMLSpanElement | null>(null);
+  const logoShineTweenRef = useRef<gsap.core.Timeline | null>(null);
   const animationTimeoutsRef = useRef<number[]>([]);
   const logoLockRef = useRef(false);
   const bounceDuration = 450;
   const fallDuration = 4000;
-  const slideInDuration = 1000;
+  const rollInDuration = 1600;
+  const logoShineDiameter = 1.24; // tweak this multiplier to adjust the shine radius
+  const logoShineDuration = 1200;
+  const teardownTweens = useCallback(() => {
+    rollTweenRef.current?.kill();
+    rollTweenRef.current = null;
+    logoShineTweenRef.current?.kill();
+    logoShineTweenRef.current = null;
+  }, []);
+  const setLogoShineRef = useCallback((node: HTMLSpanElement | null) => {
+    logoShineRef.current = node;
+  }, []);
   const clearLogoTimeouts = useCallback(() => {
     animationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
     animationTimeoutsRef.current = [];
@@ -47,14 +66,23 @@ export default function Home() {
       clearLogoTimeouts();
     };
   }, [clearLogoTimeouts]);
+
+  useEffect(() => teardownTweens, [teardownTweens]);
   const handleButtonHover = useCallback(() => {
     playSfx("/gun_sfx.mp3", 0.6);
   }, []);
+  const triggerLogoShine = useCallback(() => {
+    playSfx("/anime_shine.mp3", 0.7);
+    setLogoShineCycle((prev) => prev + 1);
+    setIsLogoShining(true);
+    scheduleLogoTimeout(() => setIsLogoShining(false), logoShineDuration);
+  }, [logoShineDuration, scheduleLogoTimeout]);
   const handleLogoClick = useCallback(() => {
     if (logoLockRef.current) return;
     logoLockRef.current = true;
     clearLogoTimeouts();
     setIsShaking(false);
+    setIsLogoShining(false);
     playSfx("/gun_shot_sfx.mp3", 0.8);
     playSfx("/algohub_falling.mp3", 0.8);
     setFlashOpacity(1);
@@ -76,17 +104,124 @@ export default function Home() {
     scheduleLogoTimeout(() => {
       setIsShaking(false);
     }, 5000);
+    const rollInStartDelay = bounceDuration + fallDuration;
+
     scheduleLogoTimeout(() => {
       setBulletStage("hidden");
-      setDefaultLogoAnimation("slideIn");
-    }, bounceDuration + fallDuration);
+      scheduleLogoTimeout(() => setLogoEntryDirection(Math.random() > 0.5 ? "left" : "right"), 16);
+      scheduleLogoTimeout(() => setDefaultLogoAnimation("rollIn"), 32);
+    }, rollInStartDelay);
+
     scheduleLogoTimeout(() => {
       setDefaultLogoAnimation("idle");
       logoLockRef.current = false;
       clearLogoTimeouts();
       setIsShaking(false);
-    }, bounceDuration + fallDuration + slideInDuration + 200);
+      setIsLogoShining(false);
+    }, rollInStartDelay + rollInDuration + 200);
   }, [clearLogoTimeouts, scheduleLogoTimeout]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target = defaultLogoRef.current;
+    if (!target) return;
+
+    if (defaultLogoAnimation === "hidden") {
+      rollTweenRef.current?.kill();
+      gsap.set(target, { opacity: 0 });
+      return;
+    }
+
+    if (defaultLogoAnimation !== "rollIn") {
+      return;
+    }
+
+    rollTweenRef.current?.kill();
+
+    const fromX = logoEntryDirection === "left" ? "-135vw" : "135vw";
+    const fromY = logoEntryDirection === "left" ? "14vh" : "-14vh";
+    const fromRotation = logoEntryDirection === "left" ? -900 : 900;
+
+    const tween = gsap.fromTo(
+      target,
+      {
+        opacity: 0,
+        x: fromX,
+        y: fromY,
+        rotation: fromRotation,
+        scale: 0.85,
+      },
+      {
+        opacity: 1,
+        x: 0,
+        y: 0,
+        rotation: 0,
+        scale: 1,
+        duration: rollInDuration / 1000,
+        ease: "expo.out",
+      },
+    );
+    tween.eventCallback("onComplete", triggerLogoShine);
+    rollTweenRef.current = tween;
+
+    return () => {
+      tween.eventCallback("onComplete", null);
+      rollTweenRef.current?.kill();
+    };
+  }, [defaultLogoAnimation, logoEntryDirection, rollInDuration, triggerLogoShine]);
+
+  useEffect(() => {
+    if (!isLogoShining || !logoShineRef.current) return;
+    const element = logoShineRef.current;
+    const timeline = gsap.timeline({
+      defaults: { ease: "power2.out" },
+      onComplete: () => {
+        if (logoShineTweenRef.current === timeline) {
+          logoShineTweenRef.current = null;
+        }
+      },
+    });
+    timeline.set(element, {
+      opacity: 0,
+      scale: 0.5,
+      xPercent: -50,
+      yPercent: -50,
+      filter: "blur(0.35px)",
+      transformOrigin: "50% 50%",
+    });
+    timeline.to(element, {
+      opacity: 0.95,
+      scale: 0.82,
+      filter: "blur(0.45px)",
+      duration: 0.2,
+    });
+    timeline.to(element, {
+      opacity: 0.55,
+      scale: 1.12,
+      filter: "blur(1px)",
+      duration: 0.4,
+      ease: "power2.out",
+    });
+    timeline.to(
+      element,
+      {
+        opacity: 0,
+        scale: 1.6,
+        filter: "blur(1.8px)",
+        duration: 0.62,
+        ease: "power3.inOut",
+      },
+      "-=0.12",
+    );
+    logoShineTweenRef.current?.kill();
+    logoShineTweenRef.current = timeline;
+    return () => {
+      if (logoShineTweenRef.current === timeline) {
+        logoShineTweenRef.current = null;
+      }
+      timeline.kill();
+    };
+  }, [isLogoShining, logoShineCycle]);
   const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     // Respect new-tab/modified clicks and non-left clicks
     if (e.defaultPrevented) return;
@@ -124,13 +259,16 @@ export default function Home() {
     });
   };
   const defaultLogoAnimationValue = useMemo(() => {
-    if (defaultLogoAnimation === "slideIn") return "logoSlideIn 1s ease-out forwards";
     if (defaultLogoAnimation === "idle") return "logoFloat 8s ease-in-out infinite";
     return "none";
   }, [defaultLogoAnimation]);
   const defaultLogoOpacity = defaultLogoAnimation === "hidden" ? 0 : 1;
   const defaultLogoOpacityTransition =
-    defaultLogoAnimation === "hidden" ? "opacity 120ms ease-in" : "opacity 200ms ease-out";
+    defaultLogoAnimation === "hidden"
+      ? "opacity 120ms ease-in"
+      : defaultLogoAnimation === "rollIn"
+      ? "opacity 60ms ease-in"
+      : "opacity 200ms ease-out";
   const isBulletVisible = bulletStage !== "hidden";
   const bulletAnimationValue = useMemo(() => {
     if (bulletStage === "bounce") return "logoBounce 450ms ease-out forwards";
@@ -175,10 +313,12 @@ export default function Home() {
           <button
             type="button"
             onClick={handleLogoClick}
+            onMouseEnter={handleButtonHover}
             className="group relative inline-flex items-center justify-center rounded-[2.75rem] bg-transparent transition-transform duration-300 hover:scale-[1.06] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70 cursor-target"
             aria-label="Trigger AlgoHub logo transformation"
           >
             <Image
+              ref={defaultLogoRef}
               src="/algohub-transparent.png"
               alt="AlgoHub logo"
               width={360}
@@ -193,6 +333,22 @@ export default function Home() {
               }}
               draggable={false}
             />
+            {isLogoShining && (
+              <span
+                key={logoShineCycle}
+                ref={setLogoShineRef}
+                className="logo-shine-circle"
+                aria-hidden
+                style={{
+                  width: `${logoShineDiameter * 100}%`,
+                  height: `${logoShineDiameter * 100}%`,
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                  opacity: 0,
+                }}
+              />
+            )}
             {isBulletVisible && (
               <div key={bulletCycle} className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <Image
