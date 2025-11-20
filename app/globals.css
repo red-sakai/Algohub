@@ -79,14 +79,6 @@
   animation: siteShake 1s ease-in-out both;
 }
 
-.logo-shine-circle {
-  position: absolute;
-  pointer-events: none;
-  border-radius: 9999px;
-  mix-blend-mode: screen;
-  filter: blur(0.4px);
-  background: radial-gradient(circle, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.38) 42%, rgba(255,255,255,0.1) 68%, rgba(255,255,255,0) 100%);
-}
 
 @keyframes logoSlideOut {
   0% { opacity: 1; transform: translateY(0) scale(1); }

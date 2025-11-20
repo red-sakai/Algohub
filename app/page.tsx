@@ -29,23 +29,18 @@ export default function Home() {
   const [logoShineCycle, setLogoShineCycle] = useState(0);
   const defaultLogoRef = useRef<HTMLImageElement>(null);
   const rollTweenRef = useRef<gsap.core.Tween | null>(null);
-  const logoShineRef = useRef<HTMLSpanElement | null>(null);
+  const logoShineRef = useRef<HTMLImageElement | null>(null);
   const logoShineTweenRef = useRef<gsap.core.Timeline | null>(null);
   const animationTimeoutsRef = useRef<number[]>([]);
   const logoLockRef = useRef(false);
   const bounceDuration = 450;
   const fallDuration = 4000;
   const rollInDuration = 1600;
-  const logoShineDiameter = 1.24; // tweak this multiplier to adjust the shine radius
-  const logoShineDuration = 1200;
   const teardownTweens = useCallback(() => {
     rollTweenRef.current?.kill();
     rollTweenRef.current = null;
     logoShineTweenRef.current?.kill();
     logoShineTweenRef.current = null;
-  }, []);
-  const setLogoShineRef = useCallback((node: HTMLSpanElement | null) => {
-    logoShineRef.current = node;
   }, []);
   const clearLogoTimeouts = useCallback(() => {
     animationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -73,16 +68,19 @@ export default function Home() {
   }, []);
   const triggerLogoShine = useCallback(() => {
     playSfx("/anime_shine.mp3", 0.7);
-    setLogoShineCycle((prev) => prev + 1);
+    logoShineTweenRef.current?.kill();
+    logoShineTweenRef.current = null;
     setIsLogoShining(true);
-    scheduleLogoTimeout(() => setIsLogoShining(false), logoShineDuration);
-  }, [logoShineDuration, scheduleLogoTimeout]);
+    setLogoShineCycle((prev) => prev + 1);
+  }, []);
   const handleLogoClick = useCallback(() => {
     if (logoLockRef.current) return;
     logoLockRef.current = true;
     clearLogoTimeouts();
     setIsShaking(false);
     setIsLogoShining(false);
+    logoShineTweenRef.current?.kill();
+    logoShineTweenRef.current = null;
     playSfx("/gun_shot_sfx.mp3", 0.8);
     playSfx("/algohub_falling.mp3", 0.8);
     setFlashOpacity(1);
@@ -118,6 +116,8 @@ export default function Home() {
       clearLogoTimeouts();
       setIsShaking(false);
       setIsLogoShining(false);
+      logoShineTweenRef.current?.kill();
+      logoShineTweenRef.current = null;
     }, rollInStartDelay + rollInDuration + 200);
   }, [clearLogoTimeouts, scheduleLogoTimeout]);
 
@@ -171,50 +171,36 @@ export default function Home() {
   }, [defaultLogoAnimation, logoEntryDirection, rollInDuration, triggerLogoShine]);
 
   useEffect(() => {
-    if (!isLogoShining || !logoShineRef.current) return;
+    if (!isLogoShining || !logoShineRef.current) {
+      return;
+    }
+
     const element = logoShineRef.current;
+    logoShineTweenRef.current?.kill();
+
     const timeline = gsap.timeline({
-      defaults: { ease: "power2.out" },
       onComplete: () => {
         if (logoShineTweenRef.current === timeline) {
           logoShineTweenRef.current = null;
         }
+        setIsLogoShining(false);
       },
     });
+
     timeline.set(element, {
       opacity: 0,
-      scale: 0.5,
       xPercent: -50,
       yPercent: -50,
-      filter: "blur(0.35px)",
-      transformOrigin: "50% 50%",
+      scale: 1,
+      filter: "brightness(1.28) saturate(0) drop-shadow(0 0 0.55rem rgba(255,255,255,0.78))",
     });
-    timeline.to(element, {
-      opacity: 0.95,
-      scale: 0.82,
-      filter: "blur(0.45px)",
-      duration: 0.2,
-    });
-    timeline.to(element, {
-      opacity: 0.55,
-      scale: 1.12,
-      filter: "blur(1px)",
-      duration: 0.4,
-      ease: "power2.out",
-    });
-    timeline.to(
-      element,
-      {
-        opacity: 0,
-        scale: 1.6,
-        filter: "blur(1.8px)",
-        duration: 0.62,
-        ease: "power3.inOut",
-      },
-      "-=0.12",
-    );
-    logoShineTweenRef.current?.kill();
+
+    timeline.to(element, { opacity: 1, duration: 0.22, ease: "power1.out" });
+    timeline.to(element, { opacity: 1, duration: 0.55, ease: "none" });
+    timeline.to(element, { opacity: 0, duration: 1.1, ease: "power2.out" });
+
     logoShineTweenRef.current = timeline;
+
     return () => {
       if (logoShineTweenRef.current === timeline) {
         logoShineTweenRef.current = null;
@@ -222,6 +208,7 @@ export default function Home() {
       timeline.kill();
     };
   }, [isLogoShining, logoShineCycle]);
+
   const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     // Respect new-tab/modified clicks and non-left clicks
     if (e.defaultPrevented) return;
@@ -334,18 +321,20 @@ export default function Home() {
               draggable={false}
             />
             {isLogoShining && (
-              <span
+              <Image
                 key={logoShineCycle}
-                ref={setLogoShineRef}
-                className="logo-shine-circle"
+                ref={logoShineRef}
+                src="/sparkle_gif.gif"
+                alt=""
                 aria-hidden
+                width={360}
+                height={360}
+                unoptimized
+                className="pointer-events-none absolute left-1/2 top-1/2 w-[200px] -translate-x-1/2 -translate-y-1/2 opacity-0 sm:w-[300px] md:w-[360px]"
                 style={{
-                  width: `${logoShineDiameter * 100}%`,
-                  height: `${logoShineDiameter * 100}%`,
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  opacity: 0,
+                  filter: "brightness(1.28) saturate(0) drop-shadow(0 0 0.75rem rgba(255,255,255,0.82))",
+                  willChange: "opacity",
+                  mixBlendMode: "screen",
                 }}
               />
             )}
