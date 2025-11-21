@@ -1,4 +1,4 @@
-![AlgoHub logo](public/algohub-transparent.png)
+<img src="public/algohub-transparent.png" alt="AlgoHub logo" width="200" />
 
 # AlgoHub
 
