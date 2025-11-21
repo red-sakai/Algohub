@@ -11,8 +11,8 @@ import { getGameAudio } from "../../../lib/audio/gameAudio";
 
 // Default fallback playlist; real files are discovered from /api/audio
 const DEFAULT_PLAYLIST = [
-  { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
-  { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
+  { title: "Delfino Plaza", src: "/audio/Delfino Plaza - Super Mario Sunshine Soundtrack.mp3" },
+  { title: "Route 1", src: "/audio/Pokemon FireRed - Route 1.mp3" },
 ];
 
 type Track = { title: string; src: string };
@@ -33,51 +33,43 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   const [tracks, setTracks] = useState<Track[]>(() => playlist ?? []);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const raw = localStorage.getItem(STORE);
-      if (raw) {
-        const p = JSON.parse(raw) as { muted?: boolean };
-        if (typeof p.muted === "boolean") return p.muted;
-      }
-    } catch {}
-    return false;
-  });
-  const [volume, setVolume] = useState<number>(() => {
-    if (typeof window === "undefined") return 0.7;
-    try {
-      const raw = localStorage.getItem(STORE);
-      if (raw) {
-        const p = JSON.parse(raw) as { volume?: number };
-        if (typeof p.volume === "number") return Math.max(0, Math.min(1, p.volume));
-      }
-    } catch {}
-    return 0.7;
-  });
-  const [loop, setLoop] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const raw = localStorage.getItem(STORE);
-      if (raw) {
-        const p = JSON.parse(raw) as { loop?: boolean };
-        if (typeof p.loop === "boolean") return p.loop;
-      }
-    } catch {}
-    return false;
-  });
+  const [muted, setMuted] = useState<boolean>(false);
+  const [volume, setVolume] = useState<number>(0.7);
+  const [loop, setLoop] = useState<boolean>(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   // (Optional) duration/time omitted to keep UI simple and avoid stutter
   const mutedRef = useRef(false);
+  const skipNextPersistRef = useRef(true);
   useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-  // Persist prefs
+  // Load stored prefs once on mount to avoid hydration mismatches.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (raw) {
+        const p = JSON.parse(raw) as { muted?: boolean; volume?: number; loop?: boolean };
+        if (typeof p.muted === "boolean") setMuted(p.muted);
+        if (typeof p.volume === "number") setVolume(Math.max(0, Math.min(1, p.volume)));
+        if (typeof p.loop === "boolean") setLoop(p.loop);
+      }
+    } catch {}
+    setPrefsLoaded(true);
+  }, []);
+
+  // Persist prefs once they are loaded client-side.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!prefsLoaded) return;
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
     const p = { volume, muted, loop };
     try {
       localStorage.setItem(STORE, JSON.stringify(p));
     } catch {}
-  }, [volume, muted, loop]);
+  }, [volume, muted, loop, prefsLoaded]);
 
   // Resolve playlist (API fallback)
   const effectiveTracks = useMemo(() => (playlist?.length ? playlist : (tracks.length ? tracks : DEFAULT_PLAYLIST)), [playlist, tracks]);
@@ -201,7 +193,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
         try {
           a.muted = true;
           await a.play();
-          setMuted(true);
+          a.muted = mutedRef.current;
           return;
         } catch {
           a.pause();

@@ -137,6 +137,124 @@ const QUEUE_CAR_MODEL_COLOR_OPTIONS = Object.freeze({
     '#d1c4e9',
   ]),
 });
+
+const toPositionArray = (value) => {
+  if (Array.isArray(value) && value.length >= 3) {
+    return [Number(value[0] ?? 0), Number(value[1] ?? 0), Number(value[2] ?? 0)];
+  }
+  if (value && typeof value === 'object') {
+    if (Array.isArray(value.position) && value.position.length >= 3) {
+      return [Number(value.position[0] ?? 0), Number(value.position[1] ?? 0), Number(value.position[2] ?? 0)];
+    }
+    const { x, y, z } = value;
+    if (typeof x === 'number' && typeof y === 'number' && typeof z === 'number') {
+      return [x, y, z];
+    }
+  }
+  return null;
+};
+
+const makePositionKey = (arr) => arr.map((v) => Number(v ?? 0).toFixed(2)).join('|');
+
+const FREE_MARKER_KEY_TO_ID = new Map();
+const FREE_MARKER_ID_TO_INDEX = new Map();
+FREE_MARKER_POSITIONS.forEach((marker, idx) => {
+  const key = makePositionKey(marker.position);
+  FREE_MARKER_KEY_TO_ID.set(key, marker.id);
+  FREE_MARKER_ID_TO_INDEX.set(marker.id, idx);
+});
+
+const QUEUE_SLOT_ID_TO_INDEX = new Map();
+QUEUE_SLOT_POSITIONS.forEach((slot, idx) => {
+  QUEUE_SLOT_ID_TO_INDEX.set(slot.id, idx);
+});
+
+const getMarkerIdFromPosition = (value) => {
+  const arr = toPositionArray(value);
+  if (!arr) return null;
+  const key = makePositionKey(arr);
+  return FREE_MARKER_KEY_TO_ID.get(key) ?? null;
+};
+
+const formatCarLabel = (car) => {
+  if (!car) return { label: '—', strip: null };
+  const color = typeof car.colorOverride === 'string' && car.colorOverride.trim().length
+    ? car.colorOverride.trim()
+    : null;
+  return {
+    label: color ? '' : '—',
+    strip: color,
+  };
+};
+
+const CAR_MODEL_MATERIAL_CACHE = new Map();
+
+const getMaterialCache = (modelUrl) => {
+  const key = typeof modelUrl === 'string' && modelUrl.length ? modelUrl : '__default__';
+  if (!CAR_MODEL_MATERIAL_CACHE.has(key)) {
+    CAR_MODEL_MATERIAL_CACHE.set(key, new Map());
+  }
+  return CAR_MODEL_MATERIAL_CACHE.get(key);
+};
+
+const buildMaterialKey = (material, colorOverride, highlightColor) => {
+  const baseId = material && typeof material.uuid === 'string' ? material.uuid : 'material';
+  const colorKey = typeof colorOverride === 'string' && colorOverride.length ? colorOverride : 'none';
+  const highlightKey = typeof highlightColor === 'string' && highlightColor.length ? highlightColor : 'none';
+  return `${baseId}::${colorKey}::${highlightKey}`;
+};
+
+const cloneTintedMaterial = (material, colorOverride, highlightColor) => {
+  const tinted = material.clone();
+  if (colorOverride && tinted.color) {
+    const color = tinted.color.clone();
+    color.set(colorOverride);
+    tinted.color = color;
+  }
+  if (highlightColor) {
+    const highlight = new THREE.Color(highlightColor);
+    if (tinted.emissive) {
+      const emissive = tinted.emissive.clone();
+      emissive.set(highlight);
+      tinted.emissive = emissive;
+      const baseIntensity = typeof tinted.emissiveIntensity === 'number' ? tinted.emissiveIntensity : 0.75;
+      tinted.emissiveIntensity = Math.max(baseIntensity, 0.75);
+    } else if (tinted.color) {
+      const color = tinted.color.clone();
+      color.lerp(highlight, 0.35);
+      tinted.color = color;
+    }
+  }
+  tinted.needsUpdate = true;
+  return tinted;
+};
+
+const resolveTintedMaterial = (modelUrl, material, colorOverride, highlightColor) => {
+  if (!material || typeof material.clone !== 'function') {
+    return material;
+  }
+  if (!colorOverride && !highlightColor) {
+    return material;
+  }
+  const cache = getMaterialCache(modelUrl);
+  const key = buildMaterialKey(material, colorOverride, highlightColor);
+  if (!cache.has(key)) {
+    cache.set(key, cloneTintedMaterial(material, colorOverride, highlightColor));
+  }
+  return cache.get(key);
+};
+
+const applyTintedMaterials = (scene, modelUrl, colorOverride, highlightColor) => {
+  scene.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map((mat) => resolveTintedMaterial(modelUrl, mat, colorOverride, highlightColor));
+      return;
+    }
+    child.material = resolveTintedMaterial(modelUrl, child.material, colorOverride, highlightColor);
+  });
+  return scene;
+};
 const getQueueCarModelSettings = (modelUrl) => {
   const override = modelUrl ? QUEUE_CAR_MODEL_SETTINGS[modelUrl] : null;
   const scale = Number.isFinite(override?.scale) ? override.scale : DEFAULT_QUEUE_CAR_MODEL_SETTINGS.scale;
@@ -388,6 +506,14 @@ const PARKING_TOLL_SCALE = 2; // adjust these to line the toll booth up with the
 const ROAD_BARRIER_POSITION = [38, 0.02, -48];
 const ROAD_BARRIER_ROTATION = [0, Math.PI * 0, 0];
 const ROAD_BARRIER_SCALE = 5; // tweak to align barrier with the entrance
+const SECURITY_GUARD_POSITION = [30, 3, -55];
+const SECURITY_GUARD_ROTATION = [0, Math.PI * 0.5, 0];
+const SECURITY_GUARD_SCALE = 1.1;
+const SECURITY_GUARD_MODEL_PATH = '/security/security_guard2.glb';
+const SECURITY_GUARD_CAMERA_POSITION = [36, 7.2, -50];
+const SECURITY_GUARD_CAMERA_LOOK_AT = [SECURITY_GUARD_POSITION[0], SECURITY_GUARD_POSITION[1] + 1.6, SECURITY_GUARD_POSITION[2]];
+const CAMERA_TRANSITION_DURATION = 0.9;
+const INTERACT_CAMERA_PHASES = new Set(['prompt', 'handover', 'checking']);
 const STACK_COUNTDOWN_START = 3;
 const COUNTDOWN_MODEL_SCALE = 4;
 const BARRIER_OPEN_ANGLE = 0.9;
@@ -502,36 +628,11 @@ function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, hi
   const { scene } = useGLTF(modelUrl);
   const clonedScene = useMemo(() => {
     const cloned = scene.clone(true);
-    const colorTint = typeof colorOverride === 'string' && colorOverride.length ? new THREE.Color(colorOverride) : null;
-    const highlightTint = typeof highlightColor === 'string' && highlightColor.length ? new THREE.Color(highlightColor) : null;
-    if (!colorTint && !highlightTint) {
-      return cloned;
+    if (colorOverride || highlightColor) {
+      applyTintedMaterials(cloned, modelUrl, colorOverride, highlightColor);
     }
-    cloned.traverse((child) => {
-      if (!child.isMesh || !child.material) return;
-      const material = child.material.clone();
-      if (colorTint && material.color) {
-        material.color = material.color.clone();
-        material.color.set(colorTint);
-      }
-      if (highlightTint) {
-        if (material.emissive) {
-          material.emissive = material.emissive.clone();
-          material.emissive.set(highlightTint);
-          if (typeof material.emissiveIntensity === 'number') {
-            material.emissiveIntensity = Math.max(material.emissiveIntensity, 0.75);
-          } else {
-            material.emissiveIntensity = 0.75;
-          }
-        } else if (material.color) {
-          material.color = material.color.clone();
-          material.color.lerp(highlightTint, 0.35);
-        }
-      }
-      child.material = material;
-    });
     return cloned;
-  }, [scene, colorOverride, highlightColor]);
+  }, [scene, modelUrl, colorOverride, highlightColor]);
   return <primitive object={clonedScene} {...props} />;
 }
 
@@ -914,7 +1015,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   );
 }
 
-function CameraRig({ targetRef, mode, queueTarget }) {
+function CameraRig({ targetRef, mode, queueTarget, interactTarget, interactActive }) {
   const { camera } = useThree();
   const smoothPos = useRef(new THREE.Vector3());
   const initialized = useRef(false);
@@ -923,6 +1024,19 @@ function CameraRig({ targetRef, mode, queueTarget }) {
   const tempOffset = useMemo(() => new THREE.Vector3(), []);
   const lookAtPos = useRef(new THREE.Vector3());
   const desiredPos = useRef(new THREE.Vector3());
+  const preInteractPosRef = useRef(new THREE.Vector3());
+  const preInteractLookAtRef = useRef(new THREE.Vector3());
+  const lastInteractLookAtRef = useRef(new THREE.Vector3());
+  const transitionFromPosRef = useRef(new THREE.Vector3());
+  const transitionFromLookAtRef = useRef(new THREE.Vector3());
+  const transitionToPosRef = useRef(new THREE.Vector3());
+  const transitionToLookAtRef = useRef(new THREE.Vector3());
+  const transitionStartRef = useRef(0);
+  const transitionDuration = CAMERA_TRANSITION_DURATION;
+  const transitioningRef = useRef(false);
+  const toInteractRef = useRef(false);
+  const transitionPos = useMemo(() => new THREE.Vector3(), []);
+  const transitionLook = useMemo(() => new THREE.Vector3(), []);
 
   useEffect(() => {
     initialized.current = false;
@@ -933,11 +1047,76 @@ function CameraRig({ targetRef, mode, queueTarget }) {
     if (!target) return;
     target.getWorldPosition(lookAtPos.current);
 
+    const now = performance.now() / 1000;
+
+    if (interactActive && interactTarget) {
+      if (!toInteractRef.current) {
+        toInteractRef.current = true;
+        transitionStartRef.current = now;
+        target.getWorldPosition(preInteractLookAtRef.current);
+        preInteractPosRef.current.copy(camera.position);
+        transitionFromPosRef.current.copy(camera.position);
+        transitionFromLookAtRef.current.copy(preInteractLookAtRef.current);
+        transitionToPosRef.current.copy(interactTarget.position);
+        transitionToLookAtRef.current.copy(interactTarget.lookAt);
+        transitioningRef.current = true;
+      }
+      const elapsed = now - transitionStartRef.current;
+      const t = transitioningRef.current ? Math.min(1, elapsed / transitionDuration) : 1;
+      const eased = t * t * (3 - 2 * t);
+      lookAtPos.current.copy(interactTarget.lookAt);
+      if (transitioningRef.current) {
+        transitionPos.copy(transitionFromPosRef.current).lerp(transitionToPosRef.current, eased);
+        transitionLook.copy(transitionFromLookAtRef.current).lerp(transitionToLookAtRef.current, eased);
+        camera.position.copy(transitionPos);
+        camera.lookAt(transitionLook);
+        if (t >= 1) {
+          transitioningRef.current = false;
+        }
+      } else {
+        camera.position.copy(interactTarget.position);
+        camera.lookAt(interactTarget.lookAt);
+      }
+      lastInteractLookAtRef.current.copy(interactTarget.lookAt);
+      return;
+    }
+
+    if (toInteractRef.current) {
+      toInteractRef.current = false;
+      transitioningRef.current = true;
+      transitionStartRef.current = now;
+      transitionFromPosRef.current.copy(camera.position);
+      transitionFromLookAtRef.current.copy(lastInteractLookAtRef.current);
+      transitionToPosRef.current.copy(preInteractPosRef.current);
+      transitionToLookAtRef.current.copy(lookAtPos.current);
+    }
+
+    if (transitioningRef.current) {
+      const elapsed = now - transitionStartRef.current;
+      const t = Math.min(1, elapsed / transitionDuration);
+      const eased = t * t * (3 - 2 * t);
+      transitionPos.copy(transitionFromPosRef.current).lerp(transitionToPosRef.current, eased);
+      transitionLook.copy(transitionFromLookAtRef.current).lerp(transitionToLookAtRef.current, eased);
+      camera.position.copy(transitionPos);
+      camera.lookAt(transitionLook);
+      if (t >= 1) {
+        transitioningRef.current = false;
+        smoothPos.current.copy(transitionToPosRef.current);
+        lookAtPos.current.copy(transitionToLookAtRef.current);
+        initialized.current = true;
+      }
+      return;
+    }
+
     if (mode === 'queue' && queueTarget) {
       desiredPos.current.copy(queueTarget.position);
       lookAtPos.current.copy(queueTarget.lookAt);
-      smoothPos.current.copy(desiredPos.current);
-      initialized.current = true;
+      if (!initialized.current) {
+        smoothPos.current.copy(desiredPos.current);
+        initialized.current = true;
+      } else {
+        smoothPos.current.lerp(desiredPos.current, 0.18);
+      }
     } else {
       target.getWorldQuaternion(tempQuaternion);
       tempOffset.copy(followOffset).applyQuaternion(tempQuaternion);
@@ -1076,6 +1255,30 @@ function RoadBarrier({ open = false }) {
       <group ref={pivotRef}>
         <primitive object={barrierScene} />
       </group>
+    </group>
+  );
+}
+
+function SecurityGuard() {
+  const { scene } = useGLTF(SECURITY_GUARD_MODEL_PATH);
+  const guardScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    const tempBox = new THREE.Box3().setFromObject(cloned);
+    const center = new THREE.Vector3();
+    tempBox.getCenter(center);
+    cloned.position.sub(center);
+    cloned.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    return cloned;
+  }, [scene]);
+
+  return (
+    <group position={SECURITY_GUARD_POSITION} rotation={SECURITY_GUARD_ROTATION} scale={SECURITY_GUARD_SCALE}>
+      <primitive object={guardScene} />
     </group>
   );
 }
@@ -1754,13 +1957,81 @@ function MobileJoystick({ active }) {
   );
 }
 
-export default function ParkingScene() {
+function QueueStateViewer({ slotState, freeSlotState, selectedIds }) {
+  const selectedSet = useMemo(() => new Set(Array.isArray(selectedIds) ? selectedIds : []), [selectedIds]);
+
+  const renderSection = (title, entries, prefix) => {
+    const list = Array.isArray(entries) ? entries : [];
+    return (
+      <div className="mt-3 first:mt-0">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-white/65">{title}</div>
+        <div className="mt-2 flex items-stretch gap-2">
+          <span className="pt-2 text-lg font-semibold leading-none text-white/60">[</span>
+          <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          {list.map((entry) => {
+          const car = entry?.car ?? null;
+          const id = prefix === 'slot' ? entry.slotId : entry.markerId;
+          const isSelected = Boolean(car && selectedSet.has(car.id));
+          const phase = car?.phase ?? QUEUE_CAR_PHASE_SLOT;
+          const phaseLabel = car
+            ? phase === QUEUE_CAR_PHASE_HOLD
+              ? 'Hold'
+              : phase === QUEUE_CAR_PHASE_EXIT
+                ? 'Exit'
+                : 'Ready'
+            : 'Empty';
+          const cardClass = [
+            'flex flex-col gap-1 rounded-xl border px-2 py-2 text-xs leading-tight transition-colors',
+            car ? 'bg-white/5 border-white/15' : 'bg-slate-900/30 border-white/10',
+            isSelected ? 'ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.35)]' : '',
+          ].join(' ');
+            const { label, strip } = formatCarLabel(car);
+          return (
+            <div key={`${prefix}-${id}`} className={cardClass}>
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-white/70">
+                <span>{prefix === 'slot' ? `Slot ${id}` : `Free ${id}`}</span>
+                {car?.colorOverride ? (
+                  <span
+                    className="h-2 w-2 rounded-full border border-white/20"
+                    style={{ backgroundColor: car.colorOverride }}
+                  />
+                ) : null}
+              </div>
+              {strip ? (
+                <div className="h-2 rounded-full border border-white/15" style={{ backgroundColor: strip }} />
+              ) : (
+                <div className="text-sm font-semibold text-white">{label}</div>
+              )}
+              <div className="text-[10px] uppercase tracking-[0.14em] text-white/45">{phaseLabel}</div>
+            </div>
+          );
+        })}
+          </div>
+          <span className="pt-2 text-lg font-semibold leading-none text-white/60">]</span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="pointer-events-none absolute left-4 top-[8.5rem] z-30 w-[min(95vw,28rem)] text-white sm:left-6 sm:top-[9.6rem]">
+      <div className="rounded-2xl bg-slate-950/75 p-4 shadow-lg ring-1 ring-white/15 backdrop-blur">
+        <div className="text-xs uppercase tracking-[0.22em] text-white/70">Queue Snapshot</div>
+        {renderSection('Number Slots', slotState, 'slot')}
+        {renderSection('Free Slots', freeSlotState, 'free')}
+      </div>
+    </div>
+  );
+}
+
+export default function ParkingScene({ showQueueState = false, onQueueMinigameChange }) {
   useEffect(() => {
     useGLTF.preload('/car-show/models/car/scene.gltf');
     useGLTF.preload('/models/modern_parking_area.glb');
     useGLTF.preload('/models/street_road.glb');
     useGLTF.preload('/models/parking_toll.glb');
     useGLTF.preload('/models/road_barrier.glb');
+    useGLTF.preload(SECURITY_GUARD_MODEL_PATH);
     Object.values(COUNTDOWN_MODELS).forEach((path) => useGLTF.preload(path));
     QUEUE_CAR_MODEL_PATHS.forEach((path) => useGLTF.preload(path));
   }, []);
@@ -1836,6 +2107,44 @@ export default function ParkingScene() {
   const queueLoadingProgress = QUEUE_LOADING_MESSAGES.length
     ? Math.min(100, Math.round(((Math.min(queueLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
     : 100;
+
+  const securityGuardCameraTarget = useMemo(() => ({
+    position: new THREE.Vector3(...SECURITY_GUARD_CAMERA_POSITION),
+    lookAt: new THREE.Vector3(...SECURITY_GUARD_CAMERA_LOOK_AT),
+  }), []);
+
+  const queueSlotState = useMemo(() => {
+    const slots = QUEUE_SLOT_POSITIONS.map((slot) => ({ slotId: slot.id, car: null }));
+    queueCars.forEach((car) => {
+      const phase = car?.phase ?? QUEUE_CAR_PHASE_SLOT;
+      if (phase !== QUEUE_CAR_PHASE_SLOT) return;
+      const slotId = Number(car?.slotId);
+      if (!Number.isFinite(slotId)) return;
+      if (!QUEUE_SLOT_ID_TO_INDEX.has(slotId)) return;
+      const index = QUEUE_SLOT_ID_TO_INDEX.get(slotId);
+      if (index == null || slots[index].car) return;
+      slots[index] = { slotId, car };
+    });
+    return slots;
+  }, [queueCars]);
+
+  const queueHoldState = useMemo(() => {
+    const markers = FREE_MARKER_POSITIONS.map((marker) => ({ markerId: marker.id, car: null }));
+    queueCars.forEach((car) => {
+      const phase = car?.phase ?? QUEUE_CAR_PHASE_SLOT;
+      if (phase !== QUEUE_CAR_PHASE_HOLD) return;
+      const markerId = getMarkerIdFromPosition(car?.targetOverride);
+      if (markerId == null) return;
+      const resolvedMarkerId = Number(markerId);
+      if (!Number.isFinite(resolvedMarkerId)) return;
+      const index = FREE_MARKER_ID_TO_INDEX.get(resolvedMarkerId);
+      if (index == null || markers[index].car) return;
+      markers[index] = { markerId: resolvedMarkerId, car };
+    });
+    return markers;
+  }, [queueCars]);
+
+  const interactCameraActive = carOnInteractMarker && INTERACT_CAMERA_PHASES.has(interactPhase);
 
   const handleInteractMarkerPresence = useCallback((isInside) => {
     rawHandleInteractPresence(isInside);
@@ -2395,6 +2704,14 @@ export default function ParkingScene() {
   }, [activeMinigame]);
 
   useEffect(() => {
+    if (typeof onQueueMinigameChange === 'function') {
+      try {
+        onQueueMinigameChange(activeMinigame === 'queue');
+      } catch {}
+    }
+  }, [activeMinigame, onQueueMinigameChange]);
+
+  useEffect(() => {
     if (!queueLoading) {
       return undefined;
     }
@@ -2657,6 +2974,7 @@ export default function ParkingScene() {
           <StreetRoad />
           <ParkingToll />
           <RoadBarrier open={barrierShouldOpen} />
+          <SecurityGuard />
           <GameMarker
             label="STACK"
             position={STACK_MARKER_POSITION}
@@ -2702,10 +3020,23 @@ export default function ParkingScene() {
           <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'queue'} />
           <Environment preset="sunset" background />
         </Suspense>
-        <CameraRig targetRef={carRef} mode={activeMinigame} queueTarget={QUEUE_CAMERA_CONFIG} />
+        <CameraRig
+          targetRef={carRef}
+          mode={activeMinigame}
+          queueTarget={QUEUE_CAMERA_CONFIG}
+          interactTarget={securityGuardCameraTarget}
+          interactActive={interactCameraActive}
+        />
         <Stats />
       </Canvas>
       <MobileJoystick active={joystickActive} />
+      {showQueueState && activeMinigame === 'queue' && (
+        <QueueStateViewer
+          slotState={queueSlotState}
+          freeSlotState={queueHoldState}
+          selectedIds={selectedQueueCarIds}
+        />
+      )}
       <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
         <div className="text-xs uppercase tracking-wider text-white/80">Speed</div>
         <div className="mt-0.5 flex items-baseline gap-1">
