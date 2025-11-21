@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useRef } from "@/hooks/useRef";
 
 type Direction = "up" | "down" | "left" | "right" | "diagonal";
 

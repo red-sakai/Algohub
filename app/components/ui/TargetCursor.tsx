@@ -1,6 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useCallback } from '@/hooks/useCallback';
+import { useEffect } from '@/hooks/useEffect';
+import { useMemo } from '@/hooks/useMemo';
+import { useRef } from '@/hooks/useRef';
 import { gsap } from 'gsap';
 
 export interface TargetCursorProps {
@@ -11,16 +14,16 @@ export interface TargetCursorProps {
   parallaxOn?: boolean;
 }
 
-const TargetCursor: React.FC<TargetCursorProps> = ({
+export default function TargetCursor({
   targetSelector = '.cursor-target',
   spinDuration = 2,
   hideDefaultCursor = true,
   hoverDuration = 0.2,
   parallaxOn = true
-}) => {
+}: TargetCursorProps) {
   const cursorRef = useRef<HTMLDivElement>(null);
   const cornersRef = useRef<NodeListOf<HTMLDivElement> | null>(null);
-  const spinTl = useRef<gsap.core.Timeline | null>(null);
+  const spinTlRef = useRef<gsap.core.Timeline | null>(null);
   const dotRef = useRef<HTMLDivElement>(null);
 
   const isActiveRef = useRef(false);
@@ -80,10 +83,10 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
     });
 
     const createSpinTimeline = () => {
-      if (spinTl.current) {
-        spinTl.current.kill();
+      if (spinTlRef.current) {
+        spinTlRef.current.kill();
       }
-      spinTl.current = gsap
+      spinTlRef.current = gsap
         .timeline({ repeat: -1 })
         .to(cursor, { rotation: '+=360', duration: spinDuration, ease: 'none' });
     };
@@ -176,7 +179,7 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
       const corners = Array.from(cornersRef.current);
       corners.forEach(corner => gsap.killTweensOf(corner));
       gsap.killTweensOf(cursorRef.current, 'rotation');
-      spinTl.current?.pause();
+      spinTlRef.current?.pause();
       gsap.set(cursorRef.current, { rotation: 0 });
 
       const rect = target.getBoundingClientRect();
@@ -227,11 +230,11 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
           });
         }
         resumeTimeout = setTimeout(() => {
-          if (!activeTarget && cursorRef.current && spinTl.current) {
+            if (!activeTarget && cursorRef.current && spinTlRef.current) {
             const currentRotation = gsap.getProperty(cursorRef.current, 'rotation') as number;
             const normalizedRotation = currentRotation % 360;
-            spinTl.current.kill();
-            spinTl.current = gsap
+              spinTlRef.current.kill();
+              spinTlRef.current = gsap
               .timeline({ repeat: -1 })
               .to(cursorRef.current, { rotation: '+=360', duration: spinDuration, ease: 'none' });
             gsap.to(cursorRef.current, {
@@ -239,7 +242,7 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
               duration: spinDuration * (1 - normalizedRotation / 360),
               ease: 'none',
               onComplete: () => {
-                spinTl.current?.restart();
+                  spinTlRef.current?.restart();
               }
             });
           }
@@ -265,7 +268,7 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
       if (activeTarget) {
         cleanupTarget(activeTarget);
       }
-      spinTl.current?.kill();
+      spinTlRef.current?.kill();
       document.body.style.cursor = originalCursor;
       isActiveRef.current = false;
       targetCornerPositionsRef.current = null;
@@ -274,10 +277,10 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
   }, [targetSelector, spinDuration, moveCursor, constants, hideDefaultCursor, isMobile, hoverDuration, parallaxOn]);
 
   useEffect(() => {
-    if (isMobile || !cursorRef.current || !spinTl.current) return;
-    if (spinTl.current.isActive()) {
-      spinTl.current.kill();
-      spinTl.current = gsap
+    if (isMobile || !cursorRef.current || !spinTlRef.current) return;
+    if (spinTlRef.current.isActive()) {
+      spinTlRef.current.kill();
+      spinTlRef.current = gsap
         .timeline({ repeat: -1 })
         .to(cursorRef.current, { rotation: '+=360', duration: spinDuration, ease: 'none' });
     }
@@ -316,6 +319,4 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
       />
     </div>
   );
-};
-
-export default TargetCursor;
+}

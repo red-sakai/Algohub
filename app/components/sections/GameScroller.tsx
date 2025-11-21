@@ -1,15 +1,18 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useMemo } from "@/hooks/useMemo";
+import { useRef } from "@/hooks/useRef";
+import { useState } from "@/hooks/useState";
 import { usePathname, useRouter } from "next/navigation";
-import { getGlobalAudio } from "../ui/audioSingleton";
-import { getGameAudio } from "../ui/gameAudio";
+import { getGlobalAudio } from "../../../lib/audio/audioSingleton";
+import { getGameAudio } from "../../../lib/audio/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
 import LicenseCardModal from "../ui/LicenseCardModal";
 import LoadingOverlay from "../ui/LoadingOverlay";
 import IrisTransition, { IrisHandle } from "../ui/IrisTransition";
-import { setIrisPoint } from "../ui/transitionBus";
+import { setIrisPoint } from "../../../lib/transition/transitionBus";
 import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
-import { playSfx } from "../ui/sfx";
+import { playSfx } from "../../../lib/audio/sfx";
 
 const LICENSE_STORAGE_KEY = "algohub-license-card-path";
 const LICENSE_EVENT = "algohub-license-card-updated";

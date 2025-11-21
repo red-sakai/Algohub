@@ -7,8 +7,8 @@ import GameScroller from "../components/sections/GameScroller";
 import Link from "next/link";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
-import { setIrisPoint } from "../components/ui/transitionBus";
-import { playSfx } from "../components/ui/sfx";
+import { setIrisPoint } from "../../lib/transition/transitionBus";
+import { playSfx } from "../../lib/audio/sfx";
 import LoadingOverlay from "../components/ui/LoadingOverlay";
 import { useState } from "react";
 

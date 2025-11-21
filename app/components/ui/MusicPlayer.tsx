@@ -1,9 +1,13 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useMemo } from "@/hooks/useMemo";
+import { useRef } from "@/hooks/useRef";
+import { useState } from "@/hooks/useState";
 import { usePathname } from "next/navigation";
-import { MUSIC_BUS } from "./musicBus";
-import { getGlobalAudio } from "./audioSingleton";
-import { getGameAudio } from "./gameAudio";
+import { MUSIC_BUS } from "../../../lib/audio/musicBus";
+import { getGlobalAudio } from "../../../lib/audio/audioSingleton";
+import { getGameAudio } from "../../../lib/audio/gameAudio";
 
 // Default fallback playlist; real files are discovered from /api/audio
 const DEFAULT_PLAYLIST = [
@@ -112,6 +116,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   useEffect(() => {
     lenRef.current = Math.max(1, effectiveTracks.length);
   }, [effectiveTracks.length]);
+  const autoplayTriedRef = useRef(false);
 
   // Create and wire audio element (global singleton to survive route changes/HMR)
   useEffect(() => {
@@ -185,7 +190,6 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   }, [loop]);
 
   // When current track changes: first time, try muted autoplay; otherwise respect play/pause
-  const autoplayTriedRef = useRef(false);
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !current?.src) return;
@@ -397,7 +401,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   );
 }
 
-function IconButton({ children, onClick, label, bigger = false }: { children: React.ReactNode; onClick: () => void; label: string; bigger?: boolean }) {
+function IconButton({ children, onClick, label, bigger = false }: { children: ReactNode; onClick: () => void; label: string; bigger?: boolean }) {
   return (
     <button
       onClick={onClick}

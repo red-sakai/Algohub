@@ -1,6 +1,8 @@
 "use client";
 import Image from "next/image";
-import React, { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useState } from "@/hooks/useState";
 
 // Small presentational component for decorative images
 function Doodle({
@@ -15,7 +17,7 @@ function Doodle({
   w: number;
   className?: string;
   priority?: boolean;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   imgClass?: string;
 }) {
   return (

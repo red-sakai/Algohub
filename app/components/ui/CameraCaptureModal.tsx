@@ -1,6 +1,9 @@
 "use client";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { useCallback } from "@/hooks/useCallback";
+import { useEffect } from "@/hooks/useEffect";
+import { useRef } from "@/hooks/useRef";
+import { useState } from "@/hooks/useState";
 
 // Responsive camera layout definitions.
 // mobile: viewport < 640px, desktop: >= 640px.
