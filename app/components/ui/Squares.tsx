@@ -26,7 +26,7 @@ export default function Squares({
   const dprRef = useRef<number>(1);
 
   useEffect(() => {
-    const canvas = canvasRef.current!;
+    const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
@@ -61,14 +61,14 @@ export default function Squares({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-  const dt = Math.min(64, ts - (lastTsRef.current || ts));
+      const dt = Math.min(64, ts - (lastTsRef.current || ts));
       lastTsRef.current = ts;
 
       // Update offset based on direction
       const offs = offsetRef.current;
-  const sz = squareSize * dpr;
+      const sz = squareSize * dpr;
       // Interpret speed as squares per second; convert to device pixels
-  const deltaPx = (speed * dt / 1000) * sz;
+      const deltaPx = (speed * dt / 1000) * sz;
       switch (direction) {
         case "up":
           offs.y -= deltaPx;
@@ -89,17 +89,13 @@ export default function Squares({
           break;
       }
 
-  // Normalize offset to [-squareSize, squareSize] range
+      // Normalize offset to [-squareSize, squareSize] range
       if (offs.x > sz) offs.x -= sz;
       if (offs.x < -sz) offs.x += sz;
       if (offs.y > sz) offs.y -= sz;
       if (offs.y < -sz) offs.y += sz;
 
       ctx.clearRect(0, 0, width, height);
-
-      // Background subtle
-      // ctx.fillStyle = "rgba(0,0,0,0)"; // transparent to let page gradient show
-      // ctx.fillRect(0, 0, width, height);
 
       // Compute hover cell in canvas space
       let hoverCol: number | null = null;
@@ -149,7 +145,7 @@ export default function Squares({
     };
   }, [borderColor, direction, hoverFillColor, speed, squareSize]);
 
-  return (
+  const canvas = (
     <canvas
       ref={canvasRef}
       className={className}
@@ -157,4 +153,5 @@ export default function Squares({
       style={{ display: "block" }}
     />
   );
+  return canvas;
 }
