@@ -24,6 +24,19 @@ const easeOutCubic = (t) => {
   const clamped = THREE.MathUtils.clamp(t, 0, 1);
   return 1 - ((1 - clamped) ** 3);
 };
+const normalizeAngle = (angle) => {
+  if (!Number.isFinite(angle)) {
+    return 0;
+  }
+  const twoPi = Math.PI * 2;
+  let wrapped = angle % twoPi;
+  if (wrapped > Math.PI) {
+    wrapped -= twoPi;
+  } else if (wrapped < -Math.PI) {
+    wrapped += twoPi;
+  }
+  return wrapped;
+};
 const JOYSTICK_DEADZONE = 0.22;
 const QUEUE_CAMERA_CONFIG = {
   position: new THREE.Vector3(-40, 74, -58),
@@ -803,7 +816,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
       const direction = Math.min(1, joystickMagnitude);
       if (direction > JOYSTICK_DEADZONE) {
         const vertical = -jy;
-        const targetHeading = Math.atan2(jx, Math.abs(vertical) < 1e-4 && Math.abs(jx) < 1e-4 ? 1e-4 : vertical);
+        const targetHeading = Math.atan2(-jx, Math.abs(vertical) < 1e-4 && Math.abs(jx) < 1e-4 ? 1e-4 : vertical);
         const angleDiff = normalizeAngle(targetHeading - heading.current);
         const turnSpeed = (4.5 * dt) * (0.55 + direction * 0.75);
         heading.current += THREE.MathUtils.clamp(angleDiff, -turnSpeed, turnSpeed);
@@ -1845,6 +1858,8 @@ function QueueCarFleet({ cars, onToggleSelect, selectedCarIds = [], fastForward 
 function MobileJoystick({ active }) {
   const baseRef = useRef(null);
   const pointerActiveRef = useRef(false);
+  const activePointerIdRef = useRef(null);
+  const activeTouchIdRef = useRef(null);
   const [thumbPos, setThumbPos] = useState({ x: 0, y: 0 });
   const [isPressed, setIsPressed] = useState(false);
   const [isTouchPreferred, setIsTouchPreferred] = useState(false);
@@ -1853,6 +1868,8 @@ function MobileJoystick({ active }) {
     setThumbPos({ x: 0, y: 0 });
     setIsPressed(false);
     pointerActiveRef.current = false;
+    activePointerIdRef.current = null;
+    activeTouchIdRef.current = null;
     setJoystickVector(0, 0);
   }, []);
 
@@ -1884,15 +1901,20 @@ function MobileJoystick({ active }) {
     };
   }, [resetMovement]);
 
-  const updateFromPointer = useCallback((event) => {
+  const updateFromPosition = useCallback((clientX, clientY) => {
     const base = baseRef.current;
     if (!base) return;
     const rect = base.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    const dx = event.clientX - centerX;
-    const dy = event.clientY - centerY;
+    const dx = clientX - centerX;
+    const dy = clientY - centerY;
     const radius = rect.width / 2 - 12;
+    if (radius <= 0) {
+      setThumbPos({ x: 0, y: 0 });
+      setJoystickVector(0, 0);
+      return;
+    }
     const dist = Math.hypot(dx, dy);
     const clampedDist = dist > radius ? radius : dist;
     const angle = dist > 0 ? clampedDist / dist : 0;
@@ -1909,24 +1931,59 @@ function MobileJoystick({ active }) {
     event.preventDefault();
     pointerActiveRef.current = true;
     setIsPressed(true);
+    activePointerIdRef.current = event.pointerId;
     const base = baseRef.current;
     if (base) {
       base.setPointerCapture?.(event.pointerId);
     }
-    updateFromPointer(event);
-  }, [active, updateFromPointer]);
+    updateFromPosition(event.clientX, event.clientY);
+  }, [active, updateFromPosition]);
 
   const handlePointerMove = useCallback((event) => {
-    if (!pointerActiveRef.current) return;
+    if (!pointerActiveRef.current || event.pointerId !== activePointerIdRef.current) return;
     event.preventDefault();
-    updateFromPointer(event);
-  }, [updateFromPointer]);
+    updateFromPosition(event.clientX, event.clientY);
+  }, [updateFromPosition]);
 
   const handlePointerEnd = useCallback((event) => {
-    if (!pointerActiveRef.current) return;
+    if (!pointerActiveRef.current || event.pointerId !== activePointerIdRef.current) return;
     const base = baseRef.current;
     if (base) {
       base.releasePointerCapture?.(event.pointerId);
+    }
+    resetMovement();
+  }, [resetMovement]);
+
+  const handleTouchStart = useCallback((event) => {
+    if (!active || activePointerIdRef.current != null) return;
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    event.preventDefault();
+    pointerActiveRef.current = true;
+    activeTouchIdRef.current = touch.identifier;
+    setIsPressed(true);
+    updateFromPosition(touch.clientX, touch.clientY);
+  }, [active, updateFromPosition]);
+
+  const handleTouchMove = useCallback((event) => {
+    if (!pointerActiveRef.current || activePointerIdRef.current != null) return;
+    const identifier = activeTouchIdRef.current;
+    if (identifier == null) return;
+    let touch = null;
+    if (event.touches) {
+      touch = Array.from(event.touches).find((t) => t.identifier === identifier) || event.touches[0] || null;
+    }
+    if (!touch) return;
+    event.preventDefault();
+    updateFromPosition(touch.clientX, touch.clientY);
+  }, [updateFromPosition]);
+
+  const handleTouchEnd = useCallback((event) => {
+    const identifier = activeTouchIdRef.current;
+    if (identifier == null) return;
+    if (event.changedTouches) {
+      const ended = Array.from(event.changedTouches).some((t) => t.identifier === identifier);
+      if (!ended) return;
     }
     resetMovement();
   }, [resetMovement]);
@@ -1943,6 +2000,10 @@ function MobileJoystick({ active }) {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         className={`pointer-events-auto relative flex h-28 w-28 items-center justify-center rounded-full ${isPressed ? 'bg-black/60' : 'bg-black/40'} ring-2 ring-white/25 backdrop-blur-md transition`}
         style={{ touchAction: 'none' }}
       >
