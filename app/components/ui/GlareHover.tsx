@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import type { CSSProperties, FC, ReactNode } from "react";
+import { useRef } from "@/hooks/useRef";
 
 interface GlareHoverProps {
   width?: string;
@@ -6,7 +7,7 @@ interface GlareHoverProps {
   background?: string;
   borderRadius?: string;
   borderColor?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
   glareColor?: string;
   glareOpacity?: number;
   glareAngle?: number;
@@ -14,10 +15,10 @@ interface GlareHoverProps {
   transitionDuration?: number;
   playOnce?: boolean;
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
-const GlareHover: React.FC<GlareHoverProps> = ({
+const GlareHover: FC<GlareHoverProps> = ({
   width = '500px',
   height = '500px',
   background = '#000',
@@ -72,7 +73,7 @@ const GlareHover: React.FC<GlareHoverProps> = ({
     }
   };
 
-  const overlayStyle: React.CSSProperties = {
+  const overlayStyle: CSSProperties = {
     position: 'absolute',
     inset: 0,
     background: `linear-gradient(${glareAngle}deg,

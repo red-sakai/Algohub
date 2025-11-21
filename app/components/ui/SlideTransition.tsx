@@ -1,6 +1,11 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext } from "react";
+import type { ReactNode } from "react";
+import { useContext } from "@/hooks/useContext";
+import { useEffect } from "@/hooks/useEffect";
+import { useMemo } from "@/hooks/useMemo";
+import { useRef } from "@/hooks/useRef";
 import { gsap } from "gsap";
 
 function prefersReducedMotion(): boolean {
@@ -30,7 +35,7 @@ export interface SlideTransitionController {
 
 const SlideTransitionContext = createContext<SlideTransitionController | null>(null);
 
-export function SlideTransitionProvider({ children }: { children: React.ReactNode }) {
+export function SlideTransitionProvider({ children }: { children: ReactNode }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const backgroundPrimaryRef = useRef<HTMLDivElement | null>(null);
   const backgroundSecondaryRef = useRef<HTMLDivElement | null>(null);

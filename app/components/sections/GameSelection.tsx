@@ -1,6 +1,8 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
-import { playTracks } from "../ui/musicBus";
+import { useEffect } from "@/hooks/useEffect";
+import { useMemo } from "@/hooks/useMemo";
+import { useState } from "@/hooks/useState";
+import { playTracks } from "../../../lib/audio/musicBus";
 
 const LICENSE_STORAGE_KEY = "algohub-license-card-path";
 const LICENSE_EVENT = "algohub-license-card-updated";

@@ -1,5 +1,7 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useRef } from "@/hooks/useRef";
+import { useState } from "@/hooks/useState";
 
 /**
  * CustomCursor renders a small dot and ring that follow the mouse.

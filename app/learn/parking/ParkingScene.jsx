@@ -4,7 +4,8 @@ import Image from 'next/image';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Sky, Stats, Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { getSupabaseClient } from '@/lib/supabase/client';
+import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/license/license';
+import { useMarkerController } from '@/hooks/useMarkerController';
 
 // Simple key input
 const pressed = new Set();
@@ -493,145 +494,9 @@ const INTERACT_MARKER_COLORS = Object.freeze({
     highlight: 'rgba(70, 132, 238, 0.55)',
   },
 });
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const LICENSE_STORAGE_KEY = 'algohub-license-card-path';
 const LICENSE_EVENT = 'algohub-license-card-updated';
 const DEFAULT_LICENSE_IMAGE = '/drivers_license.png';
-
-function useMarkerController({
-  startValue = STACK_COUNTDOWN_START,
-  markerSfx = MARKER_SFX_URL,
-  countdownSfx = COUNTDOWN_SFX_URL,
-  markerVolume = 0.7,
-  countdownVolume = 0.8,
-}) {
-  const markerAudioRef = useRef(null);
-  const countdownAudioRef = useRef(null);
-  const countdownIntervalRef = useRef(null);
-  const countdownValueRef = useRef(startValue);
-  const [isActive, setIsActive] = useState(false);
-  const [countdown, setCountdown] = useState(startValue);
-
-  const playAudio = useCallback((audioRef) => {
-    const audio = audioRef.current;
-    if (!audio) {
-      return;
-    }
-    try { audio.currentTime = 0; } catch {}
-    try { audio.play().catch(() => {}); } catch {}
-  }, []);
-
-  const stopAudio = useCallback((audioRef) => {
-    const audio = audioRef.current;
-    if (!audio) {
-      return;
-    }
-    try { audio.pause(); } catch {}
-    try { audio.currentTime = 0; } catch {}
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const markerAudio = new Audio(markerSfx);
-    markerAudio.preload = 'auto';
-    markerAudio.crossOrigin = 'anonymous';
-    markerAudio.volume = markerVolume;
-    markerAudioRef.current = markerAudio;
-
-    const countdownAudio = new Audio(countdownSfx);
-    countdownAudio.preload = 'auto';
-    countdownAudio.crossOrigin = 'anonymous';
-    countdownAudio.volume = countdownVolume;
-    countdownAudioRef.current = countdownAudio;
-
-    return () => {
-      stopAudio(markerAudioRef);
-      stopAudio(countdownAudioRef);
-      markerAudioRef.current = null;
-      countdownAudioRef.current = null;
-    };
-  }, [markerSfx, countdownSfx, markerVolume, countdownVolume, stopAudio]);
-
-  useEffect(() => {
-    const markerAudio = markerAudioRef.current;
-    const countdownAudio = countdownAudioRef.current;
-    if (markerAudio) {
-      markerAudio.volume = markerVolume;
-    }
-    if (countdownAudio) {
-      countdownAudio.volume = countdownVolume;
-    }
-  }, [markerVolume, countdownVolume]);
-
-  const handlePresenceChange = useCallback((isInside) => {
-    setIsActive((prev) => {
-      if (prev === isInside) {
-        return prev;
-      }
-      countdownValueRef.current = startValue;
-      setCountdown(startValue);
-      if (isInside) {
-        playAudio(markerAudioRef);
-        playAudio(countdownAudioRef);
-      } else {
-        stopAudio(countdownAudioRef);
-      }
-      return isInside;
-    });
-  }, [playAudio, stopAudio, startValue]);
-
-  useEffect(() => {
-    if (!isActive) {
-      if (countdownIntervalRef.current) {
-        window.clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-      return undefined;
-    }
-
-    if (countdownIntervalRef.current) {
-      window.clearInterval(countdownIntervalRef.current);
-    }
-    const intervalId = window.setInterval(() => {
-      countdownValueRef.current = Math.max(0, countdownValueRef.current - 1);
-      setCountdown((prev) => {
-        if (prev <= 0) return 0;
-        return Math.max(0, prev - 1);
-      });
-      if (countdownValueRef.current <= 0) {
-        window.clearInterval(intervalId);
-        countdownIntervalRef.current = null;
-      }
-    }, 1000);
-    countdownIntervalRef.current = intervalId;
-    return () => {
-      window.clearInterval(intervalId);
-      countdownIntervalRef.current = null;
-    };
-  }, [isActive]);
-
-  useEffect(() => {
-    if (countdown <= 0) {
-      stopAudio(countdownAudioRef);
-    }
-  }, [countdown, stopAudio]);
-
-  useEffect(() => {
-    return () => {
-      if (countdownIntervalRef.current) {
-        window.clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-    };
-  }, []);
-
-  return {
-    isActive,
-    countdown,
-    handlePresenceChange,
-  };
-}
 
 function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, highlightColor = null, ...props }) {
   const { scene } = useGLTF(modelUrl);
@@ -2625,30 +2490,11 @@ export default function ParkingScene() {
     if (typeof window === 'undefined') return;
     let active = true;
 
-    const supabaseClient = SUPABASE_URL && SUPABASE_ANON_KEY ? getSupabaseClient() : null;
-
-    const resolveLicenseUrl = async (objectPath) => {
-      if (!objectPath) return null;
-      if (objectPath.startsWith('http')) return objectPath;
-      if (!supabaseClient) return null;
-      try {
-        const { data: signedData, error: signedError } = await supabaseClient.storage.from('license-photos').createSignedUrl(objectPath, 60 * 60);
-        if (!signedError && signedData?.signedUrl) {
-          return signedData.signedUrl;
-        }
-        const { data: publicData } = supabaseClient.storage.from('license-photos').getPublicUrl(objectPath);
-        return publicData?.publicUrl || null;
-      } catch (err) {
-        console.warn('[InteractMarker] Failed to resolve license URL', err);
-        return null;
-      }
-    };
-
     const loadFromLocalStorage = async () => {
       try {
         const stored = window.localStorage.getItem(LICENSE_STORAGE_KEY);
         if (stored) {
-          const url = await resolveLicenseUrl(stored);
+          const url = await resolveLicenseImageUrl(stored);
           if (url && active) {
             setLicenseImageUrl(url);
             return true;
@@ -2658,37 +2504,24 @@ export default function ParkingScene() {
       return false;
     };
 
-    const loadFromSupabase = async () => {
-      if (!supabaseClient) {
+    const loadFromDatabase = async () => {
+      const objectPath = await fetchLatestLicenseObjectPath();
+      if (!objectPath) {
         return;
       }
-      try {
-        const { data, error } = await supabaseClient.storage.from('license-photos').list('license_cards', {
-          limit: 20,
-          sortBy: { column: 'created_at', order: 'desc' },
-        });
-        if (error) {
-          throw error;
-        }
-        const candidate = data?.find((file) => file.name && !file.name.startsWith('.'));
-        if (!candidate) return;
-        const objectPath = `license_cards/${candidate.name}`;
-        const resolvedUrl = await resolveLicenseUrl(objectPath);
-        if (resolvedUrl && active) {
-          setLicenseImageUrl(resolvedUrl);
-          try {
-            window.localStorage.setItem(LICENSE_STORAGE_KEY, objectPath);
-          } catch {}
-        }
-      } catch (err) {
-        console.warn('[InteractMarker] Failed to load license image from Supabase', err);
+      const resolvedUrl = await resolveLicenseImageUrl(objectPath);
+      if (resolvedUrl && active) {
+        setLicenseImageUrl(resolvedUrl);
+        try {
+          window.localStorage.setItem(LICENSE_STORAGE_KEY, objectPath);
+        } catch {}
       }
     };
 
     const run = async () => {
       const hasLocal = await loadFromLocalStorage();
       if (!hasLocal) {
-        await loadFromSupabase();
+        await loadFromDatabase();
       }
     };
 
@@ -2704,7 +2537,7 @@ export default function ParkingScene() {
         } catch {}
         return;
       }
-      resolveLicenseUrl(objectPath).then((url) => {
+      resolveLicenseImageUrl(objectPath).then((url) => {
         if (!url || !active) return;
         setLicenseImageUrl(url);
         try {
@@ -2712,6 +2545,7 @@ export default function ParkingScene() {
         } catch {}
       }).catch(() => {});
     };
+
     window.addEventListener(LICENSE_EVENT, handleLicenseUpdated);
 
     return () => {

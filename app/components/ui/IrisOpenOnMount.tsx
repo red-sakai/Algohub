@@ -1,7 +1,8 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useRef } from "@/hooks/useRef";
 import IrisTransition, { IrisHandle } from "./IrisTransition";
-import { consumeIrisPoint } from "./transitionBus";
+import { consumeIrisPoint } from "../../../lib/transition/transitionBus";
 
 export default function IrisOpenOnMount({ durationMs = 650, requirePoint = false }: { durationMs?: number; requirePoint?: boolean }) {
   const ref = useRef<IrisHandle | null>(null);

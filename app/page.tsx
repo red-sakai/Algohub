@@ -1,21 +1,15 @@
-"use client";
-import Link from "next/link";
-import Image from "next/image";
-import BackgroundDoodles from "./components/sections/BackgroundDoodles";
-import Squares from "./components/ui/Squares";
-import { useRouter, useSearchParams } from "next/navigation";
-import { playSfx } from "./components/ui/sfx";
-import IrisTransition, { IrisHandle } from "./components/ui/IrisTransition";
-import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import type { AuthUserSummary, UserProfile } from "@/types/auth";
-import { gsap } from "gsap";
-import IrisOpenOnMount from "./components/ui/IrisOpenOnMount";
-import { consumeSkipNextIrisOpen, setIrisPoint } from "./components/ui/transitionBus";
-import LoadingOverlay from "./components/ui/LoadingOverlay";
-import TargetCursor from "./components/ui/TargetCursor";
-import { decodeStateParam, encodeStateParam } from "@/lib/utils";
-import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from "./components/ui/SlideTransition";
-import { getSupabaseClient } from "@/lib/supabase/client";
+'use client';
+
+import Link from 'next/link';
+import Image from 'next/image';
+import { Suspense } from 'react';
+import BackgroundDoodles from './components/sections/BackgroundDoodles';
+import Squares from './components/ui/Squares';
+import TargetCursor from './components/ui/TargetCursor';
+import IrisOpenOnMount from './components/ui/IrisOpenOnMount';
+import IrisTransition from './components/ui/IrisTransition';
+import LoadingOverlay from './components/ui/LoadingOverlay';
+import { useHomePage } from '@/hooks/useHomePage';
 
 export default function Home() {
   return (
@@ -26,505 +20,39 @@ export default function Home() {
 }
 
 function HomeContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const slideTransition = useSlideTransition();
-  const [authUser, setAuthUser] = useState<AuthUserSummary | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
-  const irisRef = useRef<IrisHandle | null>(null);
-  const transitioningRef = useRef(false);
-  const profileButtonRef = useRef<HTMLButtonElement | null>(null);
-  const profilePanelRef = useRef<HTMLDivElement | null>(null);
-  const lastParamsRef = useRef<string | null>(null);
-  const [showLoader, setShowLoader] = useState(false);
-  const [isFlashing, setIsFlashing] = useState(false);
-  const [flashOpacity, setFlashOpacity] = useState(0);
-  const [skipIrisOpen] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    return consumeSkipNextIrisOpen();
-  });
-  const [defaultLogoAnimation, setDefaultLogoAnimation] = useState<"idle" | "rollIn" | "hidden">("idle");
-  const [bulletStage, setBulletStage] = useState<"hidden" | "bounce" | "fall">("hidden");
-  const [bulletCycle, setBulletCycle] = useState(0);
-  const [logoEntryDirection, setLogoEntryDirection] = useState<"left" | "right">("left");
-  const [isShaking, setIsShaking] = useState(false);
-  const [isLogoShining, setIsLogoShining] = useState(false);
-  const [logoShineCycle, setLogoShineCycle] = useState(0);
-  const [showAuthModal, setShowAuthModal] = useState(true);
-  const defaultLogoRef = useRef<HTMLImageElement>(null);
-  const rollTweenRef = useRef<gsap.core.Tween | null>(null);
-  const logoShineRef = useRef<HTMLImageElement | null>(null);
-  const logoShineTweenRef = useRef<gsap.core.Timeline | null>(null);
-  const animationTimeoutsRef = useRef<number[]>([]);
-  const logoLockRef = useRef(false);
-  const bounceDuration = 450;
-  const fallDuration = 4000;
-  const rollInDuration = 1600;
-  const teardownTweens = useCallback(() => {
-    rollTweenRef.current?.kill();
-    rollTweenRef.current = null;
-    logoShineTweenRef.current?.kill();
-    logoShineTweenRef.current = null;
-  }, []);
-  const clearLogoTimeouts = useCallback(() => {
-    animationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
-    animationTimeoutsRef.current = [];
-  }, []);
-  const scheduleLogoTimeout = useCallback((fn: () => void, delay: number) => {
-    if (typeof window === "undefined") {
-      return -1;
-    }
-    const id = window.setTimeout(() => {
-      fn();
-    }, delay);
-    animationTimeoutsRef.current.push(id);
-    return id;
-  }, []);
-  useEffect(() => {
-    return () => {
-      clearLogoTimeouts();
-    };
-  }, [clearLogoTimeouts]);
-  useEffect(() => {
-    if (!showAuthModal) return;
-    if (typeof window === "undefined") return;
-    const { body } = document;
-    const original = body.style.overflow;
-    body.style.overflow = "hidden";
-    return () => {
-      body.style.overflow = original;
-    };
-  }, [showAuthModal]);
-
-  useEffect(() => teardownTweens, [teardownTweens]);
-  const handleButtonHover = useCallback(() => {
-    playSfx("/gun_sfx.mp3", 0.6);
-  }, []);
-  const handleContinueAsGuest = useCallback(() => {
-    playSfx("/button_click.mp3", 0.6);
-    setShowAuthModal(false);
-  }, []);
-  const handleSignInSelect = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      playSfx("/button_click.mp3", 0.6);
-
-      event.currentTarget.dispatchEvent(
-        new MouseEvent("mouseleave", {
-          bubbles: true,
-          relatedTarget: event.currentTarget.ownerDocument?.body ?? null,
-        }),
-      );
-
-      setShowAuthModal(false);
-
-      if (transitioningRef.current) return;
-      transitioningRef.current = true;
-
-      event.preventDefault();
-
-      let x = event.clientX;
-      let y = event.clientY;
-      if (typeof x !== "number" || typeof y !== "number" || (x === 0 && y === 0)) {
-        const rect = event.currentTarget.getBoundingClientRect();
-        x = rect.left + rect.width / 2;
-        y = rect.top + rect.height / 2;
-      }
-
-      setIrisPoint(x, y);
-
-      const iris = irisRef.current;
-      if (!iris) {
-        router.push("/sign-in");
-        transitioningRef.current = false;
-        return;
-      }
-
-      iris.start({
-        x,
-        y,
-        durationMs: 650,
-        onDone: () => {
-          setShowLoader(true);
-          setTimeout(() => {
-            router.push("/sign-in");
-            setTimeout(() => {
-              setShowLoader(false);
-              transitioningRef.current = false;
-            }, 200);
-          }, 2400);
-        },
-      });
-    },
-    [router],
-  );
-  const triggerLogoShine = useCallback(() => {
-    playSfx("/anime_shine.mp3", 0.7);
-    logoShineTweenRef.current?.kill();
-    logoShineTweenRef.current = null;
-    setIsLogoShining(true);
-    setLogoShineCycle((prev) => prev + 1);
-  }, []);
-  const handleLogoClick = useCallback(() => {
-    if (showAuthModal) return;
-    if (logoLockRef.current) return;
-    logoLockRef.current = true;
-    clearLogoTimeouts();
-    setIsShaking(false);
-    setIsLogoShining(false);
-    logoShineTweenRef.current?.kill();
-    logoShineTweenRef.current = null;
-    playSfx("/gun_shot_sfx.mp3", 0.8);
-    playSfx("/algohub_falling.mp3", 0.8);
-    setFlashOpacity(1);
-    setIsFlashing(true);
-    scheduleLogoTimeout(() => setFlashOpacity(0), 420);
-    scheduleLogoTimeout(() => {
-      setIsFlashing(false);
-      setFlashOpacity(0);
-    }, 1200);
-    setBulletCycle((prev) => prev + 1);
-    setBulletStage("bounce");
-    setDefaultLogoAnimation("hidden");
-    scheduleLogoTimeout(() => {
-      setBulletStage("fall");
-    }, bounceDuration);
-    scheduleLogoTimeout(() => {
-      setIsShaking(true);
-    }, 4000);
-    scheduleLogoTimeout(() => {
-      setIsShaking(false);
-    }, 5000);
-    const rollInStartDelay = bounceDuration + fallDuration;
-
-    scheduleLogoTimeout(() => {
-      setBulletStage("hidden");
-      scheduleLogoTimeout(() => setLogoEntryDirection(Math.random() > 0.5 ? "left" : "right"), 16);
-      scheduleLogoTimeout(() => setDefaultLogoAnimation("rollIn"), 32);
-    }, rollInStartDelay);
-
-    scheduleLogoTimeout(() => {
-      setDefaultLogoAnimation("idle");
-      logoLockRef.current = false;
-      clearLogoTimeouts();
-      setIsShaking(false);
-      setIsLogoShining(false);
-      logoShineTweenRef.current?.kill();
-      logoShineTweenRef.current = null;
-    }, rollInStartDelay + rollInDuration + 200);
-  }, [clearLogoTimeouts, scheduleLogoTimeout, showAuthModal]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const target = defaultLogoRef.current;
-    if (!target) return;
-
-    if (defaultLogoAnimation === "hidden") {
-      rollTweenRef.current?.kill();
-      gsap.set(target, { opacity: 0 });
-      return;
-    }
-
-    if (defaultLogoAnimation !== "rollIn") {
-      return;
-    }
-
-    rollTweenRef.current?.kill();
-
-    const fromX = logoEntryDirection === "left" ? "-135vw" : "135vw";
-    const fromY = logoEntryDirection === "left" ? "14vh" : "-14vh";
-    const fromRotation = logoEntryDirection === "left" ? -900 : 900;
-
-    const tween = gsap.fromTo(
-      target,
-      {
-        opacity: 0,
-        x: fromX,
-        y: fromY,
-        rotation: fromRotation,
-        scale: 0.85,
-      },
-      {
-        opacity: 1,
-        x: 0,
-        y: 0,
-        rotation: 0,
-        scale: 1,
-        duration: rollInDuration / 1000,
-        ease: "expo.out",
-      },
-    );
-    tween.eventCallback("onComplete", triggerLogoShine);
-    rollTweenRef.current = tween;
-
-    return () => {
-      tween.eventCallback("onComplete", null);
-      rollTweenRef.current?.kill();
-    };
-  }, [defaultLogoAnimation, logoEntryDirection, rollInDuration, triggerLogoShine]);
-
-  useEffect(() => {
-    if (!isLogoShining || !logoShineRef.current) {
-      return;
-    }
-
-    const element = logoShineRef.current;
-    logoShineTweenRef.current?.kill();
-
-    const timeline = gsap.timeline({
-      onComplete: () => {
-        if (logoShineTweenRef.current === timeline) {
-          logoShineTweenRef.current = null;
-        }
-        setIsLogoShining(false);
-      },
-    });
-
-    timeline.set(element, {
-      opacity: 0,
-      xPercent: -50,
-      yPercent: -50,
-      scale: 1,
-      filter: "brightness(1.28) saturate(0) drop-shadow(0 0 0.55rem rgba(255,255,255,0.78))",
-    });
-
-    timeline.to(element, { opacity: 1, duration: 0.22, ease: "power1.out" });
-    timeline.to(element, { opacity: 1, duration: 0.55, ease: "none" });
-    timeline.to(element, { opacity: 0, duration: 1.1, ease: "power2.out" });
-
-    logoShineTweenRef.current = timeline;
-
-    return () => {
-      if (logoShineTweenRef.current === timeline) {
-        logoShineTweenRef.current = null;
-      }
-      timeline.kill();
-    };
-  }, [isLogoShining, logoShineCycle]);
-
-  const handleStartClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
-    // Respect new-tab/modified clicks and non-left clicks
-    if (e.defaultPrevented) return;
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    // Play SFX from a global pool so it continues after navigation
-    playSfx("/button_click.mp3", 0.6);
-    if (transitioningRef.current) return; // avoid double triggers
-    transitioningRef.current = true;
-
-    // Determine center from click position; fallback to button center
-    let x = e.clientX as number | undefined;
-    let y = e.clientY as number | undefined;
-    if (typeof x !== "number" || typeof y !== "number" || x === 0 && y === 0) {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      x = rect.left + rect.width / 2;
-      y = rect.top + rect.height / 2;
-    }
-
-    // Persist the origin point so the destination can open from the same spot
-    setIrisPoint(x, y);
-
-    irisRef.current?.start({
-      x,
-      y,
-      durationMs: 650,
-      onDone: () => {
-        // Between transitions: show 3D loader for ~3s, then navigate
-        setShowLoader(true);
-        setTimeout(() => {
-          router.push("/learn");
-          setTimeout(() => { transitioningRef.current = false; setShowLoader(false); }, 200);
-        }, 2400);
-      },
-    });
-  };
-  const defaultLogoAnimationValue = useMemo(() => {
-    if (defaultLogoAnimation === "idle") return "logoFloat 8s ease-in-out infinite";
-    return "none";
-  }, [defaultLogoAnimation]);
-  const defaultLogoOpacity = defaultLogoAnimation === "hidden" ? 0 : 1;
-  const defaultLogoOpacityTransition =
-    defaultLogoAnimation === "hidden"
-      ? "opacity 120ms ease-in"
-      : defaultLogoAnimation === "rollIn"
-      ? "opacity 60ms ease-in"
-      : "opacity 200ms ease-out";
-  const isBulletVisible = bulletStage !== "hidden";
-  const bulletAnimationValue = useMemo(() => {
-    if (bulletStage === "bounce") return "logoBounce 450ms ease-out forwards";
-    if (bulletStage === "fall") return "logoFall 4s cubic-bezier(0.25, 0.82, 0.25, 1) forwards";
-    return "none";
-  }, [bulletStage]);
-
-  useEffect(() => {
-    if (!searchParams) return;
-    const serialized = searchParams.toString();
-    if (!serialized || serialized === lastParamsRef.current) return;
-    lastParamsRef.current = serialized;
-
-    const authEncoded = searchParams.get("auth");
-    const profileEncoded = searchParams.get("profile");
-    if (!authEncoded && !profileEncoded) return;
-
-    const decodedAuth = authEncoded ? decodeStateParam<AuthUserSummary>(authEncoded) : null;
-    const decodedProfile = profileEncoded ? decodeStateParam<UserProfile>(profileEncoded) : null;
-
-    startTransition(() => {
-      setAuthUser(decodedAuth);
-      setUserProfile(decodedProfile);
-      setShowAuthModal(false);
-      setIsProfilePanelOpen(false);
-    });
-
-    router.replace("/", { scroll: false });
-    lastParamsRef.current = null;
-  }, [router, searchParams]);
-
-  useEffect(() => {
-    if (authUser) return;
-    let isActive = true;
-
-    const loadSession = async () => {
-      try {
-        const supabase = getSupabaseClient();
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (!isActive || sessionError || !sessionData.session) {
-          if (sessionError) {
-            console.error("Failed to read Supabase session", sessionError);
-          }
-          return;
-        }
-
-        const session = sessionData.session;
-        const user = session.user;
-        if (!user) return;
-
-        const authSummary: AuthUserSummary = {
-          id: user.id,
-          email: user.email,
-          createdAt: user.created_at ?? null,
-          lastSignInAt: user.last_sign_in_at ?? null,
-          phone: user.phone ?? null,
-        };
-
-        const { data: profileRow, error: profileError } = await supabase
-          .from("users")
-          .select("id, display_name, avatar_url, role, created_at, updated_at")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (!isActive) return;
-
-        if (profileError) {
-          console.error("Failed to fetch profile for session user", profileError);
-        }
-
-        const allowedRoles: UserProfile["role"][] = ["student", "instructor", "admin"];
-        const profile: UserProfile | null = profileRow
-          ? {
-              id: profileRow.id,
-              displayName: profileRow.display_name,
-              avatarUrl: profileRow.avatar_url,
-              role: allowedRoles.includes((profileRow.role ?? "") as UserProfile["role"])
-                ? (profileRow.role as UserProfile["role"])
-                : "student",
-              createdAt: profileRow.created_at,
-              updatedAt: profileRow.updated_at,
-            }
-          : null;
-
-        startTransition(() => {
-          setAuthUser(authSummary);
-          setUserProfile(profile);
-          setShowAuthModal(false);
-          setIsProfilePanelOpen(false);
-        });
-      } catch (error) {
-        if (isActive) {
-          console.error("Failed to restore Supabase session", error);
-        }
-      }
-    };
-
-    loadSession();
-
-    return () => {
-      isActive = false;
-    };
-  }, [authUser]);
-
-  useEffect(() => {
-    if (!isProfilePanelOpen) return;
-
-    const handleEvent = (event: globalThis.MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (profilePanelRef.current?.contains(target)) return;
-      if (profileButtonRef.current?.contains(target)) return;
-      setIsProfilePanelOpen(false);
-    };
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsProfilePanelOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleEvent);
-    document.addEventListener("touchstart", handleEvent);
-    document.addEventListener("keydown", handleKey);
-
-    return () => {
-      document.removeEventListener("mousedown", handleEvent);
-      document.removeEventListener("touchstart", handleEvent);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [isProfilePanelOpen]);
-
-  const profileHref = useMemo(() => {
-    if (!authUser) return "/profile";
-    const params = new URLSearchParams();
-    params.set("auth", encodeStateParam(authUser));
-    if (userProfile) {
-      params.set("profile", encodeStateParam(userProfile));
-    }
-    return `/profile?${params.toString()}`;
-  }, [authUser, userProfile]);
-
-  const handleProfileToggle = useCallback(() => {
-    playSfx("/button_click.mp3", 0.5);
-    setIsProfilePanelOpen((prev) => !prev);
-  }, []);
-
-  const handleProfileView = useCallback(
-    (event: MouseEvent<HTMLAnchorElement>) => {
-      event.preventDefault();
-      if (!profileHref) return;
-      playSfx("/button_click.mp3", 0.55);
-      setIsProfilePanelOpen(false);
-      if (transitioningRef.current) return;
-      transitioningRef.current = true;
-      slideTransition.start({
-        origin: "right",
-        fromGradient: LANDING_GRADIENT,
-        toGradient: PROFILE_GRADIENT,
-        onCovered: () => {
-          router.push(profileHref);
-        },
-        onDone: () => {
-          transitioningRef.current = false;
-        },
-      });
-    },
-    [profileHref, router, slideTransition],
-  );
-
-  const userInitial =
-    (userProfile?.displayName ? userProfile.displayName.charAt(0).toUpperCase() : undefined) ??
-    (authUser?.email ? authUser.email.charAt(0).toUpperCase() : undefined) ??
-    "A";
+  const {
+    authUser,
+    userProfile,
+    userInitial,
+    profileHref,
+    isProfilePanelOpen,
+    profileButtonRef,
+    profilePanelRef,
+    irisRef,
+    defaultLogoRef,
+    logoShineRef,
+    showAuthModal,
+    showLoader,
+    skipIrisOpen,
+    isShaking,
+    isFlashing,
+    flashOpacity,
+    isLogoShining,
+    isBulletVisible,
+    bulletCycle,
+    logoShineCycle,
+    defaultLogoOpacity,
+    defaultLogoAnimationValue,
+    defaultLogoOpacityTransition,
+    bulletAnimationValue,
+    handleSignInSelect,
+    handleContinueAsGuest,
+    handleButtonHover,
+    handleProfileToggle,
+    handleProfileView,
+    handleLogoClick,
+    handleStartClick,
+  } = useHomePage();
   return (
     <>
       {authUser && (
@@ -625,17 +153,14 @@ function HomeContent() {
                     href={profileHref}
                     prefetch={false}
                     onClick={handleProfileView}
-                    className="inline-flex items-center justify-center rounded-full bg-white/18 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-all duration-200 hover:bg-white/28"
+                    className="cursor-target inline-flex items-center justify-center rounded-full bg-white/18 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-all duration-200 hover:bg-white/28"
                   >
                     View profile
                   </Link>
                   <button
                     type="button"
-                    onClick={() => {
-                      playSfx("/button_click.mp3", 0.5);
-                      setIsProfilePanelOpen(false);
-                    }}
-                    className="inline-flex items-center justify-center rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-all duration-200 hover:bg-white/20"
+                    onClick={handleProfileToggle}
+                    className="cursor-target inline-flex items-center justify-center rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-all duration-200 hover:bg-white/20"
                   >
                     Close
                   </button>

@@ -1,5 +1,9 @@
 "use client";
-import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useImperativeHandle } from "@/hooks/useImperativeHandle";
+import { useRef } from "@/hooks/useRef";
+import { useState } from "@/hooks/useState";
 
 export type IrisHandle = {
   start: (opts?: { x?: number; y?: number; durationMs?: number; onDone?: () => void; mode?: "close" | "open" }) => void;
@@ -14,7 +18,7 @@ function prefersReducedMotion() {
   }
 }
 
-export default React.forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransition(
+export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransition(
   { zIndex = 1000 },
   ref
 ) {

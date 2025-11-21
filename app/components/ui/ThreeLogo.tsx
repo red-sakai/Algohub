@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import { useEffect } from "@/hooks/useEffect";
+import { useRef } from "@/hooks/useRef";
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 

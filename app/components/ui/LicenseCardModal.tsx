@@ -1,6 +1,10 @@
 "use client";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, SyntheticEvent, TouchEvent as ReactTouchEvent } from "react";
 import Image from "next/image";
+import { useCallback } from "@/hooks/useCallback";
+import { useEffect } from "@/hooks/useEffect";
+import { useRef } from "@/hooks/useRef";
+import { useState } from "@/hooks/useState";
 import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
 
 // Responsive layout definitions for drivers_license3.png.
@@ -94,7 +98,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
   // Track natural image dimensions and recompute scaled height on width/layout changes
   const [imageHeight, setImageHeight] = useState<number | null>(null);
   const naturalDimsRef = useRef<{ w: number; h: number } | null>(null);
-  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad = useCallback((e: SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth > 0) {
       naturalDimsRef.current = { w: img.naturalWidth, h: img.naturalHeight };
@@ -152,7 +156,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     const clientY = (e as TouchEvent).touches?.[0]?.clientY ?? (e as MouseEvent).clientY;
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
-  const startDrawMouse = (e: React.MouseEvent) => {
+  const startDrawMouse = (e: ReactMouseEvent) => {
     e.preventDefault();
     drawingRef.current = true;
     const canvas = canvasRef.current;
@@ -163,7 +167,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     ctx.moveTo(x, y);
     setHasSignature(true);
   };
-  const startDrawTouch = (e: React.TouchEvent) => {
+  const startDrawTouch = (e: ReactTouchEvent) => {
     e.preventDefault();
     drawingRef.current = true;
     const canvas = canvasRef.current;
@@ -174,7 +178,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     ctx.moveTo(x, y);
     setHasSignature(true);
   };
-  const moveDrawMouse = (e: React.MouseEvent) => {
+  const moveDrawMouse = (e: ReactMouseEvent) => {
     if (!drawingRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -187,7 +191,7 @@ export default function LicenseCardModal({ active, photoDataUrl, onClose, onSave
     ctx.lineJoin = "round";
     ctx.stroke();
   };
-  const moveDrawTouch = (e: React.TouchEvent) => {
+  const moveDrawTouch = (e: ReactTouchEvent) => {
     if (!drawingRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
