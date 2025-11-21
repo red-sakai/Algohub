@@ -19,16 +19,16 @@ type Game = {
 const GAMES: Game[] = [
   {
     id: "sorting-sprint",
-    title: "Sorting Sprint",
-    desc: "Race through arrays with quick pivots and perfect merges.",
+    title: "Stack 'Em Queue",
+    desc: "Jump into the 3D parking yard and master stacks and queues to shuffle cars into place.",
     colorFrom: "from-fuchsia-500",
     colorTo: "to-rose-500",
-    track: { title: "AlgoHub Theme", src: "Pokemon FireRed - Route 1.mp3" },
+    track: { title: "Pokemon FireRed - Route 1", src: "/audio/Pokemon FireRed - Route 1.mp3" },
   },
   {
     id: "graph-quest",
     title: "Graph Quest",
-    desc: "Traverse nodes, conquer paths, and unlock secrets.",
+    desc: "Coming soon.",
     colorFrom: "from-emerald-500",
     colorTo: "to-teal-500",
     track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
@@ -36,7 +36,7 @@ const GAMES: Game[] = [
   {
     id: "dp-dungeon",
     title: "DP Dungeon",
-    desc: "Plan your moves and optimize every choice.",
+    desc: "Coming soon.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
     track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
@@ -44,7 +44,7 @@ const GAMES: Game[] = [
   {
     id: "tree-trek",
     title: "Tree Trek",
-    desc: "Balance, traverse, and grow your skills.",
+    desc: "Coming soon.",
     colorFrom: "from-amber-500",
     colorTo: "to-orange-500",
     track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
