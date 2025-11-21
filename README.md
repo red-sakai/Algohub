@@ -1,4 +1,6 @@
-<img src="public/algohub-transparent.png" alt="AlgoHub logo" width="200" />
+<p align="center">
+	<img src="public/algohub-transparent.png" alt="AlgoHub logo" width="200" />
+</p>
 
 # AlgoHub
 
