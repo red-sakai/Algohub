@@ -65,6 +65,7 @@ function ProfilePageContent() {
   const [achievements, setAchievements] = useState<UserAchievement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const decodedAuthFromQuery = useMemo(() => {
     const authParam = searchParams?.get("auth");
@@ -106,6 +107,32 @@ function ProfilePageContent() {
     },
     [router, slideTransition],
   );
+
+  const handleSignOut = useCallback(async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setSkipNextIrisOpen();
+      slideTransition.start({
+        origin: "left",
+        fromGradient: PROFILE_GRADIENT,
+        toGradient: LANDING_GRADIENT,
+        onCovered: () => {
+          router.push("/");
+        },
+        onDone: () => {
+          setIsSigningOut(false);
+        },
+      });
+    } catch (error) {
+      console.error("Failed to sign out", error);
+      setErrorMessage("We couldn't sign you out. Try again in a moment.");
+      setIsSigningOut(false);
+    }
+  }, [isSigningOut, router, slideTransition]);
 
   useEffect(() => {
     let isActive = true;
@@ -285,12 +312,20 @@ function ProfilePageContent() {
       <BackgroundDoodles />
 
       <section className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col gap-10 px-4 py-16 sm:px-6 lg:px-10">
-        <div className="mb-4 flex w-full justify-end">
+        <div className="mb-4 flex w-full flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="cursor-target inline-flex items-center justify-center rounded-full bg-rose-500/80 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_10px_0_0_rgba(244,63,94,0.6)] transition-all duration-200 hover:bg-rose-500/90 hover:translate-y-[1px] hover:shadow-[0_8px_0_0_rgba(244,63,94,0.55)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSigningOut ? "Signing out..." : "Log out"}
+          </button>
           <Link
             href="/"
             prefetch={false}
             onClick={handleBackToLanding}
-            className="inline-flex items-center justify-center rounded-full bg-white/18 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white transition-all duration-200 hover:bg-white/28"
+            className="cursor-target inline-flex items-center justify-center rounded-full bg-white/18 px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-white transition-all duration-200 hover:bg-white/28"
           >
             Back to landing
           </Link>

@@ -3,17 +3,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useRef, useState } from "react";
 import Squares from "../components/ui/Squares";
 import BackgroundDoodles from "../components/sections/BackgroundDoodles";
 import TargetCursor from "../components/ui/TargetCursor";
 import IrisOpenOnMount from "../components/ui/IrisOpenOnMount";
+import IrisTransition, { IrisHandle } from "../components/ui/IrisTransition";
 import { playSfx } from "../components/ui/sfx";
 import { registerUserAction } from "@/actions/auth/register";
 import { signInUserAction } from "@/actions/auth/sign-in";
 import type { AuthMode } from "@/types/auth";
 import { encodeStateParam } from "@/lib/utils";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import LoadingOverlay from "../components/ui/LoadingOverlay";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -22,6 +24,9 @@ export default function SignInPage() {
   const [authMode, setAuthMode] = useState<AuthMode>("sign-in");
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerModalMessage, setRegisterModalMessage] = useState<string>("");
+  const [showLoader, setShowLoader] = useState(false);
+  const irisRef = useRef<IrisHandle | null>(null);
+  const navigationTriggeredRef = useRef(false);
   const heading = authMode === "sign-in" ? "Sign in to AlgoHub" : "Create your AlgoHub account";
   const description =
     authMode === "sign-in"
@@ -101,16 +106,34 @@ export default function SignInPage() {
             setStatusMessage(result.message || `Welcome back, ${profileName}! Redirecting you to the hub...`);
             const profilePayload = result.profile ?? null;
             const authPayload = result.authUser ?? null;
-            setTimeout(() => {
-              const params = new URLSearchParams();
-              if (authPayload) {
-                params.set("auth", encodeStateParam(authPayload));
-              }
-              if (profilePayload) {
-                params.set("profile", encodeStateParam(profilePayload));
-              }
-              router.push(params.toString() ? `/?${params.toString()}` : "/");
-            }, 900);
+            const params = new URLSearchParams();
+            if (authPayload) {
+              params.set("auth", encodeStateParam(authPayload));
+            }
+            if (profilePayload) {
+              params.set("profile", encodeStateParam(profilePayload));
+            }
+            const targetHref = params.toString() ? `/?${params.toString()}` : "/";
+            const navigateToHub = () => {
+              if (navigationTriggeredRef.current) return;
+              navigationTriggeredRef.current = true;
+              setShowLoader(true);
+              router.push(targetHref);
+            };
+
+            const controller = irisRef.current;
+            if (controller) {
+              controller.start({
+                mode: "close",
+                durationMs: 650,
+                onDone: navigateToHub,
+              });
+              window.setTimeout(() => {
+                navigateToHub();
+              }, 1000);
+            } else {
+              navigateToHub();
+            }
           }
         }
       } catch (error) {
@@ -314,6 +337,8 @@ export default function SignInPage() {
           </div>
         </div>
       )}
+      <LoadingOverlay active={showLoader} />
+      <IrisTransition ref={irisRef} />
       <IrisOpenOnMount />
     </main>
   );
