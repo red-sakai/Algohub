@@ -39,12 +39,17 @@ const normalizeAngle = (angle) => {
   return wrapped;
 };
 const JOYSTICK_DEADZONE = 0.22;
-const QUEUE_CAMERA_CONFIG = {
+const STACK_CAMERA_CONFIG = {
   position: new THREE.Vector3(-40, 74, -58),
   lookAt: new THREE.Vector3(-40, 0, -10),
 };
+// Adjust this vector pair to change the cinematic view used during the queue minigame.
+const QUEUE_CAMERA_CONFIG = {
+  position: new THREE.Vector3(38, 72, 84),
+  lookAt: new THREE.Vector3(40, -6, -8),
+};
 const QUEUE_SLOT_HEIGHT = 0.2;
-const QUEUE_SLOT_POSITIONS = Object.freeze([
+const STACK_SLOT_POSITIONS = Object.freeze([
   { id: 1, position: [-68.5, QUEUE_SLOT_HEIGHT, -37] },
   { id: 2, position: [-61, QUEUE_SLOT_HEIGHT, -37] },
   { id: 3, position: [-53, QUEUE_SLOT_HEIGHT, -37] },
@@ -64,6 +69,45 @@ const QUEUE_SLOT_POSITIONS = Object.freeze([
   { id: 17, position: [-14, QUEUE_SLOT_HEIGHT, 7] },
   { id: 18, position: [-6, QUEUE_SLOT_HEIGHT, 7] },
 ]);
+const STACK_SLOT_LOOKUP = Object.freeze(
+  STACK_SLOT_POSITIONS.reduce((acc, slot) => {
+    acc[slot.id] = slot.position;
+    return acc;
+  }, {}),
+);
+const STACK_SLOT_ID_TO_INDEX = new Map();
+STACK_SLOT_POSITIONS.forEach((slot, idx) => {
+  STACK_SLOT_ID_TO_INDEX.set(slot.id, idx);
+});
+const QUEUE_SLOT_POSITIONS = Object.freeze([
+  { id: 1, position: [68.5, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 2, position: [61, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 3, position: [53, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 4, position: [45, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 5, position: [37, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 6, position: [29.4, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 7, position: [21.5, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 8, position: [14, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 9, position: [6, QUEUE_SLOT_HEIGHT, 37] },
+  { id: 10, position: [68.5, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 11, position: [61, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 12, position: [53, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 13, position: [45, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 14, position: [37, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 15, position: [29.4, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 16, position: [21.5, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 17, position: [14, QUEUE_SLOT_HEIGHT, -7] },
+  { id: 18, position: [6, QUEUE_SLOT_HEIGHT, -7] },
+]);
+const QUEUE_SLOT_ID_TO_INDEX = new Map();
+QUEUE_SLOT_POSITIONS.forEach((slot, idx) => {
+  QUEUE_SLOT_ID_TO_INDEX.set(slot.id, idx);
+});
+// Update these coordinates to move the numbered markers rendered during the stack minigame.
+const STACK_NUMBER_MARKER_POSITIONS = Object.freeze(STACK_SLOT_POSITIONS.map((slot) => ({
+  id: slot.id,
+  position: [...slot.position],
+})));
 const QUEUE_SLOT_LOOKUP = Object.freeze(
   QUEUE_SLOT_POSITIONS.reduce((acc, slot) => {
     acc[slot.id] = slot.position;
@@ -73,6 +117,19 @@ const QUEUE_SLOT_LOOKUP = Object.freeze(
 const QUEUE_CAR_PHASE_SLOT = 'slot';
 const QUEUE_CAR_PHASE_HOLD = 'hold';
 const QUEUE_CAR_PHASE_EXIT = 'exit';
+const SLOT_DATASETS = Object.freeze({
+  stack: Object.freeze({
+    positions: STACK_SLOT_POSITIONS,
+    lookup: STACK_SLOT_LOOKUP,
+    idToIndex: STACK_SLOT_ID_TO_INDEX,
+  }),
+  queue: Object.freeze({
+    positions: QUEUE_SLOT_POSITIONS,
+    lookup: QUEUE_SLOT_LOOKUP,
+    idToIndex: QUEUE_SLOT_ID_TO_INDEX,
+  }),
+});
+const getSlotDataset = (mode) => SLOT_DATASETS[mode] || SLOT_DATASETS.queue;
 const FREE_MARKER_POSITIONS = Object.freeze([
   { id: 1, position: [-64, QUEUE_SLOT_HEIGHT, -18] },
   { id: 2, position: [-64, QUEUE_SLOT_HEIGHT, -11.5] },
@@ -176,11 +233,6 @@ FREE_MARKER_POSITIONS.forEach((marker, idx) => {
   const key = makePositionKey(marker.position);
   FREE_MARKER_KEY_TO_ID.set(key, marker.id);
   FREE_MARKER_ID_TO_INDEX.set(marker.id, idx);
-});
-
-const QUEUE_SLOT_ID_TO_INDEX = new Map();
-QUEUE_SLOT_POSITIONS.forEach((slot, idx) => {
-  QUEUE_SLOT_ID_TO_INDEX.set(slot.id, idx);
 });
 
 const getMarkerIdFromPosition = (value) => {
@@ -322,12 +374,12 @@ const coerceSlotId = (value) => {
   return null;
 };
 
-const ensureUniqueSlotAssignments = (cars, label = 'dedupe') => {
+const ensureUniqueSlotAssignments = (cars, label = 'dedupe', slotPositions = QUEUE_SLOT_POSITIONS, slotLookup = QUEUE_SLOT_LOOKUP) => {
   if (!Array.isArray(cars) || cars.length <= 1) {
     return cars;
   }
   const seen = new Set();
-  const available = QUEUE_SLOT_POSITIONS.map((slot) => slot.id);
+  const available = slotPositions.map((slot) => slot.id);
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
   return cars.map((car) => {
@@ -360,7 +412,7 @@ const ensureUniqueSlotAssignments = (cars, label = 'dedupe') => {
     }
 
     seen.add(fallbackSlotId);
-    const fallbackPosition = clonePositionArray(QUEUE_SLOT_LOOKUP[fallbackSlotId] || QUEUE_CAR_SPAWN_POSITION);
+    const fallbackPosition = clonePositionArray(slotLookup[fallbackSlotId] || QUEUE_CAR_SPAWN_POSITION);
     const reassigned = {
       ...baseEntry,
       slotId: fallbackSlotId,
@@ -505,9 +557,9 @@ const buildQueueCarPath = (start, target) => {
   return points;
 };
 
-const STACK_MARKER_POSITION = [40, 0.08, -19];
+const STACK_MARKER_POSITION = [-40, 0.08, 19];
 const STACK_MARKER_SIZE = 7;
-const QUEUE_MARKER_POSITION = [-40, 0.08, 19];
+const QUEUE_MARKER_POSITION = [40, 0.08, -19];
 const QUEUE_MARKER_SIZE = 7;
 const INTERACT_MARKER_POSITION = [40, 0.2, -53];
 const INTERACT_MARKER_SIZE = 6.5;
@@ -655,7 +707,7 @@ function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, hi
 
 function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   const internalRef = useRef();
-  const ref = carRef ? carRef : internalRef;
+    const ref = carRef || internalRef;
   const vel = useRef(0);
   const heading = useRef(0);
   // Web Audio engine: more reliable playback and smooth fades
@@ -1032,7 +1084,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   );
 }
 
-function CameraRig({ targetRef, mode, queueTarget, interactTarget, interactActive }) {
+function CameraRig({ targetRef, mode, stackTarget, queueTarget, interactTarget, interactActive }) {
   const { camera } = useThree();
   const smoothPos = useRef(new THREE.Vector3());
   const initialized = useRef(false);
@@ -1125,7 +1177,16 @@ function CameraRig({ targetRef, mode, queueTarget, interactTarget, interactActiv
       return;
     }
 
-    if (mode === 'queue' && queueTarget) {
+    if (mode === 'stack' && stackTarget) {
+      desiredPos.current.copy(stackTarget.position);
+      lookAtPos.current.copy(stackTarget.lookAt);
+      if (!initialized.current) {
+        smoothPos.current.copy(desiredPos.current);
+        initialized.current = true;
+      } else {
+        smoothPos.current.lerp(desiredPos.current, 0.18);
+      }
+    } else if (mode === 'queue' && queueTarget) {
       desiredPos.current.copy(queueTarget.position);
       lookAtPos.current.copy(queueTarget.lookAt);
       if (!initialized.current) {
@@ -1553,7 +1614,7 @@ function FloatingCountdown({ carRef, countdown, active }) {
   );
 }
 
-function QueueSlotMarkers({ slots }) {
+function QueueSlotMarkers({ slots, rotationY = 0 }) {
   const discRadius = 1.2;
   const glyphSize = 1.1;
 
@@ -1561,7 +1622,7 @@ function QueueSlotMarkers({ slots }) {
     <group>
       {slots.map(({ id, position }) => (
         <group key={id} position={position}>
-          <group rotation={[0, Math.PI, 0]}>
+          <group rotation={[0, rotationY, 0]}>
             <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
               <circleGeometry args={[discRadius, 28]} />
               <meshStandardMaterial color="#0f172a" opacity={0.68} transparent />
@@ -1632,6 +1693,8 @@ function QueueCar({
   modelUrl = DEFAULT_QUEUE_CAR_MODEL,
   colorOverride = null,
   isSelected = false,
+  selectionEnabled = true,
+  slotLookup = QUEUE_SLOT_LOOKUP,
 }) {
   const groupRef = useRef(null);
   const forwardVector = useMemo(() => new THREE.Vector3(0, 0, 1), []);
@@ -1650,9 +1713,9 @@ function QueueCar({
   }, [fromPosition]);
   const targetPosition = useMemo(() => {
     const override = Array.isArray(targetOverride) ? targetOverride : null;
-    const raw = override || QUEUE_SLOT_LOOKUP[slotId];
+    const raw = override || (slotLookup ? slotLookup[slotId] : undefined);
     return raw ? new THREE.Vector3(raw[0], raw[1], raw[2]) : null;
-  }, [slotId, targetOverride]);
+  }, [slotId, targetOverride, slotLookup]);
   const pathCurve = useMemo(() => {
     if (!targetPosition || !startPosition) {
       return null;
@@ -1734,13 +1797,13 @@ function QueueCar({
 
   const handlePointerDown = useCallback((event) => {
     event.stopPropagation();
-    if (!isSelectable) {
+    if (!isSelectable || !selectionEnabled) {
       return;
     }
     if (typeof onToggleSelect === 'function') {
       onToggleSelect(id);
     }
-  }, [id, onToggleSelect, isSelectable]);
+  }, [id, onToggleSelect, isSelectable, selectionEnabled]);
 
   useFrame((_, dt) => {
     const group = groupRef.current;
@@ -1833,7 +1896,7 @@ function QueueCar({
   );
 }
 
-function QueueCarFleet({ cars, onToggleSelect, selectedCarIds = [], fastForward }) {
+function QueueCarFleet({ cars, slotLookup, onToggleSelect, selectedCarIds = [], fastForward, selectionEnabled = true }) {
   return (
     <group>
       {cars.map((car) => (
@@ -1853,6 +1916,8 @@ function QueueCarFleet({ cars, onToggleSelect, selectedCarIds = [], fastForward 
           modelUrl={car.modelUrl}
           colorOverride={car.colorOverride}
           isSelected={selectedCarIds.includes(car.id)}
+          selectionEnabled={selectionEnabled}
+          slotLookup={slotLookup}
         />
       ))}
     </group>
@@ -2022,7 +2087,13 @@ function MobileJoystick({ active }) {
   );
 }
 
-function QueueStateViewer({ slotState, freeSlotState, selectedIds }) {
+function StructureStateViewer({
+  slotState,
+  freeSlotState,
+  selectedIds,
+  title = 'Structure Snapshot',
+  showFreeSlots = true,
+}) {
   const selectedSet = useMemo(() => new Set(Array.isArray(selectedIds) ? selectedIds : []), [selectedIds]);
 
   const renderSection = (title, entries, prefix) => {
@@ -2081,15 +2152,20 @@ function QueueStateViewer({ slotState, freeSlotState, selectedIds }) {
   return (
     <div className="pointer-events-none absolute left-4 top-[8.5rem] z-30 w-[min(95vw,28rem)] text-white sm:left-6 sm:top-[9.6rem]">
       <div className="rounded-2xl bg-slate-950/75 p-4 shadow-lg ring-1 ring-white/15 backdrop-blur">
-        <div className="text-xs uppercase tracking-[0.22em] text-white/70">Queue Snapshot</div>
+        <div className="text-xs uppercase tracking-[0.22em] text-white/70">{title}</div>
         {renderSection('Number Slots', slotState, 'slot')}
-        {renderSection('Free Slots', freeSlotState, 'free')}
+        {showFreeSlots ? renderSection('Free Slots', freeSlotState, 'free') : null}
       </div>
     </div>
   );
 }
 
-export default function ParkingScene({ showQueueState = false, onQueueMinigameChange }) {
+export default function ParkingScene({
+  showStackState = false,
+  showQueueState = false,
+  onStackMinigameChange,
+  onQueueMinigameChange,
+}) {
   useEffect(() => {
     useGLTF.preload('/car-show/models/car/scene.gltf');
     useGLTF.preload('/models/modern_parking_area.glb');
@@ -2145,12 +2221,15 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   const currentLicenseImageSrc = licenseImageUrl || DEFAULT_LICENSE_IMAGE;
   const [barrierShouldOpen, setBarrierShouldOpen] = useState(false);
   const [activeMinigame, setActiveMinigame] = useState(null);
+  const [stackMinigameArmed, setStackMinigameArmed] = useState(true);
   const [queueMinigameArmed, setQueueMinigameArmed] = useState(true);
   const [queueCars, setQueueCars] = useState([]);
   const [queueFastForward, setQueueFastForward] = useState(false);
   const [selectedQueueCarIds, setSelectedQueueCarIds] = useState([]);
-  const [queueLoading, setQueueLoading] = useState(false);
-  const [queueLoadingStep, setQueueLoadingStep] = useState(0);
+  const [minigameLoading, setMinigameLoading] = useState(false);
+  const [minigameLoadingStep, setMinigameLoadingStep] = useState(0);
+  const [minigameLoadingMode, setMinigameLoadingMode] = useState(null);
+  const [queueRemovalActive, setQueueRemovalActive] = useState(false);
   const queuedRemovalIdsRef = useRef([]);
   const processQueuedRemovalsRef = useRef(() => {});
   const minigameStateRef = useRef(null);
@@ -2160,19 +2239,31 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   const queueFastForwardRef = useRef(queueFastForward);
   const currentRemovalPlanRef = useRef(null);
   const queueCarsRef = useRef(queueCars);
-  const queueLoadingTimeoutRef = useRef(null);
+  const minigameLoadingTimeoutRef = useRef(null);
   const guardPromptSfxPlayedRef = useRef(false);
   const guardApprovalSfxPlayedRef = useRef(false);
-  const queueIsFull = queueCars.length >= QUEUE_SLOT_POSITIONS.length;
+  const dropZoneRef = useRef(null);
+  const touchPointerIdRef = useRef(null);
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const [touchDragState, setTouchDragState] = useState(null);
+  const activeSlotDataset = useMemo(
+    () => getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue'),
+    [activeMinigame],
+  );
+  const queueIsFull = queueCars.length >= activeSlotDataset.positions.length;
+  const queueHasRemovable = useMemo(
+    () => queueCars.some((car) => (car?.phase ?? QUEUE_CAR_PHASE_SLOT) === QUEUE_CAR_PHASE_SLOT),
+    [queueCars],
+  );
   const joystickActive = useMemo(
-    () => activeMinigame !== 'queue' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
+    () => activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
     [activeMinigame, interactPhase],
   );
-  const queueLoadingMessage = QUEUE_LOADING_MESSAGES.length
-    ? QUEUE_LOADING_MESSAGES[queueLoadingStep % QUEUE_LOADING_MESSAGES.length]
+  const minigameLoadingMessage = QUEUE_LOADING_MESSAGES.length
+    ? QUEUE_LOADING_MESSAGES[minigameLoadingStep % QUEUE_LOADING_MESSAGES.length]
     : 'Preparing the queue...';
-  const queueLoadingProgress = QUEUE_LOADING_MESSAGES.length
-    ? Math.min(100, Math.round(((Math.min(queueLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
+  const minigameLoadingProgress = QUEUE_LOADING_MESSAGES.length
+    ? Math.min(100, Math.round(((Math.min(minigameLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
     : 100;
 
   const securityGuardCameraTarget = useMemo(() => ({
@@ -2181,19 +2272,20 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   }), []);
 
   const queueSlotState = useMemo(() => {
-    const slots = QUEUE_SLOT_POSITIONS.map((slot) => ({ slotId: slot.id, car: null }));
+    const { positions, idToIndex } = activeSlotDataset;
+    const slots = positions.map((slot) => ({ slotId: slot.id, car: null }));
     queueCars.forEach((car) => {
       const phase = car?.phase ?? QUEUE_CAR_PHASE_SLOT;
       if (phase !== QUEUE_CAR_PHASE_SLOT) return;
       const slotId = Number(car?.slotId);
       if (!Number.isFinite(slotId)) return;
-      if (!QUEUE_SLOT_ID_TO_INDEX.has(slotId)) return;
-      const index = QUEUE_SLOT_ID_TO_INDEX.get(slotId);
+      if (!idToIndex.has(slotId)) return;
+      const index = idToIndex.get(slotId);
       if (index == null || slots[index].car) return;
       slots[index] = { slotId, car };
     });
     return slots;
-  }, [queueCars]);
+  }, [queueCars, activeSlotDataset]);
 
   const queueHoldState = useMemo(() => {
     const markers = FREE_MARKER_POSITIONS.map((marker) => ({ markerId: marker.id, car: null }));
@@ -2251,6 +2343,13 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     }
   }, [rawHandleQueueMarkerPresence]);
 
+  const handleStackMarkerPresence = useCallback((isInside) => {
+    rawHandleStackMarkerPresence(isInside);
+    if (!isInside) {
+      setStackMinigameArmed(true);
+    }
+  }, [rawHandleStackMarkerPresence]);
+
   useEffect(() => {
     queueCarsRef.current = queueCars;
   }, [queueCars]);
@@ -2262,11 +2361,11 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   }, [queueCars]);
 
   useEffect(() => {
-    if (!queueLoading) {
-      setQueueLoadingStep(0);
+    if (!minigameLoading) {
+      setMinigameLoadingStep(0);
       return undefined;
     }
-    setQueueLoadingStep(0);
+    setMinigameLoadingStep(0);
     if (QUEUE_LOADING_MESSAGES.length < 2) {
       return undefined;
     }
@@ -2275,12 +2374,12 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     const intervalDuration = Math.max(400, Math.floor(QUEUE_LOADING_DELAY_MS / stepWindow));
     const intervalId = window.setInterval(() => {
       currentStep = (currentStep + 1) % QUEUE_LOADING_MESSAGES.length;
-      setQueueLoadingStep(currentStep);
+      setMinigameLoadingStep(currentStep);
     }, intervalDuration);
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [queueLoading]);
+  }, [minigameLoading]);
 
   const handleToggleQueueCarSelection = useCallback((carId) => {
     const target = queueCars.find((entry) => entry.id === carId);
@@ -2300,7 +2399,116 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     });
   }, [queueCars]);
 
+  const startQueueFrontRemoval = useCallback((frontCarId) => {
+    if (!frontCarId || queueRemovalInProgressRef.current) {
+      return;
+    }
+    const snapshot = queueCarsRef.current
+      .filter((car) => (car.phase ?? QUEUE_CAR_PHASE_SLOT) === QUEUE_CAR_PHASE_SLOT)
+      .sort((a, b) => a.slotId - b.slotId);
+    const frontIndex = snapshot.findIndex((car) => car.id === frontCarId);
+    if (frontIndex === -1) {
+      return;
+    }
+    const frontCar = snapshot[frontIndex];
+    const trailing = snapshot.slice(frontIndex + 1);
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const exitDuration = getQueueTravelDuration(frontCar.slotId) + 9600;
+
+    let targetSlotCursor = frontCar.slotId;
+    let cumulativeDelay = Math.max(420, Math.round(exitDuration * 0.18));
+    let lastShiftCompletion = exitDuration;
+
+    const reassignments = new Map();
+    trailing.forEach((car) => {
+      targetSlotCursor = Math.max(1, targetSlotCursor);
+      const targetSlotId = targetSlotCursor;
+      const relocationDuration = getQueueRelocationDuration(car.slotId);
+      reassignments.set(car.id, {
+        targetSlotId,
+        startSlotId: car.slotId,
+        delay: cumulativeDelay,
+        duration: relocationDuration,
+        headingLock: car.headingLock,
+      });
+      lastShiftCompletion = Math.max(lastShiftCompletion, cumulativeDelay + relocationDuration);
+      cumulativeDelay += relocationDuration + QUEUE_HOLD_GAP_MS;
+      targetSlotCursor += 1;
+    });
+
+    const cleanupDelay = Math.max(exitDuration, lastShiftCompletion) + QUEUE_CLEANUP_BUFFER_MS;
+
+    queueRemovalInProgressRef.current = true;
+    setQueueRemovalActive(true);
+    currentRemovalPlanRef.current = null;
+    queuedRemovalIdsRef.current = queuedRemovalIdsRef.current.filter((id) => id !== frontCar.id);
+
+    if (typeof window !== 'undefined') {
+      if (queueRemovalTimeoutRef.current) {
+        window.clearTimeout(queueRemovalTimeoutRef.current);
+        queueRemovalTimeoutRef.current = null;
+      }
+      if (queueExitCleanupTimeoutRef.current) {
+        window.clearTimeout(queueExitCleanupTimeoutRef.current);
+        queueExitCleanupTimeoutRef.current = null;
+      }
+    }
+
+    setQueueCars((prev) => prev.map((car) => {
+      if (car.id === frontCar.id) {
+        const startPos = clonePositionArray(QUEUE_SLOT_LOOKUP[car.slotId] || car.fromPosition);
+        const exitingCar = {
+          ...car,
+          phase: QUEUE_CAR_PHASE_EXIT,
+          fromPosition: startPos,
+          targetOverride: clonePositionArray(QUEUE_EXIT_POSITION),
+          orientationOverride: null,
+          headingLock: null,
+          spawnTime: now,
+          travelDuration: exitDuration,
+        };
+        logQueueCarAssignment('queue-dequeue-exit', exitingCar, car.slotId);
+        return exitingCar;
+      }
+      const reassignment = reassignments.get(car.id);
+      if (reassignment) {
+        const startPos = clonePositionArray(QUEUE_SLOT_LOOKUP[car.slotId] || car.fromPosition);
+        const targetSlotId = reassignment.targetSlotId;
+        const relocation = {
+          ...car,
+          slotId: targetSlotId,
+          fromPosition: startPos,
+          targetOverride: null,
+          orientationOverride: null,
+          headingLock: reassignment.headingLock ?? car.headingLock,
+          phase: QUEUE_CAR_PHASE_SLOT,
+          spawnTime: now + reassignment.delay,
+          travelDuration: reassignment.duration,
+        };
+        logQueueCarAssignment('queue-dequeue-shift', relocation, targetSlotId);
+        return relocation;
+      }
+      return car;
+    }));
+
+    if (typeof window !== 'undefined') {
+      queueExitCleanupTimeoutRef.current = window.setTimeout(() => {
+        setQueueCars((current) => current.filter((car) => car.id !== frontCar.id));
+        queueExitCleanupTimeoutRef.current = null;
+        queueRemovalInProgressRef.current = false;
+        setQueueRemovalActive(false);
+      }, cleanupDelay);
+    } else {
+      setQueueCars((current) => current.filter((car) => car.id !== frontCar.id));
+      queueRemovalInProgressRef.current = false;
+      setQueueRemovalActive(false);
+    }
+  }, [setQueueCars, setQueueRemovalActive]);
+
   const handleQueueMoveSelected = useCallback(() => {
+    if (activeMinigame !== 'stack') {
+      return;
+    }
     if (!selectedQueueCarIds.length) {
       return;
     }
@@ -2323,15 +2531,16 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     if (!queueRemovalInProgressRef.current) {
       processQueuedRemovalsRef.current();
     }
-  }, [queueCars, selectedQueueCarIds]);
+  }, [queueCars, selectedQueueCarIds, activeMinigame]);
 
   const handleAddQueueCar = useCallback(() => {
+    const { positions, lookup } = getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue');
     setQueueCars((prev) => {
-      if (prev.length >= QUEUE_SLOT_POSITIONS.length) {
+      if (prev.length >= positions.length) {
         return prev;
       }
       const occupied = new Set(prev.map((entry) => entry.slotId));
-      const nextSlot = QUEUE_SLOT_POSITIONS.find((slot) => !occupied.has(slot.id));
+      const nextSlot = positions.find((slot) => !occupied.has(slot.id));
       if (!nextSlot) {
         return prev;
       }
@@ -2354,14 +2563,38 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         colorOverride,
         headingLock: null,
       };
-      const next = ensureUniqueSlotAssignments([...prev, newCar], 'spawn');
+      const next = ensureUniqueSlotAssignments([...prev, newCar], 'spawn', positions, lookup);
       const inserted = next.find((entry) => entry.id === newCar.id) || newCar;
       if (Number.isFinite(inserted.slotId)) {
         logQueueCarAssignment('spawn', inserted, inserted.slotId);
       }
       return next;
     });
-  }, []);
+  }, [activeMinigame]);
+
+  const handleQueueDequeueFront = useCallback(() => {
+    const available = queueCars
+      .filter((car) => (car.phase ?? QUEUE_CAR_PHASE_SLOT) === QUEUE_CAR_PHASE_SLOT)
+      .sort((a, b) => a.slotId - b.slotId);
+    const front = available[0];
+    if (!front) {
+      return;
+    }
+    if (activeMinigame === 'queue') {
+      startQueueFrontRemoval(front.id);
+      return;
+    }
+    if (activeMinigame !== 'stack') {
+      return;
+    }
+    const alreadyQueued = queuedRemovalIdsRef.current.includes(front.id);
+    if (!alreadyQueued) {
+      queuedRemovalIdsRef.current.push(front.id);
+    }
+    if (!queueRemovalInProgressRef.current) {
+      processQueuedRemovalsRef.current();
+    }
+  }, [activeMinigame, queueCars, startQueueFrontRemoval]);
 
   const scheduleCleanupTimer = useCallback((plan) => {
     if (!plan || currentRemovalPlanRef.current !== plan) return;
@@ -2381,6 +2614,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
       setSelectedQueueCarIds((current) => current.filter((id) => id !== plan.carId));
       queuedRemovalIdsRef.current = queuedRemovalIdsRef.current.filter((id) => id !== plan.carId);
       queueRemovalInProgressRef.current = false;
+      setQueueRemovalActive(false);
       currentRemovalPlanRef.current = null;
       processQueuedRemovalsRef.current();
     }, cleanupDelay);
@@ -2405,6 +2639,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     queueRemovalTimeoutRef.current = null;
     plan.rejoinCompleted = true;
     const holdMetaMap = new Map(plan.holdDetails.map((detail) => [detail.id, detail]));
+    const { positions, lookup } = getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue');
     setQueueCars((current) => {
       if (currentRemovalPlanRef.current !== plan) {
         return current;
@@ -2421,7 +2656,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
       ); // Keep stagger wide enough to prevent path overlap
       const rejoinLogIds = new Set();
       const remappedCars = resorted.map((car, index) => {
-        const nextSlot = QUEUE_SLOT_POSITIONS[index];
+        const nextSlot = positions[index];
         if (!nextSlot) {
           return car;
         }
@@ -2457,7 +2692,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
           headingLock: null,
         };
       });
-      const nextCars = ensureUniqueSlotAssignments(remappedCars, 'rejoin');
+      const nextCars = ensureUniqueSlotAssignments(remappedCars, 'rejoin', positions, lookup);
       nextCars.forEach((entry) => {
         if (rejoinLogIds.has(entry.id) && Number.isFinite(entry.slotId)) {
           logQueueCarAssignment('rejoin', entry, entry.slotId);
@@ -2467,7 +2702,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
       return exitCarEntry ? [...nextCars, exitCarEntry] : nextCars;
     });
     scheduleCleanupTimer(plan);
-  }, [scheduleCleanupTimer, setQueueCars]);
+  }, [scheduleCleanupTimer, setQueueCars, activeMinigame]);
 
   const schedulePlanTimers = useCallback((plan) => {
     if (!plan || plan.rejoinCompleted || currentRemovalPlanRef.current !== plan) {
@@ -2504,6 +2739,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     plan.cleanupTimestamp = plan.cleanupTimestamp == null ? cleanupCandidate : Math.min(plan.cleanupTimestamp, cleanupCandidate);
 
     const wasApplied = Boolean(plan.applied);
+    const { positions, lookup } = getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue');
 
     const transform = (input, referenceNow) => {
       const nowRef = Number.isFinite(referenceNow)
@@ -2586,7 +2822,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         return entry;
       });
 
-      return ensureUniqueSlotAssignments(mapped, wasApplied ? 'reschedule' : 'apply');
+      return ensureUniqueSlotAssignments(mapped, wasApplied ? 'reschedule' : 'apply', positions, lookup);
     };
 
     if (Array.isArray(options.sourceCars)) {
@@ -2598,19 +2834,20 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
       return result;
     }
 
-  setQueueCars((prev) => transform(prev));
+    setQueueCars((prev) => transform(prev));
     plan.applied = true;
     if (!plan.rejoinCompleted) {
       schedulePlanTimers(plan);
     }
     return undefined;
-  }, [schedulePlanTimers, setQueueCars]);
+  }, [schedulePlanTimers, setQueueCars, activeMinigame]);
 
   const handleRemoveQueueCar = useCallback((carId) => {
-    if (activeMinigame !== 'queue' || queueRemovalInProgressRef.current) {
+    if ((activeMinigame !== 'stack' && activeMinigame !== 'queue') || queueRemovalInProgressRef.current) {
       return;
     }
 
+    const { lookup } = getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue');
     setQueueCars((prev) => {
       if (!prev.length) {
         return prev;
@@ -2635,7 +2872,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         startTime: now,
         exitDuration: getQueueTravelDuration(exitCar.slotId) + 9600,
         exitTargetPosition: clonePositionArray(QUEUE_EXIT_POSITION),
-        exitFromPosition: clonePositionArray(QUEUE_SLOT_LOOKUP[exitCar.slotId] || QUEUE_CAR_SPAWN_POSITION),
+        exitFromPosition: clonePositionArray(lookup[exitCar.slotId] || QUEUE_CAR_SPAWN_POSITION),
         holdDetails: [],
         holdDetailsById: new Map(),
         baseExitStartOffset: 0,
@@ -2657,8 +2894,8 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
 
       holdOrder.forEach((car, idx) => {
         const marker = FREE_MARKER_POSITIONS[idx] || FREE_MARKER_POSITIONS[FREE_MARKER_POSITIONS.length - 1];
-        const markerPosition = clonePositionArray(marker?.position || QUEUE_SLOT_LOOKUP[car.slotId] || QUEUE_CAR_SPAWN_POSITION);
-        const startPosition = clonePositionArray(QUEUE_SLOT_LOOKUP[car.slotId] || QUEUE_CAR_SPAWN_POSITION);
+        const markerPosition = clonePositionArray(marker?.position || lookup[car.slotId] || QUEUE_CAR_SPAWN_POSITION);
+        const startPosition = clonePositionArray(lookup[car.slotId] || QUEUE_CAR_SPAWN_POSITION);
         const travelDuration = getQueueTravelDuration(car.slotId);
         const detail = {
           id: car.id,
@@ -2693,6 +2930,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
 
       currentRemovalPlanRef.current = plan;
       queueRemovalInProgressRef.current = true;
+      setQueueRemovalActive(true);
 
       const scale = queueFastForwardRef.current && QUEUE_FAST_FORWARD_MULTIPLIER > 1
         ? 1 / QUEUE_FAST_FORWARD_MULTIPLIER
@@ -2755,23 +2993,24 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   }, [carOnInteractMarker, interactCountdown, interactPhase]);
 
   useEffect(() => {
-    if (!queueMinigameArmed || queueLoading || activeMinigame === 'queue') {
+    if (!stackMinigameArmed || minigameLoading || activeMinigame === 'stack') {
       return;
     }
-    if (!(carOnQueueMarker && queueCountdown <= 0)) {
+    if (!(carOnStackMarker && stackCountdown <= 0)) {
       return;
     }
     const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
     schedule(() => {
-      setQueueLoading(true);
-      setQueueLoadingStep(0);
-      setQueueMinigameArmed(false);
-      if (queueLoadingTimeoutRef.current) {
-        window.clearTimeout(queueLoadingTimeoutRef.current);
-        queueLoadingTimeoutRef.current = null;
+      setMinigameLoading(true);
+      setMinigameLoadingStep(0);
+      setMinigameLoadingMode('stack');
+      setStackMinigameArmed(false);
+      if (minigameLoadingTimeoutRef.current) {
+        window.clearTimeout(minigameLoadingTimeoutRef.current);
+        minigameLoadingTimeoutRef.current = null;
       }
       const timeoutId = window.setTimeout(() => {
-        queueLoadingTimeoutRef.current = null;
+        minigameLoadingTimeoutRef.current = null;
         minigameStateRef.current = {
           startTime: performance.now(),
           stacks: [],
@@ -2779,18 +3018,61 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         setQueueCars([]);
         setSelectedQueueCarIds([]);
         queuedRemovalIdsRef.current = [];
-        setActiveMinigame('queue');
-        setQueueLoading(false);
+        setActiveMinigame('stack');
+        setMinigameLoading(false);
+        setMinigameLoadingMode(null);
       }, QUEUE_LOADING_DELAY_MS);
-      queueLoadingTimeoutRef.current = timeoutId;
+      minigameLoadingTimeoutRef.current = timeoutId;
     });
-  }, [carOnQueueMarker, queueCountdown, activeMinigame, queueMinigameArmed, queueLoading]);
+  }, [carOnStackMarker, stackCountdown, activeMinigame, stackMinigameArmed, minigameLoading]);
 
   useEffect(() => {
-    if (activeMinigame === 'queue') {
+    if (!queueMinigameArmed || minigameLoading || activeMinigame === 'queue') {
+      return;
+    }
+    if (!(carOnQueueMarker && queueCountdown <= 0)) {
+      return;
+    }
+    const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
+    schedule(() => {
+      setMinigameLoading(true);
+      setMinigameLoadingStep(0);
+      setMinigameLoadingMode('queue');
+      setQueueMinigameArmed(false);
+      if (minigameLoadingTimeoutRef.current) {
+        window.clearTimeout(minigameLoadingTimeoutRef.current);
+        minigameLoadingTimeoutRef.current = null;
+      }
+      const timeoutId = window.setTimeout(() => {
+        minigameLoadingTimeoutRef.current = null;
+        minigameStateRef.current = {
+          startTime: performance.now(),
+          queue: [],
+        };
+        setQueueCars([]);
+        setSelectedQueueCarIds([]);
+        queuedRemovalIdsRef.current = [];
+        setActiveMinigame('queue');
+        setMinigameLoading(false);
+        setMinigameLoadingMode(null);
+      }, QUEUE_LOADING_DELAY_MS);
+      minigameLoadingTimeoutRef.current = timeoutId;
+    });
+  }, [carOnQueueMarker, queueCountdown, activeMinigame, queueMinigameArmed, minigameLoading]);
+
+  useEffect(() => {
+    if (activeMinigame === 'stack') {
       setJoystickVector(0, 0);
     }
   }, [activeMinigame]);
+
+  useEffect(() => {
+    if (typeof onStackMinigameChange === 'function') {
+      try {
+        onStackMinigameChange(activeMinigame === 'stack');
+      } catch {}
+    }
+  }, [activeMinigame, onStackMinigameChange]);
 
   useEffect(() => {
     if (typeof onQueueMinigameChange === 'function') {
@@ -2801,21 +3083,40 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   }, [activeMinigame, onQueueMinigameChange]);
 
   useEffect(() => {
-    if (!queueLoading) {
+    if (!minigameLoading || minigameLoadingMode !== 'stack') {
+      return undefined;
+    }
+    if (carOnStackMarker && stackCountdown <= 0) {
+      return undefined;
+    }
+    if (minigameLoadingTimeoutRef.current) {
+      window.clearTimeout(minigameLoadingTimeoutRef.current);
+      minigameLoadingTimeoutRef.current = null;
+    }
+    setMinigameLoading(false);
+    setMinigameLoadingStep(0);
+    setMinigameLoadingMode(null);
+    setStackMinigameArmed(true);
+    return undefined;
+  }, [minigameLoading, minigameLoadingMode, carOnStackMarker, stackCountdown]);
+
+  useEffect(() => {
+    if (!minigameLoading || minigameLoadingMode !== 'queue') {
       return undefined;
     }
     if (carOnQueueMarker && queueCountdown <= 0) {
       return undefined;
     }
-    if (queueLoadingTimeoutRef.current) {
-      window.clearTimeout(queueLoadingTimeoutRef.current);
-      queueLoadingTimeoutRef.current = null;
+    if (minigameLoadingTimeoutRef.current) {
+      window.clearTimeout(minigameLoadingTimeoutRef.current);
+      minigameLoadingTimeoutRef.current = null;
     }
-    setQueueLoading(false);
-    setQueueLoadingStep(0);
+    setMinigameLoading(false);
+    setMinigameLoadingStep(0);
+    setMinigameLoadingMode(null);
     setQueueMinigameArmed(true);
     return undefined;
-  }, [queueLoading, carOnQueueMarker, queueCountdown]);
+  }, [minigameLoading, minigameLoadingMode, carOnQueueMarker, queueCountdown]);
 
   useEffect(() => {
     queueFastForwardRef.current = queueFastForward;
@@ -2833,13 +3134,14 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   }, [queueFastForward, applyRemovalPlanTimeline]);
 
   useEffect(() => {
-    if (activeMinigame !== 'queue') {
+    if (activeMinigame !== 'stack') {
       minigameStateRef.current = null;
       setQueueCars([]);
       setQueueFastForward(false);
       setSelectedQueueCarIds([]);
       queuedRemovalIdsRef.current = [];
       queueRemovalInProgressRef.current = false;
+      setQueueRemovalActive(false);
       if (queueRemovalTimeoutRef.current) {
         window.clearTimeout(queueRemovalTimeoutRef.current);
         queueRemovalTimeoutRef.current = null;
@@ -2848,12 +3150,13 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         window.clearTimeout(queueExitCleanupTimeoutRef.current);
         queueExitCleanupTimeoutRef.current = null;
       }
-      if (queueLoadingTimeoutRef.current) {
-        window.clearTimeout(queueLoadingTimeoutRef.current);
-        queueLoadingTimeoutRef.current = null;
+      if (minigameLoadingTimeoutRef.current) {
+        window.clearTimeout(minigameLoadingTimeoutRef.current);
+        minigameLoadingTimeoutRef.current = null;
       }
-      setQueueLoading(false);
-      setQueueLoadingStep(0);
+      setMinigameLoading(false);
+      setMinigameLoadingStep(0);
+      setMinigameLoadingMode(null);
       currentRemovalPlanRef.current = null;
     }
   }, [activeMinigame]);
@@ -2884,12 +3187,15 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
       window.clearTimeout(queueExitCleanupTimeoutRef.current);
       queueExitCleanupTimeoutRef.current = null;
     }
-    if (queueLoadingTimeoutRef.current) {
-      window.clearTimeout(queueLoadingTimeoutRef.current);
-      queueLoadingTimeoutRef.current = null;
+    if (minigameLoadingTimeoutRef.current) {
+      window.clearTimeout(minigameLoadingTimeoutRef.current);
+      minigameLoadingTimeoutRef.current = null;
     }
     currentRemovalPlanRef.current = null;
     queuedRemovalIdsRef.current = [];
+    queueRemovalInProgressRef.current = false;
+    setQueueRemovalActive(false);
+    setMinigameLoadingMode(null);
   }, []);
 
   useEffect(() => {
@@ -3034,13 +3340,17 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
     setIsDragOverDropzone(false);
   }, []);
 
-  const handleLicenseDrop = useCallback((event) => {
-    event.preventDefault();
+  const completeLicenseDrop = useCallback(() => {
     setIsDragOverDropzone(false);
     if (interactPhase !== 'handover') return;
     setLicenseDropped(true);
     setInteractPhase('checking');
   }, [interactPhase]);
+
+  const handleLicenseDrop = useCallback((event) => {
+    event.preventDefault();
+    completeLicenseDrop();
+  }, [completeLicenseDrop]);
 
   const handleInteractApprovedAcknowledge = useCallback(() => {
     setInteractPhase('complete');
@@ -3049,6 +3359,86 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   const handleLicenseDragEnd = useCallback(() => {
     setIsDragOverDropzone(false);
   }, []);
+
+  const handleLicensePointerDown = useCallback((event) => {
+    if (event.pointerType !== 'touch') return;
+    if (interactPhase !== 'handover' || licenseDropped) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {}
+    touchPointerIdRef.current = event.pointerId;
+    touchStartRef.current = { x: event.clientX, y: event.clientY };
+    setIsDragOverDropzone(false);
+    setTouchDragState({ deltaX: 0, deltaY: 0 });
+  }, [interactPhase, licenseDropped]);
+
+  const handleLicensePointerMove = useCallback((event) => {
+    if (event.pointerType !== 'touch') return;
+    if (touchPointerIdRef.current !== event.pointerId) return;
+    event.preventDefault();
+    const deltaX = event.clientX - touchStartRef.current.x;
+    const deltaY = event.clientY - touchStartRef.current.y;
+    setTouchDragState({ deltaX, deltaY });
+    const dropRect = dropZoneRef.current?.getBoundingClientRect();
+    if (!dropRect) {
+      return;
+    }
+    const inside = event.clientX >= dropRect.left
+      && event.clientX <= dropRect.right
+      && event.clientY >= dropRect.top
+      && event.clientY <= dropRect.bottom;
+    setIsDragOverDropzone(inside);
+  }, []);
+
+  const handleLicensePointerUp = useCallback((event) => {
+    if (event.pointerType !== 'touch') return;
+    if (touchPointerIdRef.current !== event.pointerId) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+    let dropped = false;
+    const dropRect = dropZoneRef.current?.getBoundingClientRect();
+    if (dropRect) {
+      const inside = event.clientX >= dropRect.left
+        && event.clientX <= dropRect.right
+        && event.clientY >= dropRect.top
+        && event.clientY <= dropRect.bottom;
+      if (inside) {
+        completeLicenseDrop();
+        dropped = true;
+      }
+    }
+    if (!dropped) {
+      setIsDragOverDropzone(false);
+    }
+    touchPointerIdRef.current = null;
+    touchStartRef.current = { x: 0, y: 0 };
+    setTouchDragState(null);
+  }, [completeLicenseDrop]);
+
+  const handleLicensePointerCancel = useCallback((event) => {
+    if (event.pointerType !== 'touch') return;
+    if (touchPointerIdRef.current !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+    setIsDragOverDropzone(false);
+    touchPointerIdRef.current = null;
+    touchStartRef.current = { x: 0, y: 0 };
+    setTouchDragState(null);
+  }, []);
+
+  const licenseTouchStyle = useMemo(() => {
+    if (!touchDragState) {
+      return { touchAction: 'none' };
+    }
+    return {
+      touchAction: 'none',
+      transform: `translate3d(${touchDragState.deltaX}px, ${touchDragState.deltaY}px, 0)`,
+    };
+  }, [touchDragState]);
 
   return (
     <div className="relative w-full h-full">
@@ -3069,7 +3459,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
             position={STACK_MARKER_POSITION}
             size={STACK_MARKER_SIZE}
             carRef={carRef}
-            onPresenceChange={rawHandleStackMarkerPresence}
+            onPresenceChange={handleStackMarkerPresence}
             active={carOnStackMarker}
             colors={STACK_MARKER_COLORS}
           />
@@ -3094,24 +3484,42 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
           <FloatingCountdown carRef={carRef} countdown={stackCountdown} active={carOnStackMarker} />
           <FloatingCountdown carRef={carRef} countdown={queueCountdown} active={carOnQueueMarker} />
           <FloatingCountdown carRef={carRef} countdown={interactCountdown} active={carOnInteractMarker} />
-          {activeMinigame === 'queue' && (
+          {activeMinigame === 'stack' && (
             <>
-              <QueueSlotMarkers slots={QUEUE_SLOT_POSITIONS} />
+              <QueueSlotMarkers slots={STACK_NUMBER_MARKER_POSITIONS} rotationY={Math.PI} />
               <FreeSlotMarkers slots={FREE_MARKER_POSITIONS} />
               <QueueCarFleet
                 cars={queueCars}
+                slotLookup={STACK_SLOT_LOOKUP}
                 onToggleSelect={handleToggleQueueCarSelection}
                 selectedCarIds={selectedQueueCarIds}
                 fastForward={queueFastForward}
+                selectionEnabled
               />
             </>
           )}
-          <Car onSpeedChange={setSpeed} carRef={carRef} controlsEnabled={activeMinigame !== 'queue'} />
+          {activeMinigame === 'queue' && (
+            <>
+              <QueueSlotMarkers slots={QUEUE_SLOT_POSITIONS} rotationY={0} />
+              <QueueCarFleet
+                cars={queueCars}
+                slotLookup={QUEUE_SLOT_LOOKUP}
+                fastForward={queueFastForward}
+                selectionEnabled={false}
+              />
+            </>
+          )}
+          <Car
+            onSpeedChange={setSpeed}
+            carRef={carRef}
+            controlsEnabled={!['stack', 'queue'].includes(activeMinigame)}
+          />
           <Environment preset="sunset" background />
         </Suspense>
         <CameraRig
           targetRef={carRef}
           mode={activeMinigame}
+          stackTarget={STACK_CAMERA_CONFIG}
           queueTarget={QUEUE_CAMERA_CONFIG}
           interactTarget={securityGuardCameraTarget}
           interactActive={interactCameraActive}
@@ -3119,11 +3527,21 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         <Stats />
       </Canvas>
       <MobileJoystick active={joystickActive} />
-      {showQueueState && activeMinigame === 'queue' && (
-        <QueueStateViewer
+      {showStackState && activeMinigame === 'stack' && (
+        <StructureStateViewer
           slotState={queueSlotState}
           freeSlotState={queueHoldState}
           selectedIds={selectedQueueCarIds}
+          title="Stack Snapshot"
+        />
+      )}
+      {showQueueState && activeMinigame === 'queue' && (
+        <StructureStateViewer
+          slotState={queueSlotState}
+          freeSlotState={queueHoldState}
+          selectedIds={selectedQueueCarIds}
+          title="Queue Snapshot"
+          showFreeSlots={false}
         />
       )}
       <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
@@ -3133,18 +3551,18 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
           <div className="text-[10px] opacity-80">km/h</div>
         </div>
       </div>
-      {queueLoading && (
+      {minigameLoading && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
           <div className="pointer-events-auto flex w-[min(90vw,22rem)] flex-col items-center gap-4 rounded-3xl bg-slate-900/85 px-6 py-6 text-center text-sky-100 shadow-2xl ring-1 ring-sky-400/30">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-sky-300/80">
               <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-sky-300" />
-              Initializing queue
+              {minigameLoadingMode === 'stack' ? 'Initializing stack' : 'Initializing queue'}
             </div>
-            <div className="text-base font-semibold leading-relaxed sm:text-lg">{queueLoadingMessage}</div>
+            <div className="text-base font-semibold leading-relaxed sm:text-lg">{minigameLoadingMessage}</div>
             <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-sky-100/15">
               <div
                 className="h-full bg-sky-400 transition-[width] duration-300 ease-out"
-                style={{ width: `${queueLoadingProgress}%` }}
+                style={{ width: `${minigameLoadingProgress}%` }}
               />
             </div>
           </div>
@@ -3193,6 +3611,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
                 Slide your license up onto the counter so I can inspect it.
               </p>
               <div
+                ref={dropZoneRef}
                 onDragOver={handleDropZoneDragOver}
                 onDrop={handleLicenseDrop}
                 onDragLeave={handleDropZoneDragLeave}
@@ -3229,7 +3648,12 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
                   draggable
                   onDragStart={handleLicenseDragStart}
                   onDragEnd={handleLicenseDragEnd}
+                  onPointerDown={handleLicensePointerDown}
+                  onPointerMove={handleLicensePointerMove}
+                  onPointerUp={handleLicensePointerUp}
+                  onPointerCancel={handleLicensePointerCancel}
                   className="h-40 w-auto cursor-grab rounded-3xl border-2 border-white/35 bg-white/90 p-4 text-slate-900 shadow-2xl transition hover:scale-[1.05] active:cursor-grabbing"
+                  style={licenseTouchStyle}
                   sizes="(max-width: 640px) 280px, 360px"
                 />
               )}
@@ -3290,7 +3714,7 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
           </div>
         </div>
       )}
-      {activeMinigame === 'queue' && (
+      {activeMinigame === 'stack' && (
         <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
           <div className="pointer-events-auto flex flex-wrap items-center gap-2">
             <button
@@ -3339,6 +3763,65 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
               Add car
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMinigame(null)}
+              className="inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-white/25 transition hover:bg-slate-800/80"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              Back to free roam
+            </button>
+          </div>
+        </div>
+      )}
+      {activeMinigame === 'queue' && (
+        <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={queueFastForward}
+              onPointerDown={handleQueueFastForwardPress}
+              onPointerUp={handleQueueFastForwardRelease}
+              onPointerLeave={handleQueueFastForwardRelease}
+              onPointerCancel={handleQueueFastForwardRelease}
+              onKeyDown={(event) => {
+                if (!event.repeat && (event.key === ' ' || event.key === 'Enter')) {
+                  event.preventDefault();
+                  handleQueueFastForwardPress();
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                  handleQueueFastForwardRelease();
+                }
+              }}
+              onBlur={handleQueueFastForwardRelease}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold shadow ring-1 transition focus:outline-none focus:ring-2 focus:ring-sky-200 ${queueFastForward ? 'bg-sky-300 text-slate-900 ring-sky-100/60' : 'bg-sky-500/90 text-white ring-sky-300/40 hover:bg-sky-400/90'}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5v14l6-7zm8 0v14l6-7z"/></svg>
+              Fast forward
+            </button>
+            <button
+              type="button"
+              onClick={handleAddQueueCar}
+              disabled={queueIsFull || queueRemovalActive}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold shadow ring-1 ring-emerald-300/40 transition focus:outline-none focus:ring-2 focus:ring-emerald-200 ${queueIsFull || queueRemovalActive ? 'cursor-not-allowed bg-emerald-500/45 text-emerald-100/70' : 'bg-emerald-500/90 text-white hover:bg-emerald-400/90'}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+              Add car
+            </button>
+            <button
+              type="button"
+              onClick={handleQueueDequeueFront}
+              disabled={!queueHasRemovable || queueRemovalActive}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold shadow ring-1 ring-rose-300/40 transition focus:outline-none focus:ring-2 focus:ring-rose-200 ${!queueHasRemovable || queueRemovalActive ? 'cursor-not-allowed bg-rose-500/45 text-rose-100/70' : 'bg-rose-500/90 text-white hover:bg-rose-400/90'}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 11h14v2H5z"/></svg>
+              Remove front car
+              {queueRemovalActive && (
+                <span className="ml-1.5 inline-flex h-2 w-2 animate-ping rounded-full bg-rose-100/80" />
+              )}
             </button>
             <button
               type="button"
