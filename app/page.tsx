@@ -212,7 +212,7 @@ function HomeContent() {
         </div>
       )}
       <main
-        className={`relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white ${
+        className={`relative min-h-[100dvh] overflow-hidden bg-transparent text-white ${
           isShaking ? "site-shake" : ""
         }`}
       >

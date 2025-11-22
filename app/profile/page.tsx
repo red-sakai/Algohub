@@ -51,7 +51,7 @@ function ProfilePageContent() {
 
   if (isLoading) {
     return (
-      <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+      <main className="relative min-h-[100dvh] overflow-hidden bg-transparent text-white">
         <TargetCursor spinDuration={2} hideDefaultCursor parallaxOn />
         <Squares
           speed={0.35}
@@ -72,7 +72,7 @@ function ProfilePageContent() {
 
   if (!currentAuth) {
     return (
-      <main className="relative min-h-[100dvh] bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+      <main className="relative min-h-[100dvh] bg-transparent text-white">
         <TargetCursor spinDuration={2} hideDefaultCursor parallaxOn />
         <Squares
           speed={0.35}
@@ -102,7 +102,7 @@ function ProfilePageContent() {
   }
 
   return (
-    <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+    <main className="relative min-h-[100dvh] overflow-hidden bg-transparent text-white">
       <TargetCursor spinDuration={2} hideDefaultCursor parallaxOn />
       <Squares
         speed={0.35}

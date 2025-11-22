@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import type { MouseEvent } from 'react';
 import { useCallback } from '@/hooks/useCallback';
@@ -7,7 +7,8 @@ import { useMemo } from '@/hooks/useMemo';
 import { useState } from '@/hooks/useState';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
-import { setSkipNextIrisOpen } from '@/lib/transition/transitionBus';
+import { playSfx } from '@/lib/audio/sfx';
+import { setSkipNextAuthModal, setSkipNextIrisOpen } from '@/lib/transition/transitionBus';
 import { fetchProfileData } from '@/actions/profile/fetch-profile-data';
 import { signOutUser } from '@/actions/auth/sign-out';
 import { decodeStateParam } from '@/lib/utils';
@@ -15,7 +16,7 @@ import type { AuthUserSummary, UserProfile } from '@/types/auth';
 import type { UserAchievement } from '@/types/achievements';
 import type { UseProfilePageResult } from '@/types/profile';
 
-export function useProfilePage(): UseProfilePageResult {
+function useProfilePage(): UseProfilePageResult {
   const searchParams = useSearchParams();
   const router = useRouter();
   const slideTransition = useSlideTransition();
@@ -47,6 +48,12 @@ export function useProfilePage(): UseProfilePageResult {
       return null;
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!slideTransition.isRunning()) {
+      slideTransition.setGradient(PROFILE_GRADIENT);
+    }
+  }, [slideTransition]);
 
   useEffect(() => {
     let isActive = true;
@@ -86,7 +93,9 @@ export function useProfilePage(): UseProfilePageResult {
 
   const handleBackToLanding = useCallback((event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
+    playSfx('/button_click.mp3', 0.55);
     setSkipNextIrisOpen();
+    setSkipNextAuthModal();
     slideTransition.start({
       origin: 'left',
       fromGradient: PROFILE_GRADIENT,
@@ -106,7 +115,9 @@ export function useProfilePage(): UseProfilePageResult {
       setIsSigningOut(false);
       return;
     }
+    playSfx('/button_click.mp3', 0.55);
     setSkipNextIrisOpen();
+    setSkipNextAuthModal();
     slideTransition.start({
       origin: 'left',
       fromGradient: PROFILE_GRADIENT,
@@ -131,3 +142,6 @@ export function useProfilePage(): UseProfilePageResult {
     handleSignOut,
   } satisfies UseProfilePageResult;
 }
+
+export { useProfilePage };
+export default useProfilePage;
