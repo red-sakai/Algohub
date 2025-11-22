@@ -31,6 +31,8 @@ export interface SlideTransitionOptions {
 
 export interface SlideTransitionController {
   start: (options?: SlideTransitionOptions) => void;
+  isRunning: () => boolean;
+  setGradient: (gradient: string) => void;
 }
 
 const SlideTransitionContext = createContext<SlideTransitionController | null>(null);
@@ -139,6 +141,16 @@ export function SlideTransitionProvider({ children }: { children: ReactNode }) {
 
       timelineRef.current = timeline;
     },
+    isRunning: () => runningRef.current,
+    setGradient: (gradient: string) => {
+      if (typeof gradient !== "string" || !gradient.length) {
+        return;
+      }
+      currentGradientRef.current = gradient;
+      if (!runningRef.current && backgroundPrimaryRef.current) {
+        backgroundPrimaryRef.current.style.background = gradient;
+      }
+    },
   }), []);
 
   useEffect(
@@ -169,6 +181,8 @@ const fallbackController: SlideTransitionController = {
       options?.onDone?.();
     }
   },
+  isRunning: () => false,
+  setGradient: () => {},
 };
 
 export function useSlideTransition(): SlideTransitionController {

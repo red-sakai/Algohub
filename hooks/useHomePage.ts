@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { gsap } from 'gsap';
 import { playSfx } from '@/lib/audio/sfx';
 import { loadLandingSession } from '@/actions/auth/load-landing-session';
-import { consumeSkipNextIrisOpen, setIrisPoint } from '@/lib/transition/transitionBus';
+import { consumeSkipNextAuthModal, consumeSkipNextIrisOpen, setIrisPoint } from '@/lib/transition/transitionBus';
 import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
 import { decodeStateParam, encodeStateParam } from '@/lib/utils';
 import type { AuthUserSummary, UserProfile } from '@/types/auth';
@@ -52,7 +52,12 @@ export function useHomePage(): UseHomePageResult {
   const [isShaking, setIsShaking] = useState(false);
   const [isLogoShining, setIsLogoShining] = useState(false);
   const [logoShineCycle, setLogoShineCycle] = useState(0);
-  const [showAuthModal, setShowAuthModal] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+    return !consumeSkipNextAuthModal();
+  });
 
   const [skipIrisOpen] = useState(() => {
     if (typeof window === 'undefined') {
