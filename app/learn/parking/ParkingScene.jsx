@@ -6,6 +6,7 @@ import { Environment, Sky, Stats, Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/license/license';
 import { useMarkerController } from '@/hooks/useMarkerController';
+import { playSfx } from '@/lib/audio/sfx';
 
 // Simple key input
 const pressed = new Set();
@@ -525,6 +526,9 @@ const SECURITY_GUARD_SCALE = 1.1;
 const SECURITY_GUARD_MODEL_PATH = '/security/security_guard2.glb';
 const SECURITY_GUARD_CAMERA_POSITION = [36, 7.2, -50];
 const SECURITY_GUARD_CAMERA_LOOK_AT = [SECURITY_GUARD_POSITION[0], SECURITY_GUARD_POSITION[1] + 1.6, SECURITY_GUARD_POSITION[2]];
+const SECURITY_GUARD_BUBBLE_IMAGE = '/security/security_guard_bubble.png';
+const SECURITY_GUARD_SMILING_BUBBLE_IMAGE = '/security/security_guard_smiling_bubble.png';
+const SECURITY_GUARD_TALKING_SFX = '/security/npc_talking.mp3';
 const CAMERA_TRANSITION_DURATION = 0.9;
 const INTERACT_CAMERA_PHASES = new Set(['prompt', 'handover', 'checking']);
 const STACK_COUNTDOWN_START = 3;
@@ -2157,6 +2161,8 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
   const currentRemovalPlanRef = useRef(null);
   const queueCarsRef = useRef(queueCars);
   const queueLoadingTimeoutRef = useRef(null);
+  const guardPromptSfxPlayedRef = useRef(false);
+  const guardApprovalSfxPlayedRef = useRef(false);
   const queueIsFull = queueCars.length >= QUEUE_SLOT_POSITIONS.length;
   const joystickActive = useMemo(
     () => activeMinigame !== 'queue' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
@@ -2215,6 +2221,28 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
       setIsDragOverDropzone(false);
     }
   }, [rawHandleInteractPresence]);
+
+  useEffect(() => {
+    if (interactPhase === 'prompt' && interactCountdown <= 0 && carOnInteractMarker) {
+      if (!guardPromptSfxPlayedRef.current) {
+        playSfx(SECURITY_GUARD_TALKING_SFX, 0.75);
+        guardPromptSfxPlayedRef.current = true;
+      }
+    } else if (interactPhase !== 'prompt') {
+      guardPromptSfxPlayedRef.current = false;
+    }
+  }, [carOnInteractMarker, interactCountdown, interactPhase]);
+
+  useEffect(() => {
+    if (interactPhase === 'approved') {
+      if (!guardApprovalSfxPlayedRef.current) {
+        playSfx(SECURITY_GUARD_TALKING_SFX, 0.75);
+        guardApprovalSfxPlayedRef.current = true;
+      }
+    } else if (guardApprovalSfxPlayedRef.current) {
+      guardApprovalSfxPlayedRef.current = false;
+    }
+  }, [interactPhase]);
 
   const handleQueueMarkerPresence = useCallback((isInside) => {
     rawHandleQueueMarkerPresence(isInside);
@@ -3123,18 +3151,33 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         </div>
       )}
       {interactPhase === 'prompt' && interactCountdown <= 0 && carOnInteractMarker && (
-        <div className="pointer-events-auto absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2 rounded-3xl bg-slate-900/85 px-5 py-4 text-white shadow-xl ring-1 ring-white/20 backdrop-blur">
-          <div className="text-xs uppercase tracking-[0.18em] text-sky-300">Security Guard</div>
-          <div className="mt-2 text-sm leading-relaxed text-sky-50">
-            Good afternoon! Before you head in, may I see your driver&apos;s license, please?
+        <div className="pointer-events-auto absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2">
+          <div className="relative mx-auto w-full">
+            <Image
+              src={SECURITY_GUARD_BUBBLE_IMAGE}
+              alt="Security guard speech bubble"
+              width={640}
+              height={360}
+              className="h-auto w-full drop-shadow-[0_18px_34px_rgba(15,23,42,0.58)]"
+              sizes="(max-width: 640px) 90vw, 384px"
+              priority={false}
+            />
+            <div className="absolute inset-0 flex flex-col px-8 pb-26 pt-45 text-white">
+              <div className="text-xs uppercase tracking-[0.18em] text-sky-200">Security Guard</div>
+              <div className="mt-3 text-sm leading-relaxed text-sky-50">
+                Good afternoon! Before you head in, may I see your driver&apos;s license, please?
+              </div>
+              <div className="mt-auto flex justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={handleInteractPromptNext}
+                  className="inline-flex items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleInteractPromptNext}
-            className="mt-4 inline-flex items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
-          >
-            Next
-          </button>
         </div>
       )}
       {interactPhase === 'handover' && (
@@ -3195,30 +3238,56 @@ export default function ParkingScene({ showQueueState = false, onQueueMinigameCh
         </div>
       )}
       {interactPhase === 'checking' && (
-        <div className="pointer-events-none absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2 rounded-3xl bg-slate-900/85 px-5 py-4 text-white shadow-xl ring-1 ring-white/20 backdrop-blur">
-          <div className="text-xs uppercase tracking-[0.18em] text-sky-300">Security Guard</div>
-          <div className="mt-2 text-sm leading-relaxed text-sky-50">
-            Alright, let me take a quick look at this.
-          </div>
-          <div className="mt-3 flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-sky-200/80">
-            <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-sky-300" />
-            Checking license…
+        <div className="pointer-events-none absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2">
+          <div className="relative mx-auto w-full">
+            <Image
+              src={SECURITY_GUARD_BUBBLE_IMAGE}
+              alt="Security guard checking bubble"
+              width={640}
+              height={360}
+              className="h-auto w-full drop-shadow-[0_18px_34px_rgba(15,23,42,0.58)]"
+              sizes="(max-width: 640px) 90vw, 384px"
+            />
+            <div className="absolute inset-0 flex flex-col px-8 pb-26 pt-45 text-white">
+              <div className="text-xs uppercase tracking-[0.18em] text-sky-200">Security Guard</div>
+              <div className="mt-3 text-sm leading-relaxed text-sky-50">
+                Alright, let me take a quick look at this.
+              </div>
+              <div className="mt-auto flex items-center gap-2 pt-4 text-xs uppercase tracking-[0.3em] text-sky-200/80">
+                <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-sky-300" />
+                Checking license…
+              </div>
+            </div>
           </div>
         </div>
       )}
       {interactPhase === 'approved' && (
-        <div className="pointer-events-auto absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2 rounded-3xl bg-slate-900/90 px-5 py-4 text-white shadow-xl ring-1 ring-emerald-300/40 backdrop-blur">
-          <div className="text-xs uppercase tracking-[0.18em] text-emerald-300">Security Guard</div>
-          <div className="mt-2 text-sm leading-relaxed text-emerald-50">
-            Looks good. You&apos;re all set—enjoy your time inside!
+        <div className="pointer-events-auto absolute left-1/2 bottom-12 z-20 w-[min(90vw,24rem)] -translate-x-1/2">
+          <div className="relative mx-auto w-full">
+            <Image
+              src={SECURITY_GUARD_SMILING_BUBBLE_IMAGE}
+              alt="Security guard smiling speech bubble"
+              width={640}
+              height={360}
+              className="h-auto w-full drop-shadow-[0_18px_34px_rgba(6,95,70,0.55)]"
+              sizes="(max-width: 640px) 90vw, 384px"
+            />
+            <div className="absolute inset-0 flex flex-col px-8 pb-26 pt-45 text-white">
+              <div className="text-xs uppercase tracking-[0.18em] text-emerald-200">Security Guard</div>
+              <div className="mt-3 text-sm leading-relaxed text-emerald-50">
+                Looks good. You&apos;re all set—enjoy your time inside!
+              </div>
+              <div className="mt-auto flex justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={handleInteractApprovedAcknowledge}
+                  className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                >
+                  Thanks!
+                </button>
+              </div>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleInteractApprovedAcknowledge}
-            className="mt-4 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-          >
-            Thanks!
-          </button>
         </div>
       )}
       {activeMinigame === 'queue' && (
