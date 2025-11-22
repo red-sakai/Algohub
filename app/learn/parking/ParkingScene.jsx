@@ -2,7 +2,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Environment, Sky, Stats, Text, useGLTF } from '@react-three/drei';
+import { Billboard, Environment, RoundedBox, Sky, Stats, Text, useCursor, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/license/license';
 import { useMarkerController } from '@/hooks/useMarkerController';
@@ -208,6 +208,19 @@ const QUEUE_CAR_MODEL_COLOR_OPTIONS = Object.freeze({
     '#d1c4e9',
   ]),
 });
+
+const LICENSE_PLATE_MAX_LENGTH = 10;
+
+const sanitizeLicensePlateValue = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value
+    .replace(/\s+/g, '')
+    .replace(/[^a-zA-Z0-9-]/g, '')
+    .toUpperCase()
+    .slice(0, LICENSE_PLATE_MAX_LENGTH);
+};
 
 const toPositionArray = (value) => {
   if (Array.isArray(value) && value.length >= 3) {
@@ -692,6 +705,31 @@ const INTERACT_MARKER_COLORS = Object.freeze({
 const LICENSE_STORAGE_KEY = 'algohub-license-card-path';
 const LICENSE_EVENT = 'algohub-license-card-updated';
 const DEFAULT_LICENSE_IMAGE = '/drivers_license.png';
+const DEFAULT_LICENSE_STATS = Object.freeze({ arrivals: 0, departures: 0 });
+const STACK_CAR_TOOLTIP_OFFSET = Object.freeze([0, 5, 0]);
+const STACK_CAR_TOOLTIP_SCALE = 2;
+const STACK_CAR_TOOLTIP_BACKGROUND = Object.freeze({
+  width: 3.4,
+  height: 1.8,
+  depth: 0.04,
+  radius: 0.32,
+  color: '#020617',
+  emissive: '#0f172a',
+  emissiveIntensity: 0.42,
+  opacity: 0.82,
+});
+const QUEUE_CAR_TOOLTIP_OFFSET = Object.freeze([0, 5, 0]);
+const QUEUE_CAR_TOOLTIP_SCALE = 2;
+const QUEUE_CAR_TOOLTIP_BACKGROUND = Object.freeze({
+  width: 3.2,
+  height: 1.7,
+  depth: 0.04,
+  radius: 0.3,
+  color: '#011b2c',
+  emissive: '#082f49',
+  emissiveIntensity: 0.38,
+  opacity: 0.8,
+});
 
 function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, highlightColor = null, ...props }) {
   const { scene } = useGLTF(modelUrl);
@@ -1695,8 +1733,16 @@ function QueueCar({
   isSelected = false,
   selectionEnabled = true,
   slotLookup = QUEUE_SLOT_LOOKUP,
+  licensePlate = null,
+  licenseStats = {},
+  showStatsOverlay = false,
+  tooltipOffset = STACK_CAR_TOOLTIP_OFFSET,
+  tooltipScale = STACK_CAR_TOOLTIP_SCALE,
+  tooltipBackground = STACK_CAR_TOOLTIP_BACKGROUND,
 }) {
   const groupRef = useRef(null);
+  const [hovered, setHovered] = useState(false);
+  const hoverTimeoutRef = useRef(null);
   const forwardVector = useMemo(() => new THREE.Vector3(0, 0, 1), []);
   const tempPosition = useMemo(() => new THREE.Vector3(), []);
   const tempTangent = useMemo(() => new THREE.Vector3(), []);
@@ -1805,6 +1851,57 @@ function QueueCar({
     }
   }, [id, onToggleSelect, isSelectable, selectionEnabled]);
 
+  const clearHoverTimeout = useCallback(() => {
+    if (hoverTimeoutRef.current == null) {
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = null;
+  }, []);
+
+  const setHoverActive = useCallback((value) => {
+    if (!showStatsOverlay) {
+      return;
+    }
+    clearHoverTimeout();
+    if (value) {
+      setHovered(true);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      setHovered(false);
+      return;
+    }
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      hoverTimeoutRef.current = null;
+      setHovered(false);
+    }, 80);
+  }, [clearHoverTimeout, showStatsOverlay]);
+
+  const handlePointerOver = useCallback((event) => {
+    if (!showStatsOverlay) return;
+    event.stopPropagation();
+    setHoverActive(true);
+  }, [showStatsOverlay, setHoverActive]);
+
+  const handlePointerOut = useCallback((event) => {
+    if (!showStatsOverlay) return;
+    event.stopPropagation();
+    setHoverActive(false);
+  }, [showStatsOverlay, setHoverActive]);
+
+  const handlePointerMove = useCallback((event) => {
+    if (!showStatsOverlay) return;
+    event.stopPropagation();
+    setHoverActive(true);
+  }, [showStatsOverlay, setHoverActive]);
+
+  useEffect(() => () => {
+    clearHoverTimeout();
+  }, [clearHoverTimeout]);
+
   useFrame((_, dt) => {
     const group = groupRef.current;
     if (!group || !pathCurve || !targetPosition) return;
@@ -1882,13 +1979,92 @@ function QueueCar({
 
   const modelSettings = useMemo(() => getQueueCarModelSettings(modelUrl), [modelUrl]);
   const highlightColor = isSelected ? SELECTED_QUEUE_CAR_HIGHLIGHT : null;
+  const normalizedPlate = useMemo(() => (typeof licensePlate === 'string' && licensePlate.trim().length ? licensePlate.trim().toUpperCase() : null), [licensePlate]);
+  const plateStats = useMemo(() => {
+    if (!normalizedPlate) {
+      return null;
+    }
+    return licenseStats[normalizedPlate] || DEFAULT_LICENSE_STATS;
+  }, [normalizedPlate, licenseStats]);
+  const tooltipVisible = showStatsOverlay && hovered && normalizedPlate;
+  const tooltipPosition = Array.isArray(tooltipOffset) && tooltipOffset.length === 3
+    ? tooltipOffset
+    : STACK_CAR_TOOLTIP_OFFSET;
+  const tooltipScaleValue = Number.isFinite(tooltipScale) ? tooltipScale : STACK_CAR_TOOLTIP_SCALE;
+  const tooltipBackgroundConfig = tooltipBackground || STACK_CAR_TOOLTIP_BACKGROUND;
+  const tooltipLines = useMemo(() => {
+    if (!tooltipVisible || !normalizedPlate) {
+      return null;
+    }
+    const arrivals = plateStats?.arrivals ?? 0;
+    const departures = plateStats?.departures ?? 0;
+    return `${normalizedPlate}\nArrivals: ${arrivals}\nDepartures: ${departures}`;
+  }, [tooltipVisible, normalizedPlate, plateStats]);
+
+  useCursor(showStatsOverlay && hovered);
 
   return (
-    <group ref={groupRef} onPointerDown={handlePointerDown}>
+    <group
+      ref={groupRef}
+      onPointerDown={handlePointerDown}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
+      onPointerMove={handlePointerMove}
+    >
+      {tooltipVisible && tooltipLines ? (
+        <Billboard
+          position={tooltipPosition}
+          follow
+          frustumCulled={false}
+          renderOrder={999}
+          raycast={() => null}
+        >
+          <group scale={[tooltipScaleValue, tooltipScaleValue, tooltipScaleValue]}>
+            <RoundedBox
+              args={[
+                tooltipBackgroundConfig.width ?? STACK_CAR_TOOLTIP_BACKGROUND.width,
+                tooltipBackgroundConfig.height ?? STACK_CAR_TOOLTIP_BACKGROUND.height,
+                tooltipBackgroundConfig.depth ?? STACK_CAR_TOOLTIP_BACKGROUND.depth,
+              ]}
+              radius={tooltipBackgroundConfig.radius ?? STACK_CAR_TOOLTIP_BACKGROUND.radius}
+              smoothness={4}
+              position={[0, 0, -0.02]}
+            >
+              <meshStandardMaterial
+                color={tooltipBackgroundConfig.color ?? STACK_CAR_TOOLTIP_BACKGROUND.color}
+                emissive={tooltipBackgroundConfig.emissive ?? STACK_CAR_TOOLTIP_BACKGROUND.emissive}
+                emissiveIntensity={tooltipBackgroundConfig.emissiveIntensity ?? STACK_CAR_TOOLTIP_BACKGROUND.emissiveIntensity}
+                transparent
+                opacity={tooltipBackgroundConfig.opacity ?? STACK_CAR_TOOLTIP_BACKGROUND.opacity}
+                depthTest={false}
+                depthWrite={false}
+              />
+            </RoundedBox>
+            <Text
+              position={[0, 0, 0.02]}
+              fontSize={0.34}
+              maxWidth={3}
+              lineHeight={1.15}
+              anchorX="center"
+              anchorY="middle"
+              textAlign="center"
+              color="#f8fafc"
+              outlineWidth={0.01}
+              outlineColor="#0ea5e9"
+              material-depthTest={false}
+              material-depthWrite={false}
+              material-toneMapped={false}
+              frustumCulled={false}
+            >
+              {tooltipLines}
+            </Text>
+          </group>
+        </Billboard>
+      ) : null}
       <CarModel
         scale={modelSettings.scale}
         rotation={modelSettings.rotation}
-        modelUrl={modelUrl}
+        modelUrl={modelSettings.modelUrl || modelUrl}
         colorOverride={colorOverride}
         highlightColor={highlightColor}
       />
@@ -1896,7 +2072,19 @@ function QueueCar({
   );
 }
 
-function QueueCarFleet({ cars, slotLookup, onToggleSelect, selectedCarIds = [], fastForward, selectionEnabled = true }) {
+function QueueCarFleet({
+  cars,
+  slotLookup,
+  onToggleSelect,
+  selectedCarIds = [],
+  fastForward,
+  selectionEnabled = true,
+  licenseStats = {},
+  showStatsOverlay = false,
+  tooltipOffset = STACK_CAR_TOOLTIP_OFFSET,
+  tooltipScale = STACK_CAR_TOOLTIP_SCALE,
+  tooltipBackground = STACK_CAR_TOOLTIP_BACKGROUND,
+}) {
   return (
     <group>
       {cars.map((car) => (
@@ -1918,6 +2106,12 @@ function QueueCarFleet({ cars, slotLookup, onToggleSelect, selectedCarIds = [], 
           isSelected={selectedCarIds.includes(car.id)}
           selectionEnabled={selectionEnabled}
           slotLookup={slotLookup}
+          licensePlate={car.licensePlate}
+          licenseStats={licenseStats}
+          showStatsOverlay={showStatsOverlay}
+          tooltipOffset={tooltipOffset}
+          tooltipScale={tooltipScale}
+          tooltipBackground={tooltipBackground}
         />
       ))}
     </group>
@@ -2093,6 +2287,7 @@ function StructureStateViewer({
   selectedIds,
   title = 'Structure Snapshot',
   showFreeSlots = true,
+  licenseStats = {},
 }) {
   const selectedSet = useMemo(() => new Set(Array.isArray(selectedIds) ? selectedIds : []), [selectedIds]);
 
@@ -2117,13 +2312,20 @@ function StructureStateViewer({
                 : 'Ready'
             : 'Empty';
           const cardClass = [
-            'flex flex-col gap-1 rounded-xl border px-2 py-2 text-xs leading-tight transition-colors',
+            'group flex flex-col gap-1 rounded-xl border px-2 py-2 text-xs leading-tight transition-colors',
             car ? 'bg-white/5 border-white/15' : 'bg-slate-900/30 border-white/10',
             isSelected ? 'ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.35)]' : '',
           ].join(' ');
-            const { label, strip } = formatCarLabel(car);
+          const { label, strip } = formatCarLabel(car);
+          const rawPlate = typeof car?.licensePlate === 'string' && car.licensePlate.length ? car.licensePlate : null;
+          const stats = rawPlate ? licenseStats[rawPlate] : null;
+          const arrivalCount = stats?.arrivals ?? 0;
+          const departureCount = stats?.departures ?? 0;
+          const hoverSummary = rawPlate
+            ? `Plate ${rawPlate}: ${arrivalCount} arrival${arrivalCount === 1 ? '' : 's'} | ${departureCount} departure${departureCount === 1 ? '' : 's'}`
+            : 'No vehicle assigned';
           return (
-            <div key={`${prefix}-${id}`} className={cardClass}>
+            <div key={`${prefix}-${id}`} className={cardClass} title={hoverSummary}>
               <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-white/70">
                 <span>{prefix === 'slot' ? `Slot ${id}` : `Free ${id}`}</span>
                 {car?.colorOverride ? (
@@ -2138,6 +2340,16 @@ function StructureStateViewer({
               ) : (
                 <div className="text-sm font-semibold text-white">{label}</div>
               )}
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/75">
+                {rawPlate ?? 'No plate'}
+              </div>
+              {rawPlate ? (
+                <div className="min-h-[1rem] text-[10px] text-white/60 leading-snug whitespace-normal opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                  Arrivals: {arrivalCount} | Departures: {departureCount}
+                </div>
+              ) : (
+                <div className="min-h-[1rem] text-[10px] text-white/35 leading-snug">Waiting for vehicle</div>
+              )}
               <div className="text-[10px] uppercase tracking-[0.14em] text-white/45">{phaseLabel}</div>
             </div>
           );
@@ -2150,11 +2362,13 @@ function StructureStateViewer({
   };
 
   return (
-    <div className="pointer-events-none absolute left-4 top-[8.5rem] z-30 w-[min(95vw,28rem)] text-white sm:left-6 sm:top-[9.6rem]">
-      <div className="rounded-2xl bg-slate-950/75 p-4 shadow-lg ring-1 ring-white/15 backdrop-blur">
+    <div className="pointer-events-auto absolute left-4 top-[8.5rem] z-30 w-[min(95vw,28rem)] text-white sm:left-6 sm:top-[9.6rem]">
+      <div className="max-h-[70vh] overflow-hidden rounded-2xl bg-slate-950/75 shadow-lg ring-1 ring-white/15 backdrop-blur">
+        <div className="max-h-[70vh] overflow-y-auto p-4">
         <div className="text-xs uppercase tracking-[0.22em] text-white/70">{title}</div>
         {renderSection('Number Slots', slotState, 'slot')}
         {showFreeSlots ? renderSection('Free Slots', freeSlotState, 'free') : null}
+        </div>
       </div>
     </div>
   );
@@ -2230,6 +2444,11 @@ export default function ParkingScene({
   const [minigameLoadingStep, setMinigameLoadingStep] = useState(0);
   const [minigameLoadingMode, setMinigameLoadingMode] = useState(null);
   const [queueRemovalActive, setQueueRemovalActive] = useState(false);
+  const [licenseStats, setLicenseStats] = useState({});
+  const [licenseModalOpen, setLicenseModalOpen] = useState(false);
+  const [licenseModalMode, setLicenseModalMode] = useState(null);
+  const [licenseInputValue, setLicenseInputValue] = useState('');
+  const [licenseModalError, setLicenseModalError] = useState('');
   const queuedRemovalIdsRef = useRef([]);
   const processQueuedRemovalsRef = useRef(() => {});
   const minigameStateRef = useRef(null);
@@ -2243,6 +2462,7 @@ export default function ParkingScene({
   const guardPromptSfxPlayedRef = useRef(false);
   const guardApprovalSfxPlayedRef = useRef(false);
   const dropZoneRef = useRef(null);
+  const licenseInputRef = useRef(null);
   const touchPointerIdRef = useRef(null);
   const touchStartRef = useRef({ x: 0, y: 0 });
   const [touchDragState, setTouchDragState] = useState(null);
@@ -2302,6 +2522,44 @@ export default function ParkingScene({
     });
     return markers;
   }, [queueCars]);
+
+  const licenseModalHeading = licenseModalMode === 'queue' ? 'New queue arrival' : 'New stack arrival';
+  const licenseModalBody = licenseModalMode === 'queue'
+    ? 'Give this queue car a plate so we can track its visits.'
+    : 'Give this stack car a plate so we can track its visits.';
+  const licenseModalInputId = licenseModalMode === 'queue' ? 'queue-license-entry' : 'stack-license-entry';
+
+  const recordLicenseEvent = useCallback((plate, eventType) => {
+    const normalized = sanitizeLicensePlateValue(plate);
+    if (!normalized) {
+      return;
+    }
+    setLicenseStats((prev) => {
+      const existing = prev[normalized] || { arrivals: 0, departures: 0 };
+      const nextRecord = eventType === 'arrival'
+        ? { arrivals: existing.arrivals + 1, departures: existing.departures }
+        : { arrivals: existing.arrivals, departures: existing.departures + 1 };
+      if (existing.arrivals === nextRecord.arrivals && existing.departures === nextRecord.departures) {
+        return prev;
+      }
+      return { ...prev, [normalized]: nextRecord };
+    });
+  }, [setLicenseStats]);
+
+  const handleLicenseModalClose = useCallback(() => {
+    setLicenseModalOpen(false);
+    setLicenseInputValue('');
+    setLicenseModalError('');
+    setLicenseModalMode(null);
+  }, []);
+
+  const handleLicenseInputChange = useCallback((event) => {
+    const nextValue = sanitizeLicensePlateValue(event?.target?.value ?? '');
+    setLicenseInputValue(nextValue);
+    if (licenseModalError) {
+      setLicenseModalError('');
+    }
+  }, [licenseModalError]);
 
   const interactCameraActive = carOnInteractMarker && INTERACT_CAMERA_PHASES.has(interactPhase);
 
@@ -2491,19 +2749,27 @@ export default function ParkingScene({
       return car;
     }));
 
+    const frontLicensePlate = typeof frontCar.licensePlate === 'string' ? frontCar.licensePlate : null;
+
     if (typeof window !== 'undefined') {
       queueExitCleanupTimeoutRef.current = window.setTimeout(() => {
         setQueueCars((current) => current.filter((car) => car.id !== frontCar.id));
+        if (frontLicensePlate) {
+          recordLicenseEvent(frontLicensePlate, 'departure');
+        }
         queueExitCleanupTimeoutRef.current = null;
         queueRemovalInProgressRef.current = false;
         setQueueRemovalActive(false);
       }, cleanupDelay);
     } else {
       setQueueCars((current) => current.filter((car) => car.id !== frontCar.id));
+      if (frontLicensePlate) {
+        recordLicenseEvent(frontLicensePlate, 'departure');
+      }
       queueRemovalInProgressRef.current = false;
       setQueueRemovalActive(false);
     }
-  }, [setQueueCars, setQueueRemovalActive]);
+  }, [setQueueCars, setQueueRemovalActive, recordLicenseEvent]);
 
   const handleQueueMoveSelected = useCallback(() => {
     if (activeMinigame !== 'stack') {
@@ -2533,44 +2799,94 @@ export default function ParkingScene({
     }
   }, [queueCars, selectedQueueCarIds, activeMinigame]);
 
+  const spawnQueueCar = useCallback((options = {}) => {
+    const rawPlate = typeof options.licensePlate === 'string' ? options.licensePlate : '';
+    const normalizedPlate = sanitizeLicensePlateValue(rawPlate);
+    const licensePlate = normalizedPlate.length ? normalizedPlate : null;
+    const datasetKey = activeMinigame === 'stack' ? 'stack' : 'queue';
+    const { positions, lookup } = getSlotDataset(datasetKey);
+    const current = queueCarsRef.current;
+    if (current.length >= positions.length) {
+      return null;
+    }
+    const occupied = new Set(current.map((entry) => entry.slotId));
+    const nextSlot = positions.find((slot) => !occupied.has(slot.id));
+    if (!nextSlot) {
+      return null;
+    }
+    const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+    const generatedId = globalCrypto && typeof globalCrypto.randomUUID === 'function'
+      ? globalCrypto.randomUUID()
+      : `queue-car-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const spawnTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const modelUrl = pickRandomQueueCarModel();
+    const colorOverride = pickQueueCarColor(modelUrl);
+    const newCar = {
+      slotId: nextSlot.id,
+      id: generatedId,
+      spawnTime: spawnTimestamp,
+      fromPosition: QUEUE_CAR_SPAWN_POSITION.slice(),
+      travelDuration: getQueueTravelDuration(nextSlot.id),
+      phase: QUEUE_CAR_PHASE_SLOT,
+      targetOverride: null,
+      modelUrl,
+      colorOverride,
+      headingLock: null,
+      licensePlate,
+    };
+    const nextArray = ensureUniqueSlotAssignments([...current, newCar], 'spawn', positions, lookup);
+    const inserted = nextArray.find((entry) => entry.id === newCar.id) || newCar;
+    if (Number.isFinite(inserted.slotId)) {
+      logQueueCarAssignment('spawn', inserted, inserted.slotId);
+    }
+    setQueueCars(nextArray);
+    queueCarsRef.current = nextArray;
+    if (licensePlate) {
+      recordLicenseEvent(licensePlate, 'arrival');
+    }
+    return inserted;
+  }, [activeMinigame, recordLicenseEvent]);
+
   const handleAddQueueCar = useCallback(() => {
-    const { positions, lookup } = getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue');
-    setQueueCars((prev) => {
-      if (prev.length >= positions.length) {
-        return prev;
-      }
-      const occupied = new Set(prev.map((entry) => entry.slotId));
-      const nextSlot = positions.find((slot) => !occupied.has(slot.id));
-      if (!nextSlot) {
-        return prev;
-      }
-      const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
-      const generatedId = globalCrypto && typeof globalCrypto.randomUUID === 'function'
-        ? globalCrypto.randomUUID()
-        : `queue-car-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const spawnTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      const modelUrl = pickRandomQueueCarModel();
-      const colorOverride = pickQueueCarColor(modelUrl);
-      const newCar = {
-        slotId: nextSlot.id,
-        id: generatedId,
-        spawnTime: spawnTimestamp,
-        fromPosition: QUEUE_CAR_SPAWN_POSITION.slice(),
-        travelDuration: getQueueTravelDuration(nextSlot.id),
-        phase: QUEUE_CAR_PHASE_SLOT,
-        targetOverride: null,
-        modelUrl,
-        colorOverride,
-        headingLock: null,
-      };
-      const next = ensureUniqueSlotAssignments([...prev, newCar], 'spawn', positions, lookup);
-      const inserted = next.find((entry) => entry.id === newCar.id) || newCar;
-      if (Number.isFinite(inserted.slotId)) {
-        logQueueCarAssignment('spawn', inserted, inserted.slotId);
-      }
-      return next;
-    });
-  }, [activeMinigame]);
+    if (activeMinigame !== 'stack' && activeMinigame !== 'queue') {
+      return;
+    }
+    if (queueIsFull) {
+      return;
+    }
+    setLicenseModalError('');
+    setLicenseInputValue('');
+    setLicenseModalMode(activeMinigame);
+    setLicenseModalOpen(true);
+  }, [activeMinigame, queueIsFull]);
+
+  const handleLicenseModalSubmit = useCallback((event) => {
+    event.preventDefault();
+    if (licenseModalMode !== 'stack' && licenseModalMode !== 'queue') {
+      handleLicenseModalClose();
+      return;
+    }
+    const normalized = sanitizeLicensePlateValue(licenseInputValue);
+    if (!normalized) {
+      setLicenseModalError('Enter a license plate using letters, numbers, or hyphens.');
+      return;
+    }
+    const activeCars = queueCarsRef.current;
+    const inUse = activeCars.some((car) => (car.phase ?? QUEUE_CAR_PHASE_SLOT) !== QUEUE_CAR_PHASE_EXIT && car.licensePlate === normalized);
+    if (inUse) {
+      setLicenseModalError('That license plate is already parked.');
+      return;
+    }
+    const result = spawnQueueCar({ licensePlate: normalized });
+    if (!result) {
+      const noSlotMessage = licenseModalMode === 'queue'
+        ? 'No available queue slots right now.'
+        : 'No available stack slots right now.';
+      setLicenseModalError(noSlotMessage);
+      return;
+    }
+    handleLicenseModalClose();
+  }, [licenseInputValue, licenseModalMode, spawnQueueCar, handleLicenseModalClose]);
 
   const handleQueueDequeueFront = useCallback(() => {
     const available = queueCars
@@ -2613,12 +2929,15 @@ export default function ParkingScene({
       setQueueCars((current) => current.filter((car) => car.id !== plan.carId));
       setSelectedQueueCarIds((current) => current.filter((id) => id !== plan.carId));
       queuedRemovalIdsRef.current = queuedRemovalIdsRef.current.filter((id) => id !== plan.carId);
+      if (plan.licensePlate) {
+        recordLicenseEvent(plan.licensePlate, 'departure');
+      }
       queueRemovalInProgressRef.current = false;
       setQueueRemovalActive(false);
       currentRemovalPlanRef.current = null;
       processQueuedRemovalsRef.current();
     }, cleanupDelay);
-  }, [setQueueCars, setSelectedQueueCarIds]);
+  }, [setQueueCars, setSelectedQueueCarIds, recordLicenseEvent, setQueueRemovalActive]);
 
   const triggerRemovalRejoin = useCallback(() => {
     const plan = currentRemovalPlanRef.current;
@@ -2889,6 +3208,7 @@ export default function ParkingScene({
         exitClearWindowMin: QUEUE_EXIT_CLEAR_MIN_MS,
         rejoinTimestamp: null,
         cleanupTimestamp: null,
+        licensePlate: typeof exitCar.licensePlate === 'string' ? exitCar.licensePlate : null,
       };
       let holdAccumBase = 0;
 
@@ -2984,6 +3304,53 @@ export default function ParkingScene({
   const handleQueueFastForwardRelease = useCallback(() => {
     setQueueFastForward(false);
   }, []);
+
+  useEffect(() => {
+    if (!licenseModalMode) {
+      return;
+    }
+    if (activeMinigame === licenseModalMode) {
+      return;
+    }
+    setLicenseModalOpen(false);
+    setLicenseModalError('');
+    setLicenseInputValue('');
+    setLicenseModalMode(null);
+  }, [activeMinigame, licenseModalMode]);
+
+  useEffect(() => {
+    if (!licenseModalOpen) {
+      return undefined;
+    }
+    const input = licenseInputRef.current;
+    if (input) {
+      try {
+        input.focus({ preventScroll: true });
+        input.select();
+      } catch {}
+    }
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleLicenseModalClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const { body } = document;
+    const originalOverflow = body ? body.style.overflow : undefined;
+    if (body) {
+      body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (body && typeof originalOverflow === 'string') {
+        body.style.overflow = originalOverflow;
+      }
+    };
+  }, [licenseModalOpen, handleLicenseModalClose]);
 
   useEffect(() => {
     if (carOnInteractMarker && interactCountdown <= 0 && interactPhase === 'idle') {
@@ -3495,6 +3862,8 @@ export default function ParkingScene({
                 selectedCarIds={selectedQueueCarIds}
                 fastForward={queueFastForward}
                 selectionEnabled
+                licenseStats={licenseStats}
+                showStatsOverlay
               />
             </>
           )}
@@ -3506,6 +3875,11 @@ export default function ParkingScene({
                 slotLookup={QUEUE_SLOT_LOOKUP}
                 fastForward={queueFastForward}
                 selectionEnabled={false}
+                licenseStats={licenseStats}
+                showStatsOverlay
+                tooltipOffset={QUEUE_CAR_TOOLTIP_OFFSET}
+                tooltipScale={QUEUE_CAR_TOOLTIP_SCALE}
+                tooltipBackground={QUEUE_CAR_TOOLTIP_BACKGROUND}
               />
             </>
           )}
@@ -3533,6 +3907,7 @@ export default function ParkingScene({
           freeSlotState={queueHoldState}
           selectedIds={selectedQueueCarIds}
           title="Stack Snapshot"
+          licenseStats={licenseStats}
         />
       )}
       {showQueueState && activeMinigame === 'queue' && (
@@ -3542,6 +3917,7 @@ export default function ParkingScene({
           selectedIds={selectedQueueCarIds}
           title="Queue Snapshot"
           showFreeSlots={false}
+          licenseStats={licenseStats}
         />
       )}
       <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
@@ -3711,6 +4087,57 @@ export default function ParkingScene({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {licenseModalOpen && licenseModalMode && (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900/90 p-6 text-white shadow-[0_18px_45px_rgba(15,23,42,0.6)] ring-1 ring-white/20">
+            <form onSubmit={handleLicenseModalSubmit} className="flex flex-col gap-4">
+              <div>
+                <div className="text-xs uppercase tracking-[0.24em] text-sky-300/85">{licenseModalHeading}</div>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight">Assign a license plate</h2>
+                <p className="mt-1 text-sm text-white/70">{licenseModalBody}</p>
+              </div>
+              <label htmlFor={licenseModalInputId} className="text-[11px] uppercase tracking-[0.28em] text-white/55">
+                License plate
+              </label>
+              <input
+                id={licenseModalInputId}
+                ref={licenseInputRef}
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={LICENSE_PLATE_MAX_LENGTH}
+                value={licenseInputValue}
+                onChange={handleLicenseInputChange}
+                className="w-full rounded-2xl border border-white/25 bg-white/12 px-4 py-3 text-base font-semibold uppercase tracking-[0.2em] text-white shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-300"
+                placeholder="e.g. 12 or ABC-123"
+              />
+              {licenseModalError ? (
+                <div className="text-xs font-medium text-rose-300">{licenseModalError}</div>
+              ) : (
+                <div className="text-xs text-white/50">Use letters, numbers, or hyphen (max {LICENSE_PLATE_MAX_LENGTH}).</div>
+              )}
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleLicenseModalClose}
+                  className="inline-flex items-center justify-center rounded-full bg-white/10 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white/16 focus:outline-none focus:ring-2 focus:ring-white/40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center rounded-full bg-emerald-500/90 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow ring-1 ring-emerald-300/40 transition hover:bg-emerald-400/90 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!licenseInputValue.length}
+                >
+                  Spawn car
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
