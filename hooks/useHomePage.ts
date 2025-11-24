@@ -280,6 +280,12 @@ export function useHomePage(): UseHomePageResult {
   );
 
   useEffect(() => {
+    if (userProfile?.role === 'admin') {
+      router.replace('/admin');
+    }
+  }, [router, userProfile?.role]);
+
+  useEffect(() => {
     if (!searchParams) return;
     const serialized = searchParams.toString();
     if (!serialized || serialized === lastParamsRef.current) return;

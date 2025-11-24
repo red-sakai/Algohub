@@ -130,7 +130,6 @@ export function useSignInPage(): UseSignInPageResult {
             }
 
             const profileName = result.profile?.displayName ?? result.email ?? maskEmail(email);
-            setStatusMessage(result.message || `Welcome back, ${profileName}! Redirecting you to the hub...`);
 
             const profilePayload = result.profile ?? null;
             const authPayload = result.authUser ?? null;
@@ -141,7 +140,14 @@ export function useSignInPage(): UseSignInPageResult {
             if (profilePayload) {
               params.set('profile', encodeStateParam(profilePayload));
             }
-            const targetHref = params.toString() ? `/?${params.toString()}` : '/';
+            const destinationPath = result.profile?.role === 'admin' ? '/admin' : '/';
+            const targetHref = params.toString() ? `${destinationPath}?${params.toString()}` : destinationPath;
+
+            const redirectMessage = result.profile?.role === 'admin'
+              ? `Welcome back, ${profileName}! Redirecting you to the admin dashboard...`
+              : `Welcome back, ${profileName}! Redirecting you to the hub...`;
+
+            setStatusMessage(result.message || redirectMessage);
 
             const navigateToHub = () => {
               if (navigationTriggeredRef.current) return;
