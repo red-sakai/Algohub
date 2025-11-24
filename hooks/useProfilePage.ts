@@ -91,6 +91,12 @@ function useProfilePage(): UseProfilePageResult {
     [profile, decodedProfileFromQuery],
   );
 
+  useEffect(() => {
+    if (currentProfile?.role === 'admin') {
+      router.replace('/admin');
+    }
+  }, [currentProfile?.role, router]);
+
   const handleBackToLanding = useCallback((event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     playSfx('/button_click.mp3', 0.55);
