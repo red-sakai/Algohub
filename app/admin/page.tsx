@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactElement } from 'react';
+import { Suspense } from 'react';
 import { useMemo } from '@/hooks/useMemo';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useCallback } from '@/hooks/useCallback';
@@ -46,6 +47,31 @@ const PLACEHOLDER_PANELS: Array<{ id: string; title: string; description: string
 ];
 
 export default function AdminDashboardPage(): ReactElement {
+  return (
+    <Suspense fallback={<AdminDashboardFallback />}>
+      <AdminDashboardContent />
+    </Suspense>
+  );
+}
+
+function AdminDashboardFallback(): ReactElement {
+  return (
+    <main className="relative min-h-[100dvh] w-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_55%)]" aria-hidden />
+      <div className="relative flex min-h-[100dvh] w-full items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
+        <div className="flex max-w-xl flex-col items-center gap-4 rounded-3xl border border-white/10 bg-white/[0.05] px-6 py-10 text-center shadow-[0_32px_70px_rgba(2,6,23,0.55)] backdrop-blur-xl sm:px-8 lg:px-12">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white/80">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 4 4h-3v10h-2V6H8l4-4Zm-7 9h2v7h12v-7h2v9H5v-9Z" /></svg>
+          </span>
+          <h1 className="text-2xl font-semibold text-white">Loading dashboard…</h1>
+          <p className="text-sm text-slate-300/80">Hang tight while we prepare your admin analytics.</p>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function AdminDashboardContent(): ReactElement {
   const searchParams = useSearchParams();
   const profileParam = searchParams.get('profile');
   const authParam = searchParams.get('auth');
