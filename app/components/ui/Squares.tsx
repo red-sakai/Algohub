@@ -33,18 +33,36 @@ export default function Squares({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const resolveHostSize = () => {
+      const host = canvas.parentElement;
+      if (host) {
+        const rect = host.getBoundingClientRect();
+        const width = Math.max(1, Math.round(rect.width));
+        const height = Math.max(1, Math.round(rect.height));
+        return { width, height };
+      }
+      return { width: window.innerWidth, height: window.innerHeight };
+    };
+
     const resize = () => {
-      const dpr = (window.devicePixelRatio || 1);
+      const dpr = window.devicePixelRatio || 1;
       dprRef.current = dpr;
-      const { innerWidth: w, innerHeight: h } = window;
-      canvas.width = Math.max(1, Math.floor(w * dpr));
-      canvas.height = Math.max(1, Math.floor(h * dpr));
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
+      const { width, height } = resolveHostSize();
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
     };
     resize();
-    const onResize = () => resize();
-    window.addEventListener("resize", onResize);
+
+    const handleWindowResize = () => resize();
+    window.addEventListener("resize", handleWindowResize);
+
+    const host = canvas.parentElement;
+    const observer = typeof ResizeObserver !== "undefined" && host
+      ? new ResizeObserver(() => resize())
+      : null;
+    observer?.observe(host!);
 
     const onMouseMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -140,7 +158,8 @@ export default function Squares({
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", handleWindowResize);
+      observer?.disconnect();
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseleave", onMouseLeave);
     };

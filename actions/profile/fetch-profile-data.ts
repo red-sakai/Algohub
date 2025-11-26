@@ -37,7 +37,13 @@ function normalizeAchievementRow(input: unknown): ProfileAchievementRow | null {
   const achievementRecord = achievement as Record<string, unknown>;
 
   const achievementId = typeof candidate.achievement_id === 'string' ? candidate.achievement_id : null;
-  const unlockedAt = typeof candidate.unlocked_at === 'string' ? candidate.unlocked_at : null;
+  const unlockedAtCandidate =
+    typeof candidate.unlocked_at === 'string' && candidate.unlocked_at.length > 0 ? candidate.unlocked_at : null;
+  const fallbackUnlockedAt =
+    typeof achievementRecord.created_at === 'string' && achievementRecord.created_at.length > 0
+      ? achievementRecord.created_at
+      : new Date().toISOString();
+  const unlockedAt = unlockedAtCandidate ?? fallbackUnlockedAt;
   const id = typeof achievementRecord.id === 'string' ? achievementRecord.id : null;
   const slug = typeof achievementRecord.slug === 'string' ? achievementRecord.slug : null;
   const title = typeof achievementRecord.title === 'string' ? achievementRecord.title : null;
@@ -45,7 +51,7 @@ function normalizeAchievementRow(input: unknown): ProfileAchievementRow | null {
   const createdAt = typeof achievementRecord.created_at === 'string' ? achievementRecord.created_at : null;
   const icon = typeof achievementRecord.icon === 'string' ? achievementRecord.icon : null;
 
-  if (!achievementId || !unlockedAt || !id || !slug || !title || !description || !createdAt) {
+  if (!achievementId || !id || !slug || !title || !description || !createdAt) {
     return null;
   }
 

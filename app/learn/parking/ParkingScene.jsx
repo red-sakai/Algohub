@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/license/license';
 import { useMarkerController } from '@/hooks/useMarkerController';
 import { playSfx } from '@/lib/audio/sfx';
+import { getSupabaseClient } from '@/lib/supabase/client';
+import { grantAchievementBySlug } from '@/lib/supabase/achievements';
 
 // Simple key input
 const pressed = new Set();
@@ -114,6 +116,8 @@ const QUEUE_SLOT_LOOKUP = Object.freeze(
     return acc;
   }, {}),
 );
+const STACKING_EM_QUEUES_SLUG = 'stacking-em-queues';
+const GDAY_SIR_SLUG = 'gday-sir';
 const QUEUE_CAR_PHASE_SLOT = 'slot';
 const QUEUE_CAR_PHASE_HOLD = 'hold';
 const QUEUE_CAR_PHASE_EXIT = 'exit';
@@ -2440,6 +2444,14 @@ export default function ParkingScene({
   const [queueCars, setQueueCars] = useState([]);
   const [queueFastForward, setQueueFastForward] = useState(false);
   const [selectedQueueCarIds, setSelectedQueueCarIds] = useState([]);
+  const supabase = useMemo(() => getSupabaseClient(), []);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const queueMarkerVisitedRef = useRef(false);
+  const stackMarkerVisitedRef = useRef(false);
+  const stackingAchievementInFlightRef = useRef(false);
+  const stackingAchievementUnlockedRef = useRef(false);
+  const gdayAchievementInFlightRef = useRef(false);
+  const gdayAchievementUnlockedRef = useRef(false);
   const [minigameLoading, setMinigameLoading] = useState(false);
   const [minigameLoadingStep, setMinigameLoadingStep] = useState(0);
   const [minigameLoadingMode, setMinigameLoadingMode] = useState(null);
@@ -2485,6 +2497,113 @@ export default function ParkingScene({
   const minigameLoadingProgress = QUEUE_LOADING_MESSAGES.length
     ? Math.min(100, Math.round(((Math.min(minigameLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
     : 100;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const primeSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!isMounted) {
+          return;
+        }
+        if (error) {
+          console.error('[ParkingScene] Failed to read Supabase session', error);
+        }
+        setCurrentUserId(data?.session?.user?.id ?? null);
+      } catch (sessionError) {
+        if (!isMounted) {
+          return;
+        }
+        console.error('[ParkingScene] Unexpected Supabase session failure', sessionError);
+        setCurrentUserId(null);
+      }
+    };
+
+    primeSession().catch((error) => {
+      console.error('[ParkingScene] Unhandled Supabase session error', error);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) {
+        return;
+      }
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      queueMarkerVisitedRef.current = false;
+      stackMarkerVisitedRef.current = false;
+      stackingAchievementUnlockedRef.current = false;
+      stackingAchievementInFlightRef.current = false;
+      gdayAchievementUnlockedRef.current = false;
+      gdayAchievementInFlightRef.current = false;
+    }
+  }, [currentUserId]);
+
+  const maybeAwardStackingAchievement = useCallback(async () => {
+    if (!currentUserId) {
+      return;
+    }
+    if (stackingAchievementUnlockedRef.current) {
+      return;
+    }
+    if (!queueMarkerVisitedRef.current || !stackMarkerVisitedRef.current) {
+      return;
+    }
+    if (stackingAchievementInFlightRef.current) {
+      return;
+    }
+    stackingAchievementInFlightRef.current = true;
+    try {
+      const result = await grantAchievementBySlug(supabase, currentUserId, STACKING_EM_QUEUES_SLUG);
+      if (result.success || result.alreadyUnlocked) {
+        stackingAchievementUnlockedRef.current = true;
+      } else {
+        console.warn('[ParkingScene] Unable to grant stacking achievement', result);
+      }
+    } catch (error) {
+      console.error('[ParkingScene] Failed to grant stacking achievement', error);
+    } finally {
+      stackingAchievementInFlightRef.current = false;
+    }
+  }, [currentUserId, supabase]);
+
+  const maybeAwardGdayAchievement = useCallback(async () => {
+    if (!currentUserId) {
+      return;
+    }
+    if (gdayAchievementUnlockedRef.current || gdayAchievementInFlightRef.current) {
+      return;
+    }
+    gdayAchievementInFlightRef.current = true;
+    try {
+      const result = await grantAchievementBySlug(supabase, currentUserId, GDAY_SIR_SLUG);
+      if (result.success || result.alreadyUnlocked) {
+        gdayAchievementUnlockedRef.current = true;
+      } else {
+        console.warn("[ParkingScene] Unable to grant G'day Sir achievement", result);
+      }
+    } catch (error) {
+      console.error("[ParkingScene] Failed to grant G'day Sir achievement", error);
+    } finally {
+      gdayAchievementInFlightRef.current = false;
+    }
+  }, [currentUserId, supabase]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+    void maybeAwardStackingAchievement();
+  }, [currentUserId, maybeAwardStackingAchievement]);
 
   const securityGuardCameraTarget = useMemo(() => ({
     position: new THREE.Vector3(...SECURITY_GUARD_CAMERA_POSITION),
@@ -2594,19 +2713,32 @@ export default function ParkingScene({
     }
   }, [interactPhase]);
 
+  useEffect(() => {
+    if (interactPhase !== 'complete') {
+      return;
+    }
+    void maybeAwardGdayAchievement();
+  }, [interactPhase, maybeAwardGdayAchievement]);
+
   const handleQueueMarkerPresence = useCallback((isInside) => {
     rawHandleQueueMarkerPresence(isInside);
-    if (!isInside) {
+    if (isInside) {
+      queueMarkerVisitedRef.current = true;
+      void maybeAwardStackingAchievement();
+    } else {
       setQueueMinigameArmed(true);
     }
-  }, [rawHandleQueueMarkerPresence]);
+  }, [maybeAwardStackingAchievement, rawHandleQueueMarkerPresence]);
 
   const handleStackMarkerPresence = useCallback((isInside) => {
     rawHandleStackMarkerPresence(isInside);
-    if (!isInside) {
+    if (isInside) {
+      stackMarkerVisitedRef.current = true;
+      void maybeAwardStackingAchievement();
+    } else {
       setStackMinigameArmed(true);
     }
-  }, [rawHandleStackMarkerPresence]);
+  }, [maybeAwardStackingAchievement, rawHandleStackMarkerPresence]);
 
   useEffect(() => {
     queueCarsRef.current = queueCars;

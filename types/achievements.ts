@@ -13,3 +13,12 @@ export interface UserAchievement {
   unlockedAt: string;
   achievement: Achievement;
 }
+
+export type AchievementToastTone = 'success' | 'info' | 'warning' | 'error';
+
+export interface AchievementToastState {
+  title: string;
+  description?: string | null;
+  icon?: string | null;
+  tone?: AchievementToastTone;
+}

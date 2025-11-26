@@ -26,6 +26,13 @@ export async function getUserAchievements(userId: string): Promise<UserAchieveme
       return [];
     }
 
+    const unlockedAt =
+      typeof row.unlocked_at === "string" && row.unlocked_at.length > 0
+        ? row.unlocked_at
+        : typeof achievementData.created_at === "string" && achievementData.created_at.length > 0
+        ? achievementData.created_at
+        : new Date().toISOString();
+
     const achievement: Achievement = {
       id: achievementData.id,
       slug: achievementData.slug,
@@ -39,7 +46,7 @@ export async function getUserAchievements(userId: string): Promise<UserAchieveme
       {
         userId: row.user_id,
         achievementId: row.achievement_id,
-        unlockedAt: row.unlocked_at,
+        unlockedAt,
         achievement,
       } satisfies UserAchievement,
     ];

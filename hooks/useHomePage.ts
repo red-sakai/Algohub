@@ -13,13 +13,34 @@ import { loadLandingSession } from '@/actions/auth/load-landing-session';
 import { consumeSkipNextAuthModal, consumeSkipNextIrisOpen, setIrisPoint } from '@/lib/transition/transitionBus';
 import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
 import { decodeStateParam, encodeStateParam } from '@/lib/utils';
+import { getSupabaseClient } from '@/lib/supabase/client';
 import type { AuthUserSummary, UserProfile } from '@/types/auth';
-import type { UseHomePageResult } from '@/types/home';
+import type { AchievementToastState, UseHomePageResult } from '@/types/home';
 import type { IrisHandle } from '@/app/components/ui/IrisTransition';
 
 const BOUNCE_DURATION = 450;
 const FALL_DURATION = 4000;
 const ROLL_IN_DURATION = 1600;
+const ACHIEVEMENT_TOAST_VISIBLE_MS = 6000;
+const ACHIEVEMENT_TOAST_EXIT_MS = 260;
+const SIX_SEV_SLUG = 'six-sev';
+const SIX_SEV_TARGET_CLICKS = 67;
+const SIX_SEV_ICON_FALLBACK = '/achievements/67.png';
+
+type AchievementRecord = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  icon: string | null;
+};
+
+type SixSevDefinition = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string | null;
+};
 
 export function useHomePage(): UseHomePageResult {
   const router = useRouter();
@@ -38,6 +59,14 @@ export function useHomePage(): UseHomePageResult {
   const logoLockRef = useRef(false);
   const lastParamsRef = useRef<string | null>(null);
   const transitioningRef = useRef(false);
+  const logoClickCountRef = useRef(0);
+  const lastSixSevAttemptRef = useRef(0);
+  const pendingSixSevUnlockRef = useRef(false);
+  const unlockingSixSevRef = useRef(false);
+  const sixSevDefinitionRef = useRef<SixSevDefinition | null>(null);
+  const hasSixSevAchievementRef = useRef(false);
+  const toastTimeoutRef = useRef<number | null>(null);
+  const achievementSeenRef = useRef<Set<string>>(new Set());
 
   const [authUser, setAuthUser] = useState<AuthUserSummary | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -58,6 +87,8 @@ export function useHomePage(): UseHomePageResult {
     }
     return !consumeSkipNextAuthModal();
   });
+  const [achievementToast, setAchievementToast] = useState<AchievementToastState | null>(null);
+  const [isAchievementToastExiting, setIsAchievementToastExiting] = useState(false);
 
   const [skipIrisOpen] = useState(() => {
     if (typeof window === 'undefined') {
@@ -87,7 +118,27 @@ export function useHomePage(): UseHomePageResult {
     return id;
   }, []);
 
+  const clearToastTimeout = useCallback(() => {
+    if (toastTimeoutRef.current !== null) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+  }, []);
+
+  const pushAchievementToast = useCallback(
+    (payload: AchievementToastState, options?: { celebrate?: boolean }) => {
+      clearToastTimeout();
+      setIsAchievementToastExiting(false);
+      setAchievementToast(payload);
+      if (options?.celebrate) {
+        playSfx('/achievements/achievement_sfx.mp3', 0.85);
+      }
+    },
+    [clearToastTimeout],
+  );
+
   useEffect(() => () => clearLogoTimeouts(), [clearLogoTimeouts]);
+  useEffect(() => () => clearToastTimeout(), [clearToastTimeout]);
   useEffect(() => teardownTweens, [teardownTweens]);
 
   useEffect(() => {
@@ -110,6 +161,43 @@ export function useHomePage(): UseHomePageResult {
     setShowAuthModal(false);
   }, []);
 
+  const dismissAchievementToast = useCallback(() => {
+    if (!achievementToast) {
+      return;
+    }
+    clearToastTimeout();
+    setIsAchievementToastExiting(true);
+    if (typeof window === 'undefined') {
+      setAchievementToast(null);
+      setIsAchievementToastExiting(false);
+      return;
+    }
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setAchievementToast(null);
+      setIsAchievementToastExiting(false);
+      toastTimeoutRef.current = null;
+    }, ACHIEVEMENT_TOAST_EXIT_MS);
+  }, [achievementToast, clearToastTimeout]);
+
+  useEffect(() => {
+    if (!achievementToast) {
+      setIsAchievementToastExiting(false);
+      clearToastTimeout();
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+    setIsAchievementToastExiting(false);
+    clearToastTimeout();
+    toastTimeoutRef.current = window.setTimeout(() => {
+      dismissAchievementToast();
+    }, ACHIEVEMENT_TOAST_VISIBLE_MS);
+    return () => {
+      clearToastTimeout();
+    };
+  }, [achievementToast, clearToastTimeout, dismissAchievementToast]);
+
   const triggerLogoShine = useCallback(() => {
     playSfx('/anime_shine.mp3', 0.7);
     logoShineTweenRef.current?.kill();
@@ -118,8 +206,140 @@ export function useHomePage(): UseHomePageResult {
     setLogoShineCycle((prev) => prev + 1);
   }, []);
 
+  const fetchSixSevDefinition = useCallback(async (): Promise<SixSevDefinition> => {
+    if (sixSevDefinitionRef.current) {
+      return sixSevDefinitionRef.current;
+    }
+
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('achievements')
+      .select('id, title, description, icon')
+      .eq('slug', SIX_SEV_SLUG)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.id) {
+      throw new Error('Six Sev- achievement is not configured in Supabase.');
+    }
+
+    const definition: SixSevDefinition = {
+      id: data.id,
+      title: data.title ?? 'Six Sev-',
+      description: data.description ?? `Click the AlgoHub logo ${SIX_SEV_TARGET_CLICKS} times.`,
+      icon: data.icon ?? null,
+    };
+
+    sixSevDefinitionRef.current = definition;
+    return definition;
+  }, []);
+
+  const attemptSixSevUnlock = useCallback(
+    async (clickCount: number) => {
+      lastSixSevAttemptRef.current = clickCount;
+
+      if (hasSixSevAchievementRef.current || unlockingSixSevRef.current) {
+        return;
+      }
+
+      if (!authUser) {
+        pendingSixSevUnlockRef.current = true;
+        pushAchievementToast({
+          title: 'Sign in to claim Six Sev-',
+          description: 'You found the secret! Sign in so we can add it to your profile.',
+          icon: SIX_SEV_ICON_FALLBACK,
+          tone: 'info',
+        });
+        return;
+      }
+
+      pendingSixSevUnlockRef.current = false;
+      unlockingSixSevRef.current = true;
+
+      try {
+        const definition = await fetchSixSevDefinition();
+        const supabase = getSupabaseClient();
+
+        const { data: existingLink, error: existingError } = await supabase
+          .from('user_achievements')
+          .select('unlocked_at')
+          .eq('user_id', authUser.id)
+          .eq('achievement_id', definition.id)
+          .maybeSingle();
+
+        const existingErrorCode = (existingError as { code?: string } | null)?.code;
+
+        if (existingError && existingErrorCode !== 'PGRST116') {
+          throw existingError;
+        }
+
+        const icon = definition.icon ?? SIX_SEV_ICON_FALLBACK;
+
+        if (existingLink) {
+          hasSixSevAchievementRef.current = true;
+          achievementSeenRef.current.add(definition.id);
+          pushAchievementToast({
+            title: `${definition.title} already unlocked`,
+            description: 'You already claimed this trophy. Nice work!',
+            icon,
+            tone: 'info',
+          });
+          return;
+        }
+
+        const { error: insertError } = await supabase.from('user_achievements').insert({
+          user_id: authUser.id,
+          achievement_id: definition.id,
+        });
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        hasSixSevAchievementRef.current = true;
+        achievementSeenRef.current.add(definition.id);
+        pushAchievementToast(
+          {
+            title: `${definition.title} unlocked!`,
+            description: `You clicked the AlgoHub logo ${SIX_SEV_TARGET_CLICKS} times.`,
+            icon,
+            tone: 'success',
+          },
+          { celebrate: true },
+        );
+        triggerLogoShine();
+      } catch (error) {
+        console.error('[HomePage] Failed to unlock Six Sev achievement', error);
+        pushAchievementToast({
+          title: 'Achievement hiccup',
+          description: "We couldn't record Six Sev- just now. Try again in a moment.",
+          icon: SIX_SEV_ICON_FALLBACK,
+          tone: 'error',
+        });
+      } finally {
+        unlockingSixSevRef.current = false;
+      }
+    },
+    [authUser, fetchSixSevDefinition, pushAchievementToast, triggerLogoShine],
+  );
+
   const handleLogoClick = useCallback(() => {
     if (showAuthModal) return;
+
+    const nextClickCount = logoClickCountRef.current + 1;
+    logoClickCountRef.current = nextClickCount;
+
+    if (
+      !hasSixSevAchievementRef.current &&
+      nextClickCount >= SIX_SEV_TARGET_CLICKS &&
+      nextClickCount > lastSixSevAttemptRef.current
+    ) {
+      void attemptSixSevUnlock(nextClickCount);
+    }
+
     if (logoLockRef.current) return;
     logoLockRef.current = true;
     clearLogoTimeouts();
@@ -160,7 +380,7 @@ export function useHomePage(): UseHomePageResult {
       logoShineTweenRef.current?.kill();
       logoShineTweenRef.current = null;
     }, rollInStartDelay + ROLL_IN_DURATION + 200);
-  }, [clearLogoTimeouts, scheduleLogoTimeout, showAuthModal]);
+  }, [attemptSixSevUnlock, clearLogoTimeouts, scheduleLogoTimeout, showAuthModal]);
 
   const handleSignInSelect = useCallback<UseHomePageResult['handleSignInSelect']>(
     (event) => {
@@ -335,6 +555,189 @@ export function useHomePage(): UseHomePageResult {
       isActive = false;
     };
   }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) {
+      hasSixSevAchievementRef.current = false;
+      pendingSixSevUnlockRef.current = false;
+      return;
+    }
+
+    let isMounted = true;
+
+    const primeAchievementState = async () => {
+      try {
+        const definition = await fetchSixSevDefinition();
+        const supabase = getSupabaseClient();
+        const { data, error } = await supabase
+          .from('user_achievements')
+          .select('achievement_id')
+          .eq('user_id', authUser.id)
+          .eq('achievement_id', definition.id)
+          .maybeSingle();
+        const errorCode = (error as { code?: string } | null)?.code;
+        if (error && errorCode !== 'PGRST116') {
+          console.error('[HomePage] Failed to read Six Sev status', error);
+          return;
+        }
+        if (!isMounted) return;
+        hasSixSevAchievementRef.current = Boolean(data);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('[HomePage] Failed to prime Six Sev achievement', error);
+      }
+    };
+
+    primeAchievementState().catch((error) => {
+      console.error('[HomePage] Unexpected Six Sev prime failure', error);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser, fetchSixSevDefinition]);
+
+  useEffect(() => {
+    if (!authUser) {
+      achievementSeenRef.current.clear();
+      return;
+    }
+    if (!pendingSixSevUnlockRef.current) {
+      return;
+    }
+    if (hasSixSevAchievementRef.current) {
+      pendingSixSevUnlockRef.current = false;
+      return;
+    }
+    const targetCount = Math.max(logoClickCountRef.current, SIX_SEV_TARGET_CLICKS);
+    void attemptSixSevUnlock(targetCount);
+  }, [authUser, attemptSixSevUnlock]);
+
+  useEffect(() => {
+    if (!authUser) {
+      return;
+    }
+
+    let isMounted = true;
+    const supabase = getSupabaseClient();
+
+    const primeAchievements = async () => {
+      const { data, error } = await supabase
+        .from('user_achievements')
+        .select('achievement_id, unlocked_at, achievements (id, slug, title, description, icon)')
+        .eq('user_id', authUser.id)
+        .order('unlocked_at', { ascending: true });
+
+      if (error) {
+        console.error('[HomePage] Failed to load user achievements', error);
+        return;
+      }
+
+      const seen = achievementSeenRef.current;
+      const now = Date.now();
+      const recentWindowMs = 12_000;
+      let latestToast: AchievementToastState | null = null;
+
+      for (const row of data ?? []) {
+        const achievementDataRaw = Array.isArray(row.achievements) ? row.achievements[0] : row.achievements;
+        const achievement = achievementDataRaw as AchievementRecord | null;
+        if (!achievement?.id) {
+          continue;
+        }
+        if (seen.has(achievement.id)) {
+          continue;
+        }
+        seen.add(achievement.id);
+
+        if (!row.unlocked_at) {
+          continue;
+        }
+
+        const unlockedAtTime = Date.parse(row.unlocked_at);
+        if (Number.isNaN(unlockedAtTime)) {
+          continue;
+        }
+        if (now - unlockedAtTime > recentWindowMs) {
+          continue;
+        }
+
+        latestToast = {
+          title: `${achievement.title ?? 'Achievement unlocked!'}`,
+          description: achievement.description ?? undefined,
+          icon: achievement.icon,
+          tone: 'success',
+        } satisfies AchievementToastState;
+      }
+
+      if (latestToast && isMounted) {
+        pushAchievementToast(latestToast, { celebrate: true });
+      }
+    };
+
+    primeAchievements().catch((error) => {
+      console.error('[HomePage] Unexpected failure priming achievements', error);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser, pushAchievementToast]);
+
+  useEffect(() => {
+    if (!authUser) {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel(`user_achievements:${authUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'user_achievements',
+          filter: `user_id=eq.${authUser.id}`,
+        },
+        async (payload) => {
+          const newRow = (payload.new ?? {}) as { achievement_id?: unknown; unlocked_at?: unknown };
+          const achievementId = typeof newRow.achievement_id === 'string' ? newRow.achievement_id : null;
+          if (!achievementId) {
+            return;
+          }
+          if (achievementSeenRef.current.has(achievementId)) {
+            return;
+          }
+
+          const { data, error } = await supabase
+            .from('achievements')
+            .select('id, slug, title, description, icon')
+            .eq('id', achievementId)
+            .maybeSingle();
+
+          if (error || !data?.id) {
+            console.error('[HomePage] Failed to resolve inserted achievement', error ?? new Error('Missing achievement record'));
+            return;
+          }
+
+          achievementSeenRef.current.add(data.id);
+          pushAchievementToast(
+            {
+              title: `${data.title ?? 'Achievement unlocked!'}`,
+              description: data.description ?? undefined,
+              icon: data.icon ?? null,
+              tone: 'success',
+            },
+            { celebrate: true },
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authUser, pushAchievementToast]);
 
   useEffect(() => {
     if (!isProfilePanelOpen) return;
@@ -520,6 +923,9 @@ export function useHomePage(): UseHomePageResult {
     defaultLogoAnimationValue,
     defaultLogoOpacityTransition,
     bulletAnimationValue,
+    achievementToast,
+    isAchievementToastExiting,
+    dismissAchievementToast,
     handleSignInSelect,
     handleContinueAsGuest,
     handleButtonHover,

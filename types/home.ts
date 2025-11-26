@@ -2,6 +2,9 @@ import type { MutableRefObject } from 'react';
 import type { MouseEventHandler } from 'react';
 import type { AuthUserSummary, UserProfile } from '@/types/auth';
 import type { IrisHandle } from '@/app/components/ui/IrisTransition';
+import type { AchievementToastState } from '@/types/achievements';
+
+export type { AchievementToastState } from '@/types/achievements';
 
 export interface LandingSessionRow {
   id: string;
@@ -42,6 +45,9 @@ export interface UseHomePageResult {
   defaultLogoAnimationValue: string;
   defaultLogoOpacityTransition: string;
   bulletAnimationValue: string;
+  achievementToast: AchievementToastState | null;
+  isAchievementToastExiting: boolean;
+  dismissAchievementToast: () => void;
   handleSignInSelect: MouseEventHandler<HTMLButtonElement>;
   handleContinueAsGuest: () => void;
   handleButtonHover: () => void;
