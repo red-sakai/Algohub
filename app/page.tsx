@@ -11,6 +11,30 @@ import IrisTransition from './components/ui/IrisTransition';
 import LoadingOverlay from './components/ui/LoadingOverlay';
 import { useHomePage } from '@/hooks/useHomePage';
 
+const ACHIEVEMENT_TOAST_FALLBACK_ICON = '/achievements/67.png';
+
+const ACHIEVEMENT_TOAST_TONE_STYLES: Record<
+  'success' | 'info' | 'warning' | 'error',
+  { container: string; indicator: string }
+> = {
+  success: {
+    container: 'bg-emerald-500/15 ring-emerald-300/35 text-white',
+    indicator: 'bg-emerald-400/20 border border-emerald-300/45',
+  },
+  info: {
+    container: 'bg-sky-500/15 ring-sky-300/35 text-white',
+    indicator: 'bg-sky-400/20 border border-sky-300/45',
+  },
+  warning: {
+    container: 'bg-amber-500/15 ring-amber-300/35 text-white',
+    indicator: 'bg-amber-400/20 border border-amber-300/45',
+  },
+  error: {
+    container: 'bg-rose-500/15 ring-rose-300/35 text-white',
+    indicator: 'bg-rose-400/20 border border-rose-300/45',
+  },
+};
+
 export default function Home() {
   return (
     <Suspense fallback={null}>
@@ -52,9 +76,57 @@ function HomeContent() {
     handleProfileView,
     handleLogoClick,
     handleStartClick,
+    achievementToast,
+    isAchievementToastExiting,
+    dismissAchievementToast,
   } = useHomePage();
+  const toastTone = achievementToast?.tone ?? 'info';
+  const toneStyles = ACHIEVEMENT_TOAST_TONE_STYLES[toastTone] ?? ACHIEVEMENT_TOAST_TONE_STYLES.info;
+  const toastIconSrc = achievementToast?.icon ?? ACHIEVEMENT_TOAST_FALLBACK_ICON;
+  const toastImageIsRemote = toastIconSrc.startsWith('http');
+  const toastAnimationName = isAchievementToastExiting ? 'algToastOut' : 'algToastIn';
+  const toastAnimationDuration = isAchievementToastExiting ? '260ms' : '320ms';
   return (
     <>
+      {achievementToast && (
+        <div className="pointer-events-none fixed bottom-6 left-6 z-[150] flex flex-col items-start space-y-3">
+          <div
+            role="status"
+            aria-live="polite"
+            className={`pointer-events-auto flex w-[min(320px,calc(100vw-3rem))] items-start gap-3 rounded-3xl bg-white/10 p-4 text-white shadow-[0_18px_45px_rgba(15,23,42,0.55)] ring-1 backdrop-blur-xl ${toneStyles.container}`}
+            style={{
+              animation: `${toastAnimationName} ${toastAnimationDuration} ease-out forwards`,
+            }}
+          >
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${toneStyles.indicator}`}>
+              <Image
+                src={toastIconSrc}
+                alt="Achievement icon"
+                width={48}
+                height={48}
+                className="h-12 w-12 rounded-2xl object-cover"
+                unoptimized={toastImageIsRemote}
+                draggable={false}
+              />
+            </div>
+            <div className="flex flex-1 flex-col">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/70">Achievement unlocked</p>
+              <p className="mt-1 text-sm font-semibold leading-tight text-white">{achievementToast.title}</p>
+              {achievementToast.description && (
+                <p className="mt-1 text-xs text-white/80">{achievementToast.description}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={dismissAchievementToast}
+              className="ml-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white/75 transition hover:bg-white/25 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              aria-label="Close achievement message"
+            >
+              <span aria-hidden>&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
       {authUser && (
         <div className="fixed left-4 top-4 z-[130] flex flex-col items-start gap-3">
           <button

@@ -19,14 +19,57 @@ function formatDate(value: string | null | undefined, options: Intl.DateTimeForm
   }
 }
 
+function formatAchievementSlug(slug: string): string {
+  return slug.toUpperCase();
+}
+
 const achievementIconFallbacks: Record<string, string> = {
+  default: '[badge]',
   speed_runner: '[speed]',
   garage_champion: '[garage]',
   puzzle_master: '[puzzle]',
+  'six-sev': '[67]',
+  'welcome-to-algohub': '[welcome]',
+  'stacking-em-queues': '[stack]',
+  'gday-sir': '[gday]',
 };
 
-function resolveAchievementIcon(entry: UserAchievement): string {
-  return entry.achievement.icon ?? achievementIconFallbacks[entry.achievement.slug] ?? '[badge]';
+function AchievementIcon({
+  entry,
+  size = 'large',
+}: {
+  entry: UserAchievement;
+  size?: 'small' | 'large';
+}) {
+  const icon = entry.achievement.icon;
+  const fallback = achievementIconFallbacks[entry.achievement.slug] ?? achievementIconFallbacks.default;
+  const isRemote = typeof icon === 'string' && /^https?:\/\//i.test(icon);
+  const dimension = size === 'small' ? 72 : 128;
+  const containerClass = size === 'small'
+    ? 'h-16 w-16 rounded-2xl bg-white/12 ring-1 ring-white/20'
+    : 'h-28 w-28 rounded-[2.25rem] bg-white/10 ring-1 ring-white/20';
+  const imageWrapperClass = `${containerClass} overflow-hidden bg-slate-950/20 p-2 flex items-center justify-center`;
+  const fallbackTextClass = size === 'small' ? 'text-base' : 'text-2xl';
+
+  if (!icon) {
+    return (
+      <span className={`${imageWrapperClass} ${fallbackTextClass} font-semibold text-white/80`}>{fallback}</span>
+    );
+  }
+
+  return (
+    <span className={imageWrapperClass}>
+      <Image
+        src={icon}
+        alt={`${entry.achievement.title} icon`}
+        width={dimension}
+        height={dimension}
+        className="h-full w-full rounded-2xl object-contain"
+        unoptimized={isRemote}
+        draggable={false}
+      />
+    </span>
+  );
 }
 
 export default function ProfilePage() {
@@ -59,7 +102,7 @@ function ProfilePageContent() {
           direction="diagonal"
           borderColor="#ffffff12"
           hoverFillColor="#ffffff"
-          className="pointer-events-none fixed inset-0 z-0"
+           className="pointer-events-none absolute inset-0 z-0 h-full w-full"
         />
         <BackgroundDoodles />
         <section className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-2xl flex-col items-center justify-center px-6 text-center">
@@ -80,7 +123,7 @@ function ProfilePageContent() {
           direction="diagonal"
           borderColor="#ffffff12"
           hoverFillColor="#ffffff"
-          className="pointer-events-none fixed inset-0 z-0"
+           className="pointer-events-none absolute inset-0 z-0 h-full w-full"
         />
         <BackgroundDoodles />
         <section className="relative z-10 mx-auto flex min-h-[100dvh] max-w-2xl flex-col items-center justify-center px-6 text-center">
@@ -110,7 +153,7 @@ function ProfilePageContent() {
         direction="diagonal"
         borderColor="#ffffff12"
         hoverFillColor="#ffffff"
-        className="pointer-events-none fixed inset-0 z-0"
+         className="pointer-events-none absolute inset-0 z-0 h-full w-full"
       />
       <BackgroundDoodles />
 
@@ -215,7 +258,7 @@ function ProfilePageContent() {
             <ul className="mt-5 space-y-3 text-sm text-white/85">
               {achievements.slice(0, 3).map((entry) => (
                 <li key={entry.achievementId} className="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2 ring-1 ring-white/15">
-                  <span className="text-xl">{resolveAchievementIcon(entry)}</span>
+                  <AchievementIcon entry={entry} size="small" />
                   <div>
                     <p className="font-semibold text-white">{entry.achievement.title}</p>
                     <p className="text-xs text-white/70">Earned {formatDate(entry.unlockedAt, { dateStyle: 'medium' })}</p>
@@ -243,7 +286,7 @@ function ProfilePageContent() {
             </span>
           </div>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {achievements.length === 0 && (
               <div className="col-span-full rounded-3xl border border-dashed border-white/30 bg-white/5 px-6 py-10 text-center text-sm text-white/70">
                 No achievements earned yet. Dive into AlgoHub&apos;s challenges to unlock your first trophy!
@@ -252,19 +295,18 @@ function ProfilePageContent() {
             {achievements.map((entry) => (
               <article
                 key={entry.achievementId}
-                className="relative overflow-hidden rounded-3xl bg-white/10 px-5 py-6 text-white shadow-[0_18px_45px_rgba(15,23,42,0.45)] ring-1 ring-white/20 backdrop-blur-2xl"
+                className="group relative flex h-full flex-col items-center gap-5 overflow-hidden rounded-3xl bg-white/10 p-6 text-white text-center shadow-[0_18px_45px_rgba(15,23,42,0.45)] ring-1 ring-white/20 backdrop-blur-2xl transition duration-300 ease-out hover:bg-white/14 hover:shadow-[0_22px_55px_rgba(15,23,42,0.55)]"
               >
-                <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white/8 via-white/4 to-transparent" />
-                <div className="flex items-start gap-3">
-                  <span className="text-3xl drop-shadow-[0_10px_15px_rgba(15,23,42,0.55)]">{resolveAchievementIcon(entry)}</span>
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">{entry.achievement.title}</h3>
-                    <p className="mt-1 text-xs text-white/75">{entry.achievement.description}</p>
-                  </div>
+                <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white/8 via-white/4 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                <AchievementIcon entry={entry} />
+                <div className="flex flex-col items-center gap-2">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/60">Achievement</p>
+                  <h3 className="text-lg font-semibold text-white">{entry.achievement.title}</h3>
+                  <p className="max-w-[18rem] text-xs text-white/75">{entry.achievement.description}</p>
                 </div>
-                <footer className="mt-5 flex items-center justify-between text-[0.65rem] uppercase tracking-[0.22em] text-white/60">
+                <footer className="mt-auto flex w-full flex-col items-center gap-2 text-[0.65rem] uppercase tracking-[0.22em] text-white/60">
                   <span>Unlocked {formatDate(entry.unlockedAt, { dateStyle: 'medium' })}</span>
-                  <span className="rounded-full bg-white/15 px-2 py-1 text-white">{entry.achievement.slug}</span>
+                  <span className="rounded-full bg-white/15 px-3 py-1 text-white/85">{formatAchievementSlug(entry.achievement.slug)}</span>
                 </footer>
               </article>
             ))}

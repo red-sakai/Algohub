@@ -2,6 +2,7 @@
 
 import type { AuthUserSummary, SignInPayload, SignInResult, UserProfile } from "@/types/auth";
 import { getServiceSupabase } from "@/lib/supabase/serviceClient";
+import { grantAchievementBySlug } from "@/lib/supabase/achievements";
 
 function mapProfile(row: {
   id: string;
@@ -66,6 +67,12 @@ export async function signInUserAction(payload: SignInPayload): Promise<SignInRe
   }
 
   const displayName = profile?.displayName || data.user.user_metadata?.full_name || data.user.email || email;
+
+  try {
+    await grantAchievementBySlug(supabase, userId, "welcome-to-algohub");
+  } catch (error) {
+    console.error("Failed to grant Welcome to Algohub achievement", error);
+  }
 
   return {
     success: true,
