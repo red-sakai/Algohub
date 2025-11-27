@@ -38,6 +38,10 @@ export interface UseProfilePageResult {
   currentAuth: AuthUserSummary | null;
   currentProfile: UserProfile | null;
   achievements: UserAchievement[];
+  activeAchievement: UserAchievement | null;
+  isAchievementModalOpen: boolean;
   handleBackToLanding: (event: MouseEvent<HTMLAnchorElement>) => void;
-  handleSignOut: () => void;
+  handleSignOut: () => Promise<void>;
+  handleAchievementSelect: (achievement: UserAchievement) => void;
+  handleAchievementModalClose: () => void;
 }

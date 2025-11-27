@@ -1,8 +1,10 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import BackgroundDoodles from '../components/sections/BackgroundDoodles';
 import Squares from '../components/ui/Squares';
 import TargetCursor from '../components/ui/TargetCursor';
@@ -72,6 +74,108 @@ function AchievementIcon({
   );
 }
 
+function AchievementDetailsModal({
+  achievement,
+  isOpen,
+  onClose,
+}: {
+  achievement: UserAchievement;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  const handleBackdropClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const overlayStateClass = isOpen
+    ? 'pointer-events-auto opacity-100 backdrop-blur-md'
+    : 'pointer-events-none opacity-0 backdrop-blur-none';
+  const dialogStateClass = isOpen ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0';
+
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/80 px-4 transition-[opacity,backdrop-filter] duration-[240ms] ease-out ${overlayStateClass}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="achievement-modal-title"
+      onClick={handleBackdropClick}
+    >
+      <div
+        className={`relative w-full max-w-lg rounded-3xl bg-slate-950/90 p-6 text-white shadow-[0_28px_60px_rgba(2,6,23,0.65)] ring-1 ring-white/15 transition-all duration-[240ms] ease-out sm:p-8 ${dialogStateClass}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="cursor-target absolute right-5 top-5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          aria-label="Close achievement details"
+        >
+          <span className="text-xl" aria-hidden>
+            &times;
+          </span>
+        </button>
+        <div className="flex flex-col items-center gap-6 text-center">
+          <AchievementIcon entry={achievement} />
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/60">Achievement</p>
+            <h2 id="achievement-modal-title" className="text-2xl font-semibold text-white">
+              {achievement.achievement.title}
+            </h2>
+            {achievement.achievement.description && (
+              <p className="max-w-md text-sm text-white/75">
+                {achievement.achievement.description}
+              </p>
+            )}
+          </div>
+          <div className="flex w-full flex-col gap-3 rounded-2xl bg-white/5 px-5 py-4 text-left text-sm text-white/80 ring-1 ring-white/15">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Unlocked on</span>
+              <span className="text-base font-semibold text-white">
+                {formatDate(achievement.unlockedAt, { dateStyle: 'full', timeStyle: 'short' })}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Achievement ID</span>
+              <span className="font-mono text-sm text-white/85">{achievement.achievementId}</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Slug</span>
+              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/85">
+                {formatAchievementSlug(achievement.achievement.slug)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function ProfilePage() {
   return (
     <Suspense fallback={null}>
@@ -88,8 +192,12 @@ function ProfilePageContent() {
     currentAuth,
     currentProfile,
     achievements,
+    activeAchievement,
+    isAchievementModalOpen,
     handleBackToLanding,
     handleSignOut,
+    handleAchievementSelect,
+    handleAchievementModalClose,
   } = useProfilePage();
 
   if (isLoading) {
@@ -158,6 +266,13 @@ function ProfilePageContent() {
       <BackgroundDoodles />
 
       <section className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col gap-10 px-4 py-16 sm:px-6 lg:px-10">
+        {activeAchievement && (
+          <AchievementDetailsModal
+            achievement={activeAchievement}
+            isOpen={isAchievementModalOpen}
+            onClose={handleAchievementModalClose}
+          />
+        )}
         <div className="mb-4 flex w-full flex-wrap justify-end gap-2">
           <button
             type="button"
@@ -293,9 +408,11 @@ function ProfilePageContent() {
               </div>
             )}
             {achievements.map((entry) => (
-              <article
+              <button
                 key={entry.achievementId}
-                className="group relative flex h-full flex-col items-center gap-5 overflow-hidden rounded-3xl bg-white/10 p-6 text-white text-center shadow-[0_18px_45px_rgba(15,23,42,0.45)] ring-1 ring-white/20 backdrop-blur-2xl transition duration-300 ease-out hover:bg-white/14 hover:shadow-[0_22px_55px_rgba(15,23,42,0.55)]"
+                type="button"
+                onClick={() => handleAchievementSelect(entry)}
+                className="cursor-target group relative flex h-full flex-col items-center gap-5 overflow-hidden rounded-3xl bg-white/10 p-6 text-white text-center shadow-[0_18px_45px_rgba(15,23,42,0.45)] ring-1 ring-white/20 backdrop-blur-2xl transition duration-300 ease-out hover:bg-white/14 hover:shadow-[0_22px_55px_rgba(15,23,42,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
               >
                 <div className="absolute inset-0 -z-10 bg-gradient-to-br from-white/8 via-white/4 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <AchievementIcon entry={entry} />
@@ -308,7 +425,7 @@ function ProfilePageContent() {
                   <span>Unlocked {formatDate(entry.unlockedAt, { dateStyle: 'medium' })}</span>
                   <span className="rounded-full bg-white/15 px-3 py-1 text-white/85">{formatAchievementSlug(entry.achievement.slug)}</span>
                 </footer>
-              </article>
+              </button>
             ))}
           </div>
         </section>
