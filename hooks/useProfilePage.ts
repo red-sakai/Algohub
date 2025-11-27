@@ -4,6 +4,7 @@ import type { MouseEvent } from 'react';
 import { useCallback } from '@/hooks/useCallback';
 import { useEffect } from '@/hooks/useEffect';
 import { useMemo } from '@/hooks/useMemo';
+import { useRef } from '@/hooks/useRef';
 import { useState } from '@/hooks/useState';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
@@ -26,6 +27,10 @@ function useProfilePage(): UseProfilePageResult {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [activeAchievement, setActiveAchievement] = useState<UserAchievement | null>(null);
+  const [isAchievementModalOpen, setAchievementModalOpen] = useState(false);
+  const modalCloseTimerRef = useRef<number | null>(null);
+  const ACHIEVEMENT_MODAL_EXIT_MS = 240;
 
   const decodedAuthFromQuery = useMemo(() => {
     const authParam = searchParams?.get('auth');
@@ -112,6 +117,27 @@ function useProfilePage(): UseProfilePageResult {
     });
   }, [router, slideTransition]);
 
+  const handleAchievementSelect = useCallback((achievement: UserAchievement) => {
+    if (modalCloseTimerRef.current) {
+      window.clearTimeout(modalCloseTimerRef.current);
+      modalCloseTimerRef.current = null;
+    }
+    setActiveAchievement(achievement);
+    setAchievementModalOpen(true);
+  }, []);
+
+  const handleAchievementModalClose = useCallback(() => {
+    if (modalCloseTimerRef.current) {
+      window.clearTimeout(modalCloseTimerRef.current);
+      modalCloseTimerRef.current = null;
+    }
+    setAchievementModalOpen(false);
+    modalCloseTimerRef.current = window.setTimeout(() => {
+      setActiveAchievement(null);
+      modalCloseTimerRef.current = null;
+    }, ACHIEVEMENT_MODAL_EXIT_MS);
+  }, []);
+
   const handleSignOut = useCallback(async () => {
     if (isSigningOut) return;
     setIsSigningOut(true);
@@ -137,6 +163,13 @@ function useProfilePage(): UseProfilePageResult {
     });
   }, [isSigningOut, router, slideTransition]);
 
+  useEffect(() => () => {
+    if (modalCloseTimerRef.current) {
+      window.clearTimeout(modalCloseTimerRef.current);
+      modalCloseTimerRef.current = null;
+    }
+  }, []);
+
   return {
     isLoading,
     isSigningOut,
@@ -144,8 +177,12 @@ function useProfilePage(): UseProfilePageResult {
     currentAuth,
     currentProfile,
     achievements,
+    activeAchievement,
+    isAchievementModalOpen,
     handleBackToLanding,
     handleSignOut,
+    handleAchievementSelect,
+    handleAchievementModalClose,
   } satisfies UseProfilePageResult;
 }
 
