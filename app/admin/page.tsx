@@ -11,6 +11,10 @@ import { useRef } from '@/hooks/useRef';
 import { signOutUser } from '@/actions/auth/sign-out';
 import type {
   AdminNavTarget,
+  AchievementGainCardProps,
+  AchievementGainChartProps,
+  AchievementGainPoint,
+  AchievementGainResponse,
   StudentGrowthCardProps,
   StudentGrowthChartProps,
   StudentGrowthPoint,
@@ -117,6 +121,9 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
   const [studentGrowth, setStudentGrowth] = useState<StudentGrowthPoint[] | null>(null);
   const [studentGrowthLoading, setStudentGrowthLoading] = useState(true);
   const [studentGrowthError, setStudentGrowthError] = useState<string | null>(null);
+  const [achievementGain, setAchievementGain] = useState<AchievementGainPoint[] | null>(null);
+  const [achievementGainLoading, setAchievementGainLoading] = useState(true);
+  const [achievementGainError, setAchievementGainError] = useState<string | null>(null);
   const [signOutPending, setSignOutPending] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
@@ -162,6 +169,52 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
     }
 
     loadGrowth();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadAchievementStats = async () => {
+      setAchievementGainLoading(true);
+      setAchievementGainError(null);
+      try {
+        const response = await fetch('/api/admin/achievements-gained', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as AchievementGainResponse;
+        if (payload.error) {
+          throw new Error(payload.error);
+        }
+
+        const points = Array.isArray(payload.data) ? payload.data : [];
+        if (!isActive) {
+          return;
+        }
+
+        setAchievementGain(points);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        console.error('[AdminDashboard] Failed to fetch achievement gains', error);
+        setAchievementGain(null);
+        setAchievementGainError('Unable to load achievement stats right now.');
+      } finally {
+        if (isActive) {
+          setAchievementGainLoading(false);
+        }
+      }
+    };
+
+    loadAchievementStats().catch((error) => {
+      console.error('[AdminDashboard] Unexpected achievement stats failure', error);
+    });
 
     return () => {
       isActive = false;
@@ -369,6 +422,8 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
             </section>
 
             <StudentGrowthCard data={studentGrowth} loading={studentGrowthLoading} error={studentGrowthError} />
+
+            <AchievementsGainedCard data={achievementGain} loading={achievementGainLoading} error={achievementGainError} />
 
             <section className="grid gap-5 lg:grid-cols-3">
               {PLACEHOLDER_PANELS.map((panel) => (
@@ -605,6 +660,197 @@ function StudentGrowthChart({ data, formatter, comparisonLabel }: StudentGrowthC
           fontWeight="600"
         >
           Total Students ({comparisonLabel})
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+function AchievementsGainedCard({ data, loading, error }: AchievementGainCardProps): ReactElement {
+  const numberFormatter = useMemo(() => new Intl.NumberFormat('en-US'), []);
+  const hasData = Boolean(data && data.length > 0);
+  const latestPoint = hasData && data ? data[data.length - 1] : null;
+  const previousPoint = hasData && data && data.length > 1 ? data[data.length - 2] : null;
+  const todayUnlocks = latestPoint ? latestPoint.unlocked : 0;
+  const comparisonLabel = previousPoint ? `vs. ${previousPoint.date}` : 'First recorded unlocks';
+
+  const todayLabel = loading || !hasData
+    ? 'Awaiting data'
+    : todayUnlocks === 0
+      ? 'No unlocks today'
+      : `${todayUnlocks} today`;
+
+  return (
+    <article className="rounded-3xl border border-fuchsia-300/35 bg-fuchsia-500/10 p-6 text-fuchsia-50 shadow-[0_20px_42px_rgba(134,25,143,0.28)] backdrop-blur">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Achievements Gained</h2>
+          <p className="mt-1 text-sm text-fuchsia-100/80">
+            Daily achievement unlocks across AlgoHub learners.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white/10 px-4 py-2 text-right text-xs uppercase tracking-[0.18em] text-white/80 shadow-inner ring-1 ring-white/15">
+          <div className="text-[10px] font-semibold text-fuchsia-200/85">Total Unlocks</div>
+          <div className="mt-1 text-base font-bold text-white">
+            {latestPoint ? numberFormatter.format(latestPoint.totalUnlocked) : loading ? '…' : '0'}
+          </div>
+          <div className="mt-1 text-[10px] font-medium text-fuchsia-200/75">{todayLabel}</div>
+        </div>
+      </div>
+
+      <div className="mt-6 min-h-[16rem] w-full">
+        {loading ? (
+          <div className="flex h-64 w-full items-center justify-center rounded-2xl border border-dashed border-white/20 bg-fuchsia-900/20 text-sm text-fuchsia-100/80">
+            Loading achievement stats…
+          </div>
+        ) : error ? (
+          <div className="flex h-64 w-full items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-100">
+            {error}
+          </div>
+        ) : hasData && data ? (
+          <AchievementsGainedChart data={data} formatter={numberFormatter} comparisonLabel={comparisonLabel} />
+        ) : (
+          <div className="flex h-64 w-full items-center justify-center rounded-2xl border border-white/20 bg-fuchsia-900/20 text-sm text-fuchsia-100/80">
+            No achievements unlocked yet.
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function AchievementsGainedChart({ data, formatter, comparisonLabel }: AchievementGainChartProps): ReactElement {
+  const chart = useMemo(() => {
+    if (!data.length) {
+      return null;
+    }
+
+    const width = 720;
+    const height = 260;
+    const padding = { top: 32, right: 36, bottom: 56, left: 72 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+
+    const dateValues = data.map((point) => new Date(`${point.date}T00:00:00.000Z`).getTime());
+    const minDateValue = Math.min(...dateValues);
+    const maxDateValue = Math.max(...dateValues);
+    const dateRange = Math.max(1, maxDateValue - minDateValue);
+
+    const totals = data.map((point) => point.totalUnlocked);
+    const maxTotal = Math.max(...totals, 0);
+    const valueRange = Math.max(1, maxTotal);
+
+    const scaledPoints = data.map((point, index) => {
+      const dateValue = dateValues[index];
+      const x = padding.left + ((dateValue - minDateValue) / dateRange) * chartWidth;
+      const valueRatio = valueRange > 0 ? point.totalUnlocked / valueRange : 0;
+      const y = padding.top + (1 - valueRatio) * chartHeight;
+      return { ...point, x, y };
+    });
+
+    const pathD = scaledPoints
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' ');
+
+    const baseY = padding.top + chartHeight;
+    const areaD = `${pathD} L${scaledPoints[scaledPoints.length - 1].x.toFixed(2)} ${baseY.toFixed(2)} L${scaledPoints[0].x.toFixed(2)} ${baseY.toFixed(2)} Z`;
+
+    const targetTickCount = Math.min(6, scaledPoints.length);
+    const tickInterval = targetTickCount > 1 ? Math.round((scaledPoints.length - 1) / (targetTickCount - 1)) : 1;
+    const xTicks = scaledPoints.reduce<{ x: number; label: string; date: string }[]>((acc, point, index) => {
+      if (index % tickInterval === 0 || index === scaledPoints.length - 1) {
+        acc.push({ x: point.x, label: point.date, date: point.date });
+      }
+      return acc;
+    }, []);
+
+    const yTickCount = 4;
+    const yTicks = Array.from({ length: yTickCount + 1 }).map((_, idx) => {
+      const ratio = idx / yTickCount;
+      const value = Math.round(maxTotal * ratio);
+      const y = padding.top + (1 - ratio) * chartHeight;
+      return { y, value };
+    });
+
+    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: data.length > 40 ? undefined : 'numeric',
+      year: data.length > 120 ? 'numeric' : undefined,
+    });
+
+    return {
+      width,
+      height,
+      padding,
+      pathD,
+      areaD,
+      scaledPoints,
+      xTicks: xTicks.map((tick) => ({ x: tick.x, label: dateFormatter.format(new Date(`${tick.date}T00:00:00.000Z`)) })),
+      yTicks,
+      maxTotal,
+    };
+  }, [data]);
+
+  if (!chart) {
+    return (
+      <div className="flex h-64 w-full items-center justify-center rounded-2xl border border-white/20 bg-fuchsia-900/20 text-sm text-fuchsia-100/80">
+        No data available.
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-64 w-full">
+      <svg
+        role="img"
+        aria-label="Line chart showing achievements gained over time"
+        viewBox={`0 0 ${chart.width} ${chart.height}`}
+        className="h-full w-full"
+      >
+        <defs>
+          <linearGradient id="achievements-gain-gradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="rgba(217,70,239,0.6)" />
+            <stop offset="95%" stopColor="rgba(217,70,239,0)" />
+          </linearGradient>
+        </defs>
+
+        <g stroke="rgba(255,255,255,0.08)" strokeDasharray="4 6">
+          {chart.xTicks.map((tick) => (
+            <line key={`gain-grid-x-${tick.label}`} x1={tick.x} y1={chart.padding.top} x2={tick.x} y2={chart.height - chart.padding.bottom} />
+          ))}
+          {chart.yTicks.map((tick, index) => (
+            <line key={`gain-grid-y-${index}`} x1={chart.padding.left} y1={tick.y} x2={chart.width - chart.padding.right} y2={tick.y} />
+          ))}
+        </g>
+
+        <path d={chart.areaD} fill="url(#achievements-gain-gradient)" opacity="0.6" />
+        <path d={chart.pathD} fill="none" stroke="rgba(217,70,239,0.95)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+
+        {chart.scaledPoints.map((point) => (
+          <circle key={`gain-marker-${point.date}`} cx={point.x} cy={point.y} r={4.5} fill="rgba(217,70,239,1)" />
+        ))}
+
+        <g fontSize="12" fill="rgba(250,245,255,0.8)" fontWeight="500">
+          {chart.xTicks.map((tick) => (
+            <text key={`gain-label-x-${tick.label}`} x={tick.x} y={chart.height - chart.padding.bottom + 28} textAnchor="middle">
+              {tick.label}
+            </text>
+          ))}
+          {chart.yTicks.map((tick, index) => (
+            <text key={`gain-label-y-${index}`} x={chart.padding.left - 12} y={tick.y + 4} textAnchor="end">
+              {formatter.format(tick.value)}
+            </text>
+          ))}
+        </g>
+
+        <text
+          x={chart.padding.left}
+          y={chart.padding.top - 12}
+          fill="rgba(250,245,255,0.9)"
+          fontSize="12"
+          fontWeight="600"
+        >
+          Unlocks ({comparisonLabel})
         </text>
       </svg>
     </div>

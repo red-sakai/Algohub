@@ -6,10 +6,27 @@ export type StudentGrowthPoint = {
   totalStudents: number;
 };
 
+export type AchievementGainPoint = {
+  date: string;
+  unlocked: number;
+  totalUnlocked: number;
+};
+
 export type StudentGrowthResponse = {
   data?: StudentGrowthPoint[];
   meta?: {
     totalStudents?: number;
+    windowStart?: string;
+    windowEnd?: string;
+  };
+  generatedAt?: string;
+  error?: string;
+};
+
+export type AchievementGainResponse = {
+  data?: AchievementGainPoint[];
+  meta?: {
+    totalUnlocked?: number;
     windowStart?: string;
     windowEnd?: string;
   };
@@ -25,6 +42,18 @@ export type StudentGrowthCardProps = {
 
 export type StudentGrowthChartProps = {
   data: StudentGrowthPoint[];
+  formatter: Intl.NumberFormat;
+  comparisonLabel: string;
+};
+
+export type AchievementGainCardProps = {
+  data: AchievementGainPoint[] | null;
+  loading: boolean;
+  error: string | null;
+};
+
+export type AchievementGainChartProps = {
+  data: AchievementGainPoint[];
   formatter: Intl.NumberFormat;
   comparisonLabel: string;
 };

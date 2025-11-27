@@ -1,9 +1,12 @@
 "use client";
 import { forwardRef } from "react";
+import { createPortal } from "react-dom";
 import { useEffect } from "@/hooks/useEffect";
 import { useImperativeHandle } from "@/hooks/useImperativeHandle";
 import { useRef } from "@/hooks/useRef";
 import { useState } from "@/hooks/useState";
+
+let irisMaskIdCounter = 0;
 
 export type IrisHandle = {
   start: (opts?: { x?: number; y?: number; durationMs?: number; onDone?: () => void; mode?: "close" | "open" }) => void;
@@ -29,6 +32,11 @@ export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransiti
   const [vw, setVw] = useState(0);
   const [vh, setVh] = useState(0);
   const [opacity, setOpacity] = useState(1);
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+  const [maskId] = useState(() => {
+    irisMaskIdCounter += 1;
+    return `iris-mask-${irisMaskIdCounter}`;
+  });
   const rafRef = useRef<number | null>(null);
   const runningRef = useRef(false);
   const fadeMs = 160;
@@ -37,27 +45,27 @@ export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransiti
     start: ({ x, y, durationMs = 600, onDone, mode = "close" } = {}) => {
       if (runningRef.current) return;
       const reduce = prefersReducedMotion();
-  const vwNow = window.innerWidth;
-  const vhNow = window.innerHeight;
-  setVw(vwNow);
-  setVh(vhNow);
-  const cxVal = typeof x === "number" ? x : vwNow / 2;
-  const cyVal = typeof y === "number" ? y : vhNow / 2;
+      const vwNow = window.innerWidth;
+      const vhNow = window.innerHeight;
+      setVw(vwNow);
+      setVh(vhNow);
+      const cxVal = typeof x === "number" ? x : vwNow / 2;
+      const cyVal = typeof y === "number" ? y : vhNow / 2;
 
       // If user prefers reduced motion, keep the animation but shorter (no hard skip)
       const effectiveDuration = reduce ? Math.min(300, Math.max(180, durationMs)) : durationMs;
 
       // Compute a radius big enough to cover the farthest corner
-  const dx = Math.max(cxVal, vwNow - cxVal);
-  const dy = Math.max(cyVal, vhNow - cyVal);
+      const dx = Math.max(cxVal, vwNow - cxVal);
+      const dy = Math.max(cyVal, vhNow - cyVal);
       const startR = Math.hypot(dx, dy) + 20; // pad a bit
 
-  setCx(cxVal);
-  setCy(cyVal);
-  // Initialize radius based on mode: open starts from 0, close starts from full
-  setR(mode === "open" ? 0 : startR);
-  setVisible(true);
-  setOpacity(1);
+      setCx(cxVal);
+      setCy(cyVal);
+      // Initialize radius based on mode: open starts from 0, close starts from full
+      setR(mode === "open" ? 0 : startR);
+      setVisible(true);
+      setOpacity(1);
 
       runningRef.current = true;
       const t0 = performance.now();
@@ -96,6 +104,19 @@ export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransiti
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
   }, []);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const host = document.createElement("div");
+    host.dataset.irisTransition = "";
+    document.body.appendChild(host);
+    setPortalEl(host);
+    return () => {
+      if (host.parentNode) {
+        host.parentNode.removeChild(host);
+      }
+    };
+  }, []);
+
   // Track viewport size for correct SVG dimensions
   useEffect(() => {
     const update = () => {
@@ -107,20 +128,28 @@ export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransiti
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  if (!visible) return null;
+  if (!portalEl) {
+    return null;
+  }
+
+  if (!visible) {
+    return null;
+  }
 
   // SVG mask: black rect with a circular transparent hole at (cx, cy) with radius rRef.current
-  return (
+  const overlay = (
     <div className="fixed inset-0 pointer-events-none" style={{ zIndex, opacity, transition: `opacity ${fadeMs}ms ease-out` }} aria-hidden>
-      <svg width="100%" height="100%" viewBox={`0 0 ${vw} ${vh}`} preserveAspectRatio="none" style={{ display: "block" }}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${vw} ${vh}`} preserveAspectRatio="xMidYMid slice" style={{ display: "block" }}>
         <defs>
-          <mask id="iris-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width={vw} height={vh}>
+          <mask id={maskId} maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width={vw} height={vh}>
             <rect x="0" y="0" width={vw} height={vh} fill="white" />
             <circle cx={cx} cy={cy} r={r} fill="black" />
           </mask>
         </defs>
-        <rect x="0" y="0" width={vw} height={vh} fill="black" mask="url(#iris-mask)" />
+        <rect x="0" y="0" width={vw} height={vh} fill="black" mask={`url(#${maskId})`} />
       </svg>
     </div>
   );
+
+  return createPortal(overlay, portalEl);
 });

@@ -1,5 +1,6 @@
 "use client";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useEffect } from "@/hooks/useEffect";
 import { useMemo } from "@/hooks/useMemo";
 import { useRef } from "@/hooks/useRef";
@@ -37,10 +38,28 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   const [volume, setVolume] = useState<number>(0.7);
   const [loop, setLoop] = useState<boolean>(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   // (Optional) duration/time omitted to keep UI simple and avoid stutter
   const mutedRef = useRef(false);
   const skipNextPersistRef = useRef(true);
   useEffect(() => { mutedRef.current = muted; }, [muted]);
+
+  // Ensure the player UI anchors to the viewport instead of animated containers.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const existing = document.getElementById("algohub-musicplayer-root");
+    const host = existing ?? document.createElement("div");
+    if (!existing) {
+      host.id = "algohub-musicplayer-root";
+      document.body.appendChild(host);
+    }
+    setPortalContainer(host);
+    return () => {
+      if (!existing && host.parentNode) {
+        host.parentNode.removeChild(host);
+      }
+    };
+  }, []);
 
   // Load stored prefs once on mount to avoid hydration mismatches.
   useEffect(() => {
@@ -325,7 +344,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
 
   const isOpen = hoverDisc || hoverPanel;
 
-  return (
+  const playerMarkup = (
     <div
       className="fixed bottom-4 right-4 z-50 select-none"
       onMouseLeave={() => { setHoverDisc(false); setHoverPanel(false); }}
@@ -391,6 +410,12 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
       </div>
     </div>
   );
+
+  if (!portalContainer) {
+    return null;
+  }
+
+  return createPortal(playerMarkup, portalContainer);
 }
 
 function IconButton({ children, onClick, label, bigger = false }: { children: ReactNode; onClick: () => void; label: string; bigger?: boolean }) {
