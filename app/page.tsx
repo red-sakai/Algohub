@@ -242,6 +242,38 @@ function HomeContent() {
           )}
         </div>
       )}
+      {!authUser && !showAuthModal && (
+        <div className="fixed left-4 top-4 z-[130]">
+          <div className="flex flex-col gap-1">
+            <span className="hidden text-[0.58rem] font-semibold uppercase tracking-[0.34em] text-white/55 sm:inline">
+              Sync your progress
+            </span>
+            <button
+              type="button"
+              onClick={handleSignInSelect}
+              onMouseEnter={handleButtonHover}
+              className="cursor-target group inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-white/18 via-white/12 to-white/18 px-4 py-2 text-sm font-semibold uppercase tracking-[0.22em] text-white shadow-[0_16px_32px_rgba(15,23,42,0.45)] ring-1 ring-white/30 backdrop-blur-xl transition-all duration-200 hover:translate-y-[1px] hover:scale-[1.03] hover:from-white/24 hover:via-white/16 hover:to-white/24 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              aria-label="Sign in to AlgoHub"
+            >
+              <span className="mr-1 inline-flex h-2 w-2 items-center justify-center rounded-full bg-sky-300 drop-shadow-[0_0_6px_rgba(125,211,252,0.95)]" aria-hidden />
+              Sign In
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4 text-sky-200 transition-transform duration-200 group-hover:translate-x-0.5"
+                aria-hidden
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M3.75 10a.75.75 0 0 1 .75-.75h7.19l-1.72-1.72a.75.75 0 0 1 1.06-1.06l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06l1.72-1.72H4.5A.75.75 0 0 1 3.75 10Zm6-6a.75.75 0 0 1 1.5 0v2a.75.75 0 0 1-1.5 0V4Zm0 10a.75.75 0 0 1 1.5 0v2a.75.75 0 0 1-1.5 0v-2Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
       {showAuthModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 backdrop-blur-[6px] px-4">
           <div
