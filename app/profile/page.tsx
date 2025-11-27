@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
@@ -194,11 +194,29 @@ function ProfilePageContent() {
     achievements,
     activeAchievement,
     isAchievementModalOpen,
+    isAvatarUpdating,
+    avatarUploadError,
     handleBackToLanding,
     handleSignOut,
     handleAchievementSelect,
     handleAchievementModalClose,
+    handleAvatarUpload,
+    handleAvatarRemove,
   } = useProfilePage();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const isRemoveAvatarDisabled = isAvatarUpdating || !currentProfile?.avatarUrl;
+
+  const handleAvatarButtonClick = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      void handleAvatarUpload(file);
+      event.target.value = '';
+    }
+  };
 
   if (isLoading) {
     return (
@@ -293,21 +311,59 @@ function ProfilePageContent() {
         </div>
 
         <header className="flex flex-col gap-4 rounded-3xl bg-white/12 px-6 py-6 text-white shadow-[0_18px_45px_rgba(15,23,42,0.55)] ring-1 ring-white/25 backdrop-blur-2xl sm:px-8 sm:py-9 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            {currentProfile?.avatarUrl ? (
-              <Image
-                src={currentProfile.avatarUrl}
-                alt={currentProfile.displayName ?? 'Profile avatar'}
-                width={80}
-                height={80}
-                className="h-20 w-20 rounded-full border-2 border-white/60 object-cover shadow-[0_12px_28px_rgba(15,23,42,0.45)]"
-              />
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-900/70 text-3xl font-extrabold uppercase text-white shadow-[0_12px_28px_rgba(15,23,42,0.45)]">
-                {(currentProfile?.displayName ?? currentAuth.email ?? 'A').slice(0, 1).toUpperCase()}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="flex flex-col items-center gap-3 sm:items-center">
+              {currentProfile?.avatarUrl ? (
+                <Image
+                  src={currentProfile.avatarUrl}
+                  alt={currentProfile.displayName ?? 'Profile avatar'}
+                  width={96}
+                  height={96}
+                  className="h-24 w-24 rounded-full border-2 border-white/60 object-cover shadow-[0_12px_28px_rgba(15,23,42,0.45)]"
+                />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-slate-900/70 text-3xl font-extrabold uppercase text-white shadow-[0_12px_28px_rgba(15,23,42,0.45)]">
+                  {(currentProfile?.displayName ?? currentAuth.email ?? 'A').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <div className="flex flex-col gap-2 text-center sm:text-left">
+                <div className="flex items-center justify-center gap-2 sm:justify-start sm:flex-nowrap flex-nowrap">
+                  <button
+                    type="button"
+                    onClick={handleAvatarButtonClick}
+                    disabled={isAvatarUpdating}
+                    className="cursor-target inline-flex items-center justify-center rounded-full bg-white/15 px-3.5 py-1 text-[0.55rem] font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-70 whitespace-nowrap"
+                  >
+                    {isAvatarUpdating ? 'Saving...' : 'Change avatar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleAvatarRemove()}
+                    disabled={isRemoveAvatarDisabled}
+                    className={`cursor-target inline-flex items-center justify-center rounded-full px-3.5 py-1 text-[0.55rem] font-semibold uppercase tracking-[0.18em] transition whitespace-nowrap disabled:cursor-not-allowed ${
+                      isRemoveAvatarDisabled
+                        ? 'bg-white/15 text-white/50 opacity-75'
+                        : 'bg-rose-500/80 text-white hover:bg-rose-500/90'
+                    }`}
+                  >
+                    {isAvatarUpdating ? 'Saving...' : 'Remove avatar'}
+                  </button>
+                </div>
+                {avatarUploadError && (
+                  <p className="max-w-[16rem] text-center text-xs font-medium text-rose-200 sm:text-left" aria-live="polite">
+                    {avatarUploadError}
+                  </p>
+                )}
               </div>
-            )}
-            <div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarFileChange}
+              />
+            </div>
+            <div className="text-center sm:text-left">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/70">AlgoHub account</p>
               <h1 className="mt-1 text-3xl font-bold">
                 {currentProfile?.displayName ?? currentAuth.email ?? 'AlgoHub member'}

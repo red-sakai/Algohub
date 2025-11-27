@@ -1,9 +1,11 @@
 'use client';
 
+import { createPortal } from 'react-dom';
 import { useCallback } from '@/hooks/useCallback';
 import { useEffect } from '@/hooks/useEffect';
 import { useMemo } from '@/hooks/useMemo';
 import { useRef } from '@/hooks/useRef';
+import { useState } from '@/hooks/useState';
 import { gsap } from 'gsap';
 
 export interface TargetCursorProps {
@@ -33,6 +35,7 @@ export default function TargetCursor({
   const targetCornerPositionsRef = useRef<{ x: number; y: number }[] | null>(null);
   const tickerFnRef = useRef<(() => void) | null>(null);
   const activeStrengthRef = useRef({ value: 0 });
+  const [mounted, setMounted] = useState(false);
 
   const isClient = typeof window !== 'undefined' && typeof navigator !== 'undefined';
 
@@ -61,7 +64,14 @@ export default function TargetCursor({
   }, []);
 
   useEffect(() => {
-    if (isMobile || !cursorRef.current) return;
+    setMounted(true);
+    return () => {
+      setMounted(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || isMobile || !cursorRef.current) return;
 
     const activeStrength = activeStrengthRef.current;
     const originalCursor = document.body.style.cursor;
@@ -362,7 +372,7 @@ export default function TargetCursor({
       targetCornerPositionsRef.current = null;
       activeStrength.value = 0;
     };
-  }, [targetSelector, spinDuration, moveCursor, constants, hideDefaultCursor, isMobile, hoverDuration, parallaxOn]);
+  }, [mounted, targetSelector, spinDuration, moveCursor, constants, hideDefaultCursor, isMobile, hoverDuration, parallaxOn]);
 
   useEffect(() => {
     if (isMobile || !cursorRef.current || !spinTlRef.current) return;
@@ -374,11 +384,11 @@ export default function TargetCursor({
     }
   }, [spinDuration, isMobile]);
 
-  if (isMobile) {
+  if (isMobile || !mounted) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
       ref={cursorRef}
       className="fixed top-0 left-0 w-0 h-0 pointer-events-none z-[9999]"
@@ -406,5 +416,5 @@ export default function TargetCursor({
         style={{ willChange: 'transform' }}
       />
     </div>
-  );
+  , document.body);
 }

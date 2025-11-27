@@ -40,8 +40,12 @@ export interface UseProfilePageResult {
   achievements: UserAchievement[];
   activeAchievement: UserAchievement | null;
   isAchievementModalOpen: boolean;
+  isAvatarUpdating: boolean;
+  avatarUploadError: string | null;
   handleBackToLanding: (event: MouseEvent<HTMLAnchorElement>) => void;
   handleSignOut: () => Promise<void>;
   handleAchievementSelect: (achievement: UserAchievement) => void;
   handleAchievementModalClose: () => void;
+  handleAvatarUpload: (file: File) => Promise<void>;
+  handleAvatarRemove: () => Promise<void>;
 }
