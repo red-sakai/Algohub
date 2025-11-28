@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { gsap } from 'gsap';
 import { playSfx } from '@/lib/audio/sfx';
 import { loadLandingSession } from '@/actions/auth/load-landing-session';
+import { showGlobalLoader, hideGlobalLoader, GLOBAL_LOADER_MIN_MS } from '@/lib/transition/globalLoaderBus';
 import { consumeSkipNextAuthModal, consumeSkipNextIrisOpen, setIrisPoint } from '@/lib/transition/transitionBus';
 import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
 import { decodeStateParam, encodeStateParam } from '@/lib/utils';
@@ -59,6 +60,7 @@ export function useHomePage(): UseHomePageResult {
   const logoLockRef = useRef(false);
   const lastParamsRef = useRef<string | null>(null);
   const transitioningRef = useRef(false);
+  const loaderDelayTimeoutRef = useRef<number | null>(null);
   const logoClickCountRef = useRef(0);
   const lastSixSevAttemptRef = useRef(0);
   const pendingSixSevUnlockRef = useRef(false);
@@ -71,7 +73,6 @@ export function useHomePage(): UseHomePageResult {
   const [authUser, setAuthUser] = useState<AuthUserSummary | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
-  const [showLoader, setShowLoader] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
   const [flashOpacity, setFlashOpacity] = useState(0);
   const [defaultLogoAnimation, setDefaultLogoAnimation] = useState<'idle' | 'rollIn' | 'hidden'>('idle');
@@ -96,6 +97,10 @@ export function useHomePage(): UseHomePageResult {
     }
     return consumeSkipNextIrisOpen();
   });
+
+  useEffect(() => {
+    hideGlobalLoader();
+  }, []);
 
   const clearLogoTimeouts = useCallback(() => {
     animationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -138,6 +143,15 @@ export function useHomePage(): UseHomePageResult {
   );
 
   useEffect(() => () => clearLogoTimeouts(), [clearLogoTimeouts]);
+  useEffect(
+    () => () => {
+      if (loaderDelayTimeoutRef.current !== null) {
+        clearTimeout(loaderDelayTimeoutRef.current);
+        loaderDelayTimeoutRef.current = null;
+      }
+    },
+    [],
+  );
   useEffect(() => () => clearToastTimeout(), [clearToastTimeout]);
   useEffect(() => teardownTweens, [teardownTweens]);
 
@@ -382,6 +396,28 @@ export function useHomePage(): UseHomePageResult {
     }, rollInStartDelay + ROLL_IN_DURATION + 200);
   }, [attemptSixSevUnlock, clearLogoTimeouts, scheduleLogoTimeout, showAuthModal]);
 
+  const scheduleGlobalNavigation = useCallback(
+    (path: string, options?: { loaderAlreadyVisible?: boolean }) => {
+      if (typeof window === 'undefined') {
+        router.push(path);
+        transitioningRef.current = false;
+        return;
+      }
+      if (!options?.loaderAlreadyVisible) {
+        showGlobalLoader();
+      }
+      if (loaderDelayTimeoutRef.current !== null) {
+        clearTimeout(loaderDelayTimeoutRef.current);
+      }
+      loaderDelayTimeoutRef.current = window.setTimeout(() => {
+        router.push(path);
+        transitioningRef.current = false;
+        loaderDelayTimeoutRef.current = null;
+      }, GLOBAL_LOADER_MIN_MS);
+    },
+    [router],
+  );
+
   const handleSignInSelect = useCallback<UseHomePageResult['handleSignInSelect']>(
     (event) => {
       playSfx('/button_click.mp3', 0.6);
@@ -411,28 +447,36 @@ export function useHomePage(): UseHomePageResult {
 
       const iris = irisRef.current;
       if (!iris) {
-        router.push('/sign-in');
-        transitioningRef.current = false;
+        scheduleGlobalNavigation('/sign-in');
         return;
       }
+
+      let navTriggered = false;
+      let fallbackId: number | null = null;
+
+      const startNavigation = () => {
+        if (navTriggered) {
+          return;
+        }
+        navTriggered = true;
+        if (fallbackId !== null) {
+          clearTimeout(fallbackId);
+          fallbackId = null;
+        }
+        scheduleGlobalNavigation('/sign-in', { loaderAlreadyVisible: true });
+      };
 
       iris.start({
         x,
         y,
         durationMs: 650,
-        onDone: () => {
-          setShowLoader(true);
-          setTimeout(() => {
-            router.push('/sign-in');
-            setTimeout(() => {
-              setShowLoader(false);
-              transitioningRef.current = false;
-            }, 200);
-          }, 2400);
-        },
+        showLoaderOnClose: true,
+        onDone: startNavigation,
       });
+
+      fallbackId = window.setTimeout(startNavigation, 900);
     },
-    [router],
+    [scheduleGlobalNavigation],
   );
 
   const handleProfileToggle = useCallback(() => {
@@ -480,23 +524,37 @@ export function useHomePage(): UseHomePageResult {
 
       setIrisPoint(x, y);
 
-      irisRef.current?.start({
-        x,
-        y,
-        durationMs: 650,
-        onDone: () => {
-          setShowLoader(true);
-          setTimeout(() => {
-            router.push('/learn');
-            setTimeout(() => {
-              transitioningRef.current = false;
-              setShowLoader(false);
-            }, 200);
-          }, 2400);
-        },
-      });
+      const controller = irisRef.current;
+      if (controller) {
+        let loaderTriggered = false;
+        let fallbackId: number | null = null;
+
+        const triggerLoader = (loaderVisible: boolean) => {
+          if (loaderTriggered) {
+            return;
+          }
+          loaderTriggered = true;
+          if (fallbackId !== null) {
+            clearTimeout(fallbackId);
+            fallbackId = null;
+          }
+          scheduleGlobalNavigation('/learn', loaderVisible ? { loaderAlreadyVisible: true } : undefined);
+        };
+
+        controller.start({
+          x,
+          y,
+          durationMs: 650,
+          showLoaderOnClose: true,
+          onDone: () => triggerLoader(true),
+        });
+
+        fallbackId = window.setTimeout(() => triggerLoader(false), 900);
+      } else {
+        scheduleGlobalNavigation('/learn');
+      }
     },
-    [router],
+    [scheduleGlobalNavigation],
   );
 
   useEffect(() => {
@@ -910,7 +968,6 @@ export function useHomePage(): UseHomePageResult {
     defaultLogoRef,
     logoShineRef,
     showAuthModal,
-    showLoader,
     skipIrisOpen,
     isShaking,
     isFlashing,

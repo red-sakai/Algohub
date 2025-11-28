@@ -20,7 +20,6 @@ export interface UseSignInPageResult {
   statusMessage: string | null;
   showRegisterModal: boolean;
   registerModalMessage: string;
-  showLoader: boolean;
   irisRef: MutableRefObject<IrisHandle | null>;
   handleSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   handleBackHome: () => void;

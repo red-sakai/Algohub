@@ -5,18 +5,30 @@ import IrisOpenOnMount from "../components/ui/IrisOpenOnMount";
 import IrisTransition, { IrisHandle } from "../components/ui/IrisTransition";
 import GameScroller from "../components/sections/GameScroller";
 import Link from "next/link";
+import { useEffect } from "@/hooks/useEffect";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { setIrisPoint } from "../../lib/transition/transitionBus";
 import { playSfx } from "../../lib/audio/sfx";
-import LoadingOverlay from "../components/ui/LoadingOverlay";
-import { useState } from "react";
+import { hideGlobalLoader, showGlobalLoader, GLOBAL_LOADER_MIN_MS } from "../../lib/transition/globalLoaderBus";
 
 export default function LearnPage() {
   const irisRef = useRef<IrisHandle | null>(null);
   const transitioningRef = useRef(false);
+  const loaderDelayRef = useRef<number | null>(null);
   const router = useRouter();
-  const [showLoader, setShowLoader] = useState(false);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => hideGlobalLoader(), 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => () => {
+    if (loaderDelayRef.current !== null) {
+      clearTimeout(loaderDelayRef.current);
+      loaderDelayRef.current = null;
+    }
+  }, []);
 
   const handleBackClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     if (e.defaultPrevented) return;
@@ -33,23 +45,34 @@ export default function LearnPage() {
       x = rect.left + rect.width / 2;
       y = rect.top + rect.height / 2;
     }
+    const beginReturnNavigation = (loaderVisible: boolean) => {
+      if (!loaderVisible) {
+        showGlobalLoader();
+      }
+      if (loaderDelayRef.current !== null) {
+        clearTimeout(loaderDelayRef.current);
+      }
+      loaderDelayRef.current = window.setTimeout(() => {
+        router.push("/");
+        transitioningRef.current = false;
+        loaderDelayRef.current = null;
+      }, GLOBAL_LOADER_MIN_MS);
+    };
+
     setIrisPoint(x, y);
-    irisRef.current?.start({
-      x,
-      y,
-      durationMs: 650,
-      mode: "close",
-      onDone: () => {
-        setShowLoader(true);
-        setTimeout(() => {
-          router.push("/");
-          setTimeout(() => {
-            transitioningRef.current = false;
-            setShowLoader(false);
-          }, 200);
-        }, 2400);
-      },
-    });
+    const controller = irisRef.current;
+    if (controller) {
+      controller.start({
+        x,
+        y,
+        durationMs: 650,
+        mode: "close",
+        showLoaderOnClose: true,
+        onDone: () => beginReturnNavigation(true),
+      });
+    } else {
+      beginReturnNavigation(false);
+    }
   };
   // For now, we only render the animated background and play iris open on arrival.
   return (
@@ -72,7 +95,6 @@ export default function LearnPage() {
       {/* Iris transition overlay for close */}
       <IrisTransition ref={irisRef} />
       {/* 3D loading overlay */}
-      <LoadingOverlay active={showLoader} />
     </main>
   );
 }

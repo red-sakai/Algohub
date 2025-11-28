@@ -25,6 +25,7 @@ import type { AuthUserSummary, UserProfile } from '@/types/auth';
 import IrisOpenOnMount from '@/app/components/ui/IrisOpenOnMount';
 import IrisTransition, { IrisHandle } from '@/app/components/ui/IrisTransition';
 import { setIrisPoint } from '@/lib/transition/transitionBus';
+import { showGlobalLoader, hideGlobalLoader } from '@/lib/transition/globalLoaderBus';
 
 type DashboardMetric = {
   id: string;
@@ -126,6 +127,10 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
   const [achievementGainError, setAchievementGainError] = useState<string | null>(null);
   const [signOutPending, setSignOutPending] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    hideGlobalLoader();
+  }, []);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -285,12 +290,18 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
       }
       setIrisPoint(x, y);
 
-      const executeSignOut = async () => {
+      const executeSignOut = async (loaderVisible: boolean) => {
+        if (!loaderVisible) {
+          showGlobalLoader();
+          loaderVisible = true;
+        }
+
         try {
           const result = await signOutUser();
           if (result.error) {
             setSignOutError(result.error);
             setSignOutPending(false);
+            hideGlobalLoader();
             irisRef.current?.start({ durationMs: 500, mode: 'open' });
             return;
           }
@@ -300,6 +311,7 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
           console.error('[AdminDashboard] Failed to sign out', error);
           setSignOutError("We couldn't sign you out. Try again in a moment.");
           setSignOutPending(false);
+          hideGlobalLoader();
           irisRef.current?.start({ durationMs: 500, mode: 'open' });
         }
       };
@@ -310,12 +322,14 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
           y,
           durationMs: 650,
           mode: 'close',
+          showLoaderOnClose: true,
           onDone: () => {
-            void executeSignOut();
+            void executeSignOut(true);
           },
         });
       } else {
-        void executeSignOut();
+        showGlobalLoader();
+        void executeSignOut(true);
       }
     },
     [irisRef, router, signOutPending],

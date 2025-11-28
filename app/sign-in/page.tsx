@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useEffect } from '@/hooks/useEffect';
 import { useSignInPage } from '@/hooks/useSignInPage';
 import type { AuthMode } from '@/types/auth';
 import Squares from '../components/ui/Squares';
@@ -9,7 +10,7 @@ import BackgroundDoodles from '../components/sections/BackgroundDoodles';
 import TargetCursor from '../components/ui/TargetCursor';
 import IrisOpenOnMount from '../components/ui/IrisOpenOnMount';
 import IrisTransition from '../components/ui/IrisTransition';
-import LoadingOverlay from '../components/ui/LoadingOverlay';
+import { hideGlobalLoader } from '@/lib/transition/globalLoaderBus';
 
 export default function SignInPage() {
   const {
@@ -20,7 +21,6 @@ export default function SignInPage() {
     statusMessage,
     showRegisterModal,
     registerModalMessage,
-    showLoader,
     irisRef,
     handleSubmit,
     handleBackHome,
@@ -29,6 +29,11 @@ export default function SignInPage() {
     handleRegisterModalDismiss,
     handleRegisterModalContentClick,
   } = useSignInPage();
+
+  useEffect(() => {
+    const id = window.setTimeout(() => hideGlobalLoader(), 200);
+    return () => window.clearTimeout(id);
+  }, []);
 
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-b from-sky-500 to-green-300 text-white">
@@ -203,7 +208,6 @@ export default function SignInPage() {
           </div>
         </div>
       )}
-      <LoadingOverlay active={showLoader} />
       <IrisTransition ref={irisRef} />
       <IrisOpenOnMount />
     </main>

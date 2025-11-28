@@ -8,7 +8,6 @@ import Squares from './components/ui/Squares';
 import TargetCursor from './components/ui/TargetCursor';
 import IrisOpenOnMount from './components/ui/IrisOpenOnMount';
 import IrisTransition from './components/ui/IrisTransition';
-import LoadingOverlay from './components/ui/LoadingOverlay';
 import { useHomePage } from '@/hooks/useHomePage';
 
 const ACHIEVEMENT_TOAST_FALLBACK_ICON = '/achievements/67.png';
@@ -56,7 +55,6 @@ function HomeContent() {
     defaultLogoRef,
     logoShineRef,
     showAuthModal,
-    showLoader,
     skipIrisOpen,
     isShaking,
     isFlashing,
@@ -448,8 +446,6 @@ function HomeContent() {
       <IrisTransition ref={irisRef} />
       {/* Iris open on arrival (plays from saved point when available, otherwise center) */}
       {!skipIrisOpen && <IrisOpenOnMount />}
-      {/* 3D loading overlay */}
-      <LoadingOverlay active={showLoader} />
     </main>
     </>
   );
