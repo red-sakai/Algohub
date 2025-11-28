@@ -2,6 +2,7 @@
 
 import type { FormEvent, MouseEvent } from 'react';
 import { useCallback } from '@/hooks/useCallback';
+import { useEffect } from '@/hooks/useEffect';
 import { useMemo } from '@/hooks/useMemo';
 import { useRef } from '@/hooks/useRef';
 import { useState } from '@/hooks/useState';
@@ -11,6 +12,7 @@ import { signInUserAction } from '@/actions/auth/sign-in';
 import { persistSupabaseSession } from '@/actions/auth/persist-session';
 import { playSfx } from '@/lib/audio/sfx';
 import { encodeStateParam } from '@/lib/utils';
+import { showGlobalLoader, GLOBAL_LOADER_MIN_MS } from '@/lib/transition/globalLoaderBus';
 import type { AuthMode } from '@/types/auth';
 import type { UseSignInPageResult } from '@/types/sign-in';
 import type { IrisHandle } from '@/app/components/ui/IrisTransition';
@@ -19,12 +21,12 @@ export function useSignInPage(): UseSignInPageResult {
   const router = useRouter();
   const irisRef = useRef<IrisHandle | null>(null);
   const navigationTriggeredRef = useRef(false);
+  const loaderDelayRef = useRef<number | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>('sign-in');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerModalMessage, setRegisterModalMessage] = useState('');
-  const [showLoader, setShowLoader] = useState(false);
 
   const heading = useMemo(
     () => (authMode === 'sign-in' ? 'Sign in to AlgoHub' : 'Create your AlgoHub account'),
@@ -40,6 +42,33 @@ export function useSignInPage(): UseSignInPageResult {
   );
 
   const maskEmail = useCallback((email: string) => email.replace(/(.{2}).+(@.+)/, '$1•••$2'), []);
+
+  useEffect(() => () => {
+    if (loaderDelayRef.current !== null) {
+      clearTimeout(loaderDelayRef.current);
+      loaderDelayRef.current = null;
+    }
+  }, []);
+
+  const scheduleGlobalNavigation = useCallback(
+    (targetHref: string, options?: { loaderAlreadyVisible?: boolean }) => {
+      if (typeof window === 'undefined') {
+        router.push(targetHref);
+        return;
+      }
+      if (!options?.loaderAlreadyVisible) {
+        showGlobalLoader();
+      }
+      if (loaderDelayRef.current !== null) {
+        clearTimeout(loaderDelayRef.current);
+      }
+      loaderDelayRef.current = window.setTimeout(() => {
+        router.push(targetHref);
+        loaderDelayRef.current = null;
+      }, GLOBAL_LOADER_MIN_MS);
+    },
+    [router],
+  );
 
   const handleButtonHover = useCallback(() => {
     playSfx('/gun_sfx.mp3', 0.6);
@@ -149,11 +178,10 @@ export function useSignInPage(): UseSignInPageResult {
 
             setStatusMessage(result.message || redirectMessage);
 
-            const navigateToHub = () => {
+            const navigateToHub = (loaderVisible: boolean) => {
               if (navigationTriggeredRef.current) return;
               navigationTriggeredRef.current = true;
-              setShowLoader(true);
-              router.push(targetHref);
+              scheduleGlobalNavigation(targetHref, loaderVisible ? { loaderAlreadyVisible: true } : undefined);
             };
 
             const controller = irisRef.current;
@@ -161,11 +189,12 @@ export function useSignInPage(): UseSignInPageResult {
               controller.start({
                 mode: 'close',
                 durationMs: 650,
-                onDone: navigateToHub,
+                showLoaderOnClose: true,
+                onDone: () => navigateToHub(true),
               });
-              window.setTimeout(navigateToHub, 1000);
+              window.setTimeout(() => navigateToHub(false), 1000);
             } else {
-              navigateToHub();
+              navigateToHub(false);
             }
           }
         }
@@ -176,7 +205,7 @@ export function useSignInPage(): UseSignInPageResult {
         setIsSubmitting(false);
       }
     },
-    [authMode, isSubmitting, maskEmail, router],
+    [authMode, isSubmitting, maskEmail, scheduleGlobalNavigation],
   );
 
   return {
@@ -187,7 +216,6 @@ export function useSignInPage(): UseSignInPageResult {
     statusMessage,
     showRegisterModal,
     registerModalMessage,
-    showLoader,
     irisRef,
     handleSubmit,
     handleBackHome,

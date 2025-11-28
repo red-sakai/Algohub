@@ -8,11 +8,11 @@ import { getGlobalAudio } from "../../../lib/audio/audioSingleton";
 import { getGameAudio } from "../../../lib/audio/gameAudio";
 import CameraCaptureModal from "../ui/CameraCaptureModal";
 import LicenseCardModal from "../ui/LicenseCardModal";
-import LoadingOverlay from "../ui/LoadingOverlay";
 import IrisTransition, { IrisHandle } from "../ui/IrisTransition";
 import { setIrisPoint } from "../../../lib/transition/transitionBus";
 import { uploadImageDataUrl } from "@/lib/supabase/uploadImage";
 import { playSfx } from "../../../lib/audio/sfx";
+import { GLOBAL_LOADER_MIN_MS, showGlobalLoader } from "@/lib/transition/globalLoaderBus";
 
 const LICENSE_STORAGE_KEY = "algohub-license-card-path";
 const LICENSE_EVENT = "algohub-license-card-updated";
@@ -72,10 +72,10 @@ export default function GameScroller() {
   const [showCam, setShowCam] = useState(false);
   const [licensePhoto, setLicensePhoto] = useState<string | null>(null);
   const [showLicense, setShowLicense] = useState(false);
-  const [showLoader, setShowLoader] = useState(false);
   const irisRef = useRef<IrisHandle | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const loaderDelayRef = useRef<number | null>(null);
 
   // Cleanup on unmount (stop game audio only; let global resume naturally on landing page)
   useEffect(() => {
@@ -88,6 +88,10 @@ export default function GameScroller() {
       }
       // Do not forcibly pause global audio here so landing page MusicPlayer can continue.
       pausedPlayerPrevRef.current = false;
+      if (loaderDelayRef.current !== null) {
+        clearTimeout(loaderDelayRef.current);
+        loaderDelayRef.current = null;
+      }
     };
   }, []);
 
@@ -327,48 +331,59 @@ export default function GameScroller() {
           }
           // Capture a center point for iris
           try { setIrisPoint(window.innerWidth / 2, window.innerHeight / 2); } catch {}
-          irisRef.current?.start({
-            durationMs: 650,
-            mode: "close",
-            onDone: () => {
-              // After close completes: start audio + loader + async uploads, then navigate and let parking page open iris.
-              const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
-              if (firstIdx >= 0) {
-                ensureGlobalPlayerPaused();
-                const a = getGameAudio();
-                a.loop = true;
-                a.volume = gameVolume;
-                a.src = items[firstIdx].track.src;
-                a.currentTime = 0;
-                a.play().catch(() => {});
-                setLastPlayed(firstIdx);
-              }
-              setShowLoader(true);
-              // Fire-and-forget uploads while loader shows
-              (async () => {
-                try {
-                  if (licensePhoto) {
-                    const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
-                    console.log("Uploaded license photo:", photo);
-                  }
-                  if (data.signatureDataUrl) {
-                    const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
-                    console.log("Uploaded signature:", sig);
-                  }
-                } catch (e) { console.error("Upload failed:", e); }
-              })();
-              // Keep loader visible for ~2.3s before navigating to the game
-              setTimeout(() => {
-                try { router.push("/learn/parking"); } catch {}
-              }, 2300);
+          const beginParkingTransfer = (loaderVisible: boolean) => {
+            if (!loaderVisible) {
+              showGlobalLoader();
             }
-          });
+            const firstIdx = items.findIndex((g) => g.id === "sorting-sprint");
+            if (firstIdx >= 0) {
+              ensureGlobalPlayerPaused();
+              const a = getGameAudio();
+              a.loop = true;
+              a.volume = gameVolume;
+              a.src = items[firstIdx].track.src;
+              a.currentTime = 0;
+              a.play().catch(() => {});
+              setLastPlayed(firstIdx);
+            }
+            (async () => {
+              try {
+                if (licensePhoto) {
+                  const photo = await uploadImageDataUrl(licensePhoto, { folder: "licenses", makePublic: true });
+                  console.log("Uploaded license photo:", photo);
+                }
+                if (data.signatureDataUrl) {
+                  const sig = await uploadImageDataUrl(data.signatureDataUrl, { folder: "signatures", makePublic: true });
+                  console.log("Uploaded signature:", sig);
+                }
+              } catch (e) {
+                console.error("Upload failed:", e);
+              }
+            })();
+            if (loaderDelayRef.current !== null) {
+              clearTimeout(loaderDelayRef.current);
+            }
+            loaderDelayRef.current = window.setTimeout(() => {
+              try { router.push("/learn/parking"); } catch {}
+              loaderDelayRef.current = null;
+            }, GLOBAL_LOADER_MIN_MS);
+          };
+
+          const controller = irisRef.current;
+          if (controller) {
+            controller.start({
+              durationMs: 650,
+              mode: "close",
+              showLoaderOnClose: true,
+              onDone: () => beginParkingTransfer(true),
+            });
+          } else {
+            beginParkingTransfer(false);
+          }
         }}
       />
       {/* Iris overlay for transitions */}
       <IrisTransition ref={irisRef} zIndex={1600} />
-      {/* Loading overlay displayed after "Save & Continue" before navigating */}
-      <LoadingOverlay active={showLoader} zIndex={1700} />
     </section>
   );
 }

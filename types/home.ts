@@ -32,7 +32,6 @@ export interface UseHomePageResult {
   defaultLogoRef: MutableRefObject<HTMLImageElement | null>;
   logoShineRef: MutableRefObject<HTMLImageElement | null>;
   showAuthModal: boolean;
-  showLoader: boolean;
   skipIrisOpen: boolean;
   isShaking: boolean;
   isFlashing: boolean;

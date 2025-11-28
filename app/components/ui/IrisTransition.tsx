@@ -5,11 +5,12 @@ import { useEffect } from "@/hooks/useEffect";
 import { useImperativeHandle } from "@/hooks/useImperativeHandle";
 import { useRef } from "@/hooks/useRef";
 import { useState } from "@/hooks/useState";
+import { showGlobalLoader } from "@/lib/transition/globalLoaderBus";
 
 let irisMaskIdCounter = 0;
 
 export type IrisHandle = {
-  start: (opts?: { x?: number; y?: number; durationMs?: number; onDone?: () => void; mode?: "close" | "open" }) => void;
+  start: (opts?: { x?: number; y?: number; durationMs?: number; onDone?: () => void; mode?: "close" | "open"; showLoaderOnClose?: boolean }) => void;
 };
 
 function prefersReducedMotion() {
@@ -42,7 +43,7 @@ export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransiti
   const fadeMs = 160;
 
   useImperativeHandle(ref, () => ({
-    start: ({ x, y, durationMs = 600, onDone, mode = "close" } = {}) => {
+    start: ({ x, y, durationMs = 600, onDone, mode = "close", showLoaderOnClose = false } = {}) => {
       if (runningRef.current) return;
       const reduce = prefersReducedMotion();
       const vwNow = window.innerWidth;
@@ -83,8 +84,9 @@ export default forwardRef<IrisHandle, { zIndex?: number }>(function IrisTransiti
         } else {
           runningRef.current = false;
           if (mode === "close") {
-            // Immediately proceed (e.g., navigate) while keeping the black overlay visible
-            // so the previous page doesn't flash back before the route change completes.
+            if (showLoaderOnClose) {
+              showGlobalLoader();
+            }
             onDone?.();
           } else {
             // For 'open', fade the overlay out so content is revealed smoothly
