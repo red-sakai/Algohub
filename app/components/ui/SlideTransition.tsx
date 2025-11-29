@@ -19,6 +19,7 @@ function prefersReducedMotion(): boolean {
 
 export const LANDING_GRADIENT = "linear-gradient(180deg, #0ea5e9 0%, #22d3ee 48%, #10b981 100%)";
 export const PROFILE_GRADIENT = "linear-gradient(180deg, #020617 0%, #0f172a 52%, #020617 100%)";
+export const CREDITS_GRADIENT = "linear-gradient(180deg, #020617 0%, #0f172a 55%, #111827 100%)";
 
 export interface SlideTransitionOptions {
   durationMs?: number;
