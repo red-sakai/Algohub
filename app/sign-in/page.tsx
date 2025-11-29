@@ -1,7 +1,6 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { useEffect } from '@/hooks/useEffect';
 import { useSignInPage } from '@/hooks/useSignInPage';
 import type { AuthMode } from '@/types/auth';
@@ -173,9 +172,6 @@ export default function SignInPage() {
               >
                 Back to Landing
               </button>
-              <Link href="/learn" className="text-xs font-semibold uppercase tracking-wide text-white/70 underline-offset-4 hover:underline">
-                Explore the roadmap instead
-              </Link>
             </div>
           </div>
         </div>

@@ -52,6 +52,7 @@ export interface UseHomePageResult {
   handleButtonHover: () => void;
   handleProfileToggle: () => void;
   handleProfileView: MouseEventHandler<HTMLAnchorElement>;
+  handleCreditsClick: MouseEventHandler<HTMLAnchorElement>;
   handleLogoClick: () => void;
   handleStartClick: MouseEventHandler<HTMLAnchorElement>;
 }

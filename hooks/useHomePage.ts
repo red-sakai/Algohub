@@ -12,7 +12,7 @@ import { playSfx } from '@/lib/audio/sfx';
 import { loadLandingSession } from '@/actions/auth/load-landing-session';
 import { showGlobalLoader, hideGlobalLoader, GLOBAL_LOADER_MIN_MS } from '@/lib/transition/globalLoaderBus';
 import { consumeSkipNextAuthModal, consumeSkipNextIrisOpen, setIrisPoint } from '@/lib/transition/transitionBus';
-import { LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
+import { CREDITS_GRADIENT, LANDING_GRADIENT, PROFILE_GRADIENT, useSlideTransition } from '@/app/components/ui/SlideTransition';
 import { decodeStateParam, encodeStateParam } from '@/lib/utils';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import type { AuthUserSummary, UserProfile } from '@/types/auth';
@@ -506,6 +506,27 @@ export function useHomePage(): UseHomePageResult {
     [router, slideTransition],
   );
 
+  const handleCreditsClick = useCallback<UseHomePageResult['handleCreditsClick']>(
+    (event) => {
+      event.preventDefault();
+      playSfx('/button_click.mp3', 0.55);
+      if (transitioningRef.current) return;
+      transitioningRef.current = true;
+      slideTransition.start({
+        origin: 'left',
+        fromGradient: LANDING_GRADIENT,
+        toGradient: CREDITS_GRADIENT,
+        onCovered: () => {
+          router.push('/credits');
+        },
+        onDone: () => {
+          transitioningRef.current = false;
+        },
+      });
+    },
+    [router, slideTransition],
+  );
+
   const handleStartClick = useCallback<UseHomePageResult['handleStartClick']>(
     (event) => {
       if (event.defaultPrevented) return;
@@ -988,6 +1009,7 @@ export function useHomePage(): UseHomePageResult {
     handleButtonHover,
     handleProfileToggle,
     handleProfileView,
+    handleCreditsClick,
     handleLogoClick,
     handleStartClick,
   } satisfies UseHomePageResult;

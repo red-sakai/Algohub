@@ -72,6 +72,7 @@ function HomeContent() {
     handleButtonHover,
     handleProfileToggle,
     handleProfileView,
+    handleCreditsClick,
     handleLogoClick,
     handleStartClick,
     achievementToast,
@@ -434,11 +435,12 @@ function HomeContent() {
             </svg>
           </Link>
           <Link
-            href="#roadmap"
+            href="/credits"
+            onClick={handleCreditsClick}
             onMouseEnter={handleButtonHover}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/15 px-6 py-3 text-base font-bold text-white ring-1 ring-white/25 transition-all duration-200 hover:bg-white/25 hover:scale-[1.015] sm:px-8 sm:py-4 sm:text-xl cursor-target"
           >
-            VIEW ROADMAP
+            CREDITS
           </Link>
         </div>
       </section>
