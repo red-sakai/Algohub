@@ -1,0 +1,20 @@
+export type Contributor = {
+  id: string;
+  name: string;
+  roles: string[];
+  bio: string;
+  focus: string;
+  favoriteStack: string;
+  funFact: string;
+  location: string;
+  heroImage: string;
+  avatarImage: string | null;
+  avatarAccent: string;
+  heroOverlay: string;
+  chipStyle: string;
+  statStyle: string;
+  personaIcon: string;
+  quote: string;
+  stats: Array<{ label: string; value: string }>;
+  socials: Array<{ platform: 'github' | 'linkedin'; url: string }>;
+};
