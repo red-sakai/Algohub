@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { MouseEvent, KeyboardEvent } from 'react';
+import developers from '@/data/developers.json';
 import { useCallback } from '@/hooks/useCallback';
 import { useEffect } from '@/hooks/useEffect';
 import { useRef } from '@/hooks/useRef';
@@ -14,138 +15,9 @@ import { CREDITS_GRADIENT, LANDING_GRADIENT, useSlideTransition } from '../compo
 import { playSfx } from '@/lib/audio/sfx';
 import { setSkipNextAuthModal, setSkipNextIrisOpen } from '@/lib/transition/transitionBus';
 import Image from 'next/image';
+import type { Contributor } from '@/types/contributors';
 
-type Contributor = {
-  id: string;
-  name: string;
-  roles: string[];
-  bio: string;
-  focus: string;
-  favoriteStack: string;
-  funFact: string;
-  location: string;
-  heroImage: string;
-  avatarImage: string | null;
-  avatarAccent: string;
-  heroOverlay: string;
-  chipStyle: string;
-  statStyle: string;
-  personaIcon: string;
-  quote: string;
-  stats: Array<{ label: string; value: string }>;
-  socials: Array<{ platform: 'github' | 'linkedin'; url: string }>;
-};
-
-const CONTRIBUTORS: Contributor[] = [
-  {
-    id: 'jhered',
-    name: 'Jhered Miguel Republica',
-    roles: ['Frontend Developer', 'Backend Developer', 'Game Developer'],
-    bio: 'Leads the product experience end-to-end, wiring our Supabase backend to the playful UI layers and prototyping new AlgoHub game loops.',
-    focus: 'Ship-ready builds, multiplayer sync, and high-fidelity UI polish.',
-    favoriteStack: 'Next.js · Supabase · Three.js · GSAP',
-    funFact: 'Obsessed with tiny hover effects and bullet casings—nothing ships without flair.',
-    location: 'Pasig, PH',
-    heroImage: '/credits/jhered-bg.jpeg',
-    avatarImage: '/credits/jhered.jpg',
-    avatarAccent: 'from-sky-500 to-indigo-500',
-    heroOverlay: 'bg-gradient-to-b from-sky-900/5 via-indigo-950/55 to-slate-950/85',
-    chipStyle: 'bg-sky-400/25 text-white ring-1 ring-sky-200/40',
-    statStyle: 'bg-sky-500/10 ring-1 ring-sky-300/35 shadow-[0_8px_20px_rgba(14,165,233,0.25)]',
-    personaIcon: '⚡️',
-    quote: '“Keep shipping, even if it means polishing hover states at 3 AM.”',
-    stats: [
-      { label: 'Deploys', value: '42' },
-      { label: 'Mini-games', value: '15' },
-      { label: 'Commits', value: '1.2k' },
-    ],
-    socials: [
-      { platform: 'github', url: 'https://github.com/red-sakai' },
-      { platform: 'linkedin', url: 'https://www.linkedin.com/in/jrepublica/' },
-    ],
-  },
-  {
-    id: 'ezekiel',
-    name: 'Ezekiel Bustamante',
-    roles: ['Game Developer'],
-    bio: 'Codes the moment-to-moment gameplay, tunes physics, and keeps every puzzle, race, and mini-challenge feeling snappy across devices.',
-    focus: 'Gameplay feel, physics tuning, and performance profiling.',
-    favoriteStack: 'Three.js · Cannon-es · Zustand · Vite playgrounds',
-    funFact: 'Keeps a notebook of “juicy” interactions and recreates them in AlgoHub.',
-    location: 'Rizal, PH',
-    heroImage: '/r3f/textures/hero-bg-2.jpg',
-    avatarImage: '/contributors/ezekiel.jpg',
-    avatarAccent: 'from-emerald-500 to-lime-500',
-    heroOverlay: 'bg-gradient-to-b from-emerald-900/10 via-emerald-900/55 to-slate-950/85',
-    chipStyle: 'bg-emerald-400/20 text-emerald-50 ring-1 ring-emerald-300/40',
-    statStyle: 'bg-emerald-500/10 ring-1 ring-emerald-300/30 shadow-[0_8px_20px_rgba(16,185,129,0.25)]',
-    personaIcon: '🎯',
-    quote: '“Frame-perfect inputs and buttery easing—that’s the bar.”',
-    stats: [
-      { label: 'Game loops', value: '24' },
-      { label: 'Physics patches', value: '58' },
-      { label: 'FPS budget', value: '120Hz' },
-    ],
-    socials: [
-      { platform: 'github', url: 'https://github.com/defzeke' },
-      { platform: 'linkedin', url: 'https://www.linkedin.com/in/ezekiel-bustamante-166493353/' },
-    ],
-  },
-  {
-    id: 'carl-melvin',
-    name: 'Carl Melvin Erosa',
-    roles: ['UI/UX', 'Project Manager'],
-    bio: 'Owns the visual language and delivery timeline, aligning mockups, accessibility goals, and milestone drops for each AlgoHub release.',
-    focus: 'Design systems, user interviews, and shipping on time.',
-    favoriteStack: 'Figma · Notion · Tailwind · Supabase dashboards',
-    funFact: 'Collects keyboard switches and tests layouts on each one for “typing ergonomics.”',
-    location: 'Pasig, PH',
-    heroImage: '/credits/carl-bg.png',
-    avatarImage: '/credits/carl.jpg',
-    avatarAccent: 'from-pink-500 to-orange-400',
-    heroOverlay: 'bg-gradient-to-b from-rose-900/10 via-fuchsia-900/55 to-slate-950/85',
-    chipStyle: 'bg-rose-400/25 text-rose-50 ring-1 ring-rose-300/40',
-    statStyle: 'bg-rose-500/10 ring-1 ring-rose-300/30 shadow-[0_8px_20px_rgba(244,114,182,0.25)]',
-    personaIcon: '🎨',
-    quote: '“Pixels, people, and project timelines can all align beautifully.”',
-    stats: [
-      { label: 'Sprints', value: '18' },
-      { label: 'Wireframes', value: '120+' },
-      { label: 'Stand-ups', value: '∞' },
-    ],
-    socials: [
-      { platform: 'github', url: 'https://github.com/CarlErosa' },
-      { platform: 'linkedin', url: 'https://www.linkedin.com/in/carl-melvin-erosa-4805b4304/' },
-    ],
-  },
-  {
-    id: 'carl-blancaflor',
-    name: 'Carl Blancaflor',
-    roles: ['Game Developer'],
-    bio: 'Designs challenge pacing, rewards, and delightful polish passes that make AlgoHub feel like a proper game hub instead of a static course.',
-    focus: 'Level design, reward systems, and easter eggs.',
-    favoriteStack: 'React Three Fiber · Supabase functions · Blender',
-    funFact: 'Hides Morse code hints throughout the hub for players to discover.',
-    location: 'Laguna, PH',
-    heroImage: '/r3f/textures/hero-bg-4.jpg',
-    avatarImage: '/contributors/carl-blancaflor.jpg',
-    avatarAccent: 'from-amber-500 to-rose-500',
-    heroOverlay: 'bg-gradient-to-b from-amber-900/10 via-orange-900/55 to-slate-950/85',
-    chipStyle: 'bg-amber-400/25 text-amber-50 ring-1 ring-amber-300/40',
-    statStyle: 'bg-amber-500/10 ring-1 ring-amber-300/30 shadow-[0_8px_20px_rgba(251,191,36,0.25)]',
-    personaIcon: '🚀',
-    quote: '“Hide secrets everywhere. Curiosity turns learners into explorers.”',
-    stats: [
-      { label: 'Rewards', value: '64' },
-      { label: 'Easter eggs', value: '12' },
-      { label: 'Quests', value: '20' },
-    ],
-    socials: [
-      { platform: 'github', url: 'https://github.com/Carlthegreatt' },
-      { platform: 'linkedin', url: 'https://www.linkedin.com/in/carl-blancaflor-013881323/' },
-    ],
-  },
-];
+const CONTRIBUTORS = developers as Contributor[];
 
 export default function CreditsPage() {
   const router = useRouter();
@@ -269,30 +141,96 @@ export default function CreditsPage() {
           </p>
         </div>
 
-        <div className="mt-10 grid w-full gap-5 sm:grid-cols-2">
-          {CONTRIBUTORS.map((contributor) => (
-            <div
-              key={contributor.id}
-              className="rounded-3xl bg-white/10 p-6 text-left shadow-[0_18px_45px_rgba(15,23,42,0.45)] ring-1 ring-white/15 backdrop-blur-2xl transition-colors duration-200 hover:bg-white/14 focus-within:bg-white/14"
-              onMouseEnter={() => handleCardEnter(contributor)}
-              onMouseLeave={handleCardLeave}
-              onFocus={() => handleCardEnter(contributor)}
-              onBlur={handleCardLeave}
-              onClick={() => handleCardEnter(contributor)}
-              onKeyDown={(event) => handleCardKeyDown(event, contributor)}
-              tabIndex={0}
-              role="button"
-            >
-              <p className="text-lg font-semibold text-white">{contributor.name}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {contributor.roles.map((role) => (
-                  <span key={role} className="inline-flex items-center rounded-full bg-white/12 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-white/75 ring-1 ring-white/15">
-                    {role}
+        <div className="mt-10 grid w-full gap-6 sm:grid-cols-2">
+          {CONTRIBUTORS.map((contributor) => {
+            const isActive = activeContributor?.id === contributor.id;
+
+            return (
+              <div
+                key={contributor.id}
+                className={`group relative overflow-hidden rounded-[2rem] border border-white/12 bg-white/8 p-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.45)] backdrop-blur-2xl transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                  isActive ? 'ring-2 ring-white/70 bg-white/15 shadow-[0_25px_65px_rgba(15,23,42,0.55)]' : 'hover:-translate-y-1 hover:bg-white/12'
+                }`}
+                onMouseEnter={() => handleCardEnter(contributor)}
+                onMouseLeave={handleCardLeave}
+                onFocus={() => handleCardEnter(contributor)}
+                onBlur={handleCardLeave}
+                onClick={() => handleCardEnter(contributor)}
+                onKeyDown={(event) => handleCardKeyDown(event, contributor)}
+                tabIndex={0}
+                role="button"
+                aria-pressed={isActive}
+              >
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-80"
+                  style={{
+                    backgroundImage: `linear-gradient(125deg, rgba(2,6,23,0.4), rgba(2,6,23,0.9)), url(${contributor.heroImage})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                />
+                <span className={`pointer-events-none absolute -right-10 top-1/2 h-32 w-32 -translate-y-1/2 blur-3xl opacity-60 transition duration-500 group-hover:opacity-90 bg-gradient-to-br ${contributor.avatarAccent}`} />
+                <div className="relative flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">Featured Dev</p>
+                    <p className="mt-2 text-xl font-semibold text-white">{contributor.name}</p>
+                    <p className="text-sm text-white/70">{contributor.location}</p>
+                  </div>
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-lg">
+                    {contributor.personaIcon}
                   </span>
-                ))}
+                </div>
+
+                <div className="relative mt-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/6 p-3">
+                  <div className="relative h-12 w-12 overflow-hidden rounded-2xl border border-white/20 bg-white/10">
+                    {contributor.avatarImage ? (
+                      <Image
+                        src={contributor.avatarImage}
+                        alt={`${contributor.name} avatar`}
+                        width={96}
+                        height={96}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-base font-black text-white">
+                        {contributor.name
+                          .split(' ')
+                          .map((chunk) => chunk[0])
+                          .slice(0, 2)
+                          .join('')}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">Focus</p>
+                    <p className="text-sm text-white/85">{contributor.focus}</p>
+                  </div>
+                </div>
+
+                <div className="relative mt-4 flex flex-wrap gap-2">
+                  {contributor.roles.map((role) => (
+                    <span
+                      key={role}
+                      className="inline-flex items-center rounded-full bg-white/12 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-white/75 ring-1 ring-white/15"
+                    >
+                      {role}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="relative mt-6 flex items-center justify-between text-[0.62rem] font-semibold uppercase tracking-[0.35em] text-white/70">
+                  <span>{isActive ? 'Now showing' : 'Open dossier'}</span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition-transform duration-300 group-hover:translate-x-1">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 9L9 3M9 3H4.5M9 3V7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <p className="mt-8 text-xs uppercase tracking-[0.3em] text-white/60">
