@@ -2,7 +2,7 @@
   {
     "id": "jhered",
     "name": "Jhered Miguel Republica",
-    "roles": ["Frontend Developer", "Backend Developer", "Game Developer"],
+    "roles": ["Frontend Developer", "Backend Developer", "Game Developer", "Sound Designer"],
     "bio": "Leads the product experience end-to-end, wiring our Supabase backend to the playful UI layers and prototyping new AlgoHub game loops.",
     "focus": "Ship-ready builds, multiplayer sync, and high-fidelity UI polish.",
     "favoriteStack": "Next.js · Supabase · Three.js · GSAP",
@@ -29,7 +29,7 @@
   {
     "id": "ezekiel",
     "name": "Ezekiel Bustamante",
-    "roles": ["Game Developer"],
+    "roles": ["Game Developer", "QA Analyst", "3D Designer"],
     "bio": "Codes the moment-to-moment gameplay, tunes physics, and keeps every puzzle, race, and mini-challenge feeling snappy across devices.",
     "focus": "Gameplay feel, physics tuning, and performance profiling.",
     "favoriteStack": "Three.js · Cannon-es · Zustand · Vite playgrounds",
@@ -56,7 +56,7 @@
   {
     "id": "carl-melvin",
     "name": "Carl Melvin Erosa",
-    "roles": ["UI/UX", "Project Manager"],
+    "roles": ["UI/UX Lead", "Project Manager", "Game Developer"],
     "bio": "Owns the visual language and delivery timeline, aligning mockups, accessibility goals, and milestone drops for each AlgoHub release.",
     "focus": "Design systems, user interviews, and shipping on time.",
     "favoriteStack": "Figma · Notion · Tailwind · Supabase dashboards",
@@ -83,7 +83,7 @@
   {
     "id": "carl-blancaflor",
     "name": "Carl Blancaflor",
-    "roles": ["Game Developer"],
+    "roles": ["Game Developer", "QA Analyst", "Business Analyst"],
     "bio": "Designs challenge pacing, rewards, and delightful polish passes that make AlgoHub feel like a proper game hub instead of a static course.",
     "focus": "Level design, reward systems, and easter eggs.",
     "favoriteStack": "React Three Fiber · Supabase functions · Blender",
