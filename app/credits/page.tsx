@@ -221,7 +221,6 @@ export default function CreditsPage() {
                 </div>
 
                 <div className="relative mt-6 flex items-center justify-between text-[0.62rem] font-semibold uppercase tracking-[0.35em] text-white/70">
-                  <span>{isActive ? 'Now showing' : 'Open dossier'}</span>
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition-transform duration-300 group-hover:translate-x-1">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M3 9L9 3M9 3H4.5M9 3V7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
