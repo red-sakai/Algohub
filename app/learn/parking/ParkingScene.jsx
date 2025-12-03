@@ -1,8 +1,8 @@
 "use client";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Billboard, Environment, RoundedBox, Sky, Stats, Text, useCursor, useGLTF } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Billboard, Environment, RoundedBox, Sky, Text, useCursor, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/license/license';
 import { useMarkerController } from '@/hooks/useMarkerController';
@@ -39,6 +39,59 @@ const normalizeAngle = (angle) => {
     wrapped += twoPi;
   }
   return wrapped;
+};
+// Lightweight sphere-vs-box collision helpers for the free-roam car.
+const STATIC_COLLIDERS = new Map();
+const CAR_COLLIDER_RADIUS = 2.35;
+const CAR_MAX_FORWARD_SPEED = 32;
+const CAR_MAX_REVERSE_SPEED = -16;
+const CAR_JOYSTICK_SPEED = 26;
+const CAR_KEYBOARD_ACCEL = 16;
+const CAR_KEYBOARD_DECEL = 12;
+const SPEED_DISPLAY_MULTIPLIER = 6;
+const COLLISION_SCRATCH_POINT = new THREE.Vector3();
+const CAMERA_BASE_FOV = 50;
+const CAMERA_MAX_FOV = 60;
+const CAMERA_SPEED_EFFECT_MAX = 18;
+const CAMERA_SHAKE_INTENSITY = 0.3;
+const CAMERA_SHAKE_FREQUENCY = 5.5;
+const CAMERA_BOOST_Y = 3;
+const CAMERA_BOOST_Z = -9;
+const CAMERA_BLUR_SPEED_THRESHOLD = 22;
+const CAMERA_BLUR_MAX_OPACITY = 0.35;
+const CAMERA_BLUR_MAX_PIXELS = 8;
+const registerStaticCollider = (id, box, enabled = true) => {
+  if (!box) return;
+  const entry = STATIC_COLLIDERS.get(id);
+  if (entry) {
+    entry.box.copy(box);
+    entry.enabled = enabled;
+  } else {
+    STATIC_COLLIDERS.set(id, { box: box.clone(), enabled });
+  }
+};
+const unregisterStaticCollider = (id) => {
+  STATIC_COLLIDERS.delete(id);
+};
+const intersectsStaticColliders = (position, radius = CAR_COLLIDER_RADIUS) => {
+  if (!STATIC_COLLIDERS.size) {
+    return false;
+  }
+  const radiusSq = radius * radius;
+  for (const { box, enabled } of STATIC_COLLIDERS.values()) {
+    if (!enabled || !box) {
+      continue;
+    }
+    COLLISION_SCRATCH_POINT.set(
+      THREE.MathUtils.clamp(position.x, box.min.x, box.max.x),
+      THREE.MathUtils.clamp(position.y, box.min.y, box.max.y),
+      THREE.MathUtils.clamp(position.z, box.min.z, box.max.z),
+    );
+    if (COLLISION_SCRATCH_POINT.distanceToSquared(position) <= radiusSq) {
+      return true;
+    }
+  }
+  return false;
 };
 const JOYSTICK_DEADZONE = 0.22;
 const STACK_CAMERA_CONFIG = {
@@ -179,7 +232,7 @@ const QUEUE_LOADING_MESSAGES = Object.freeze([
   'Charging EV batteries',
   'Plotting the perfect parking path',
 ]);
-const DEFAULT_QUEUE_CAR_MODEL = '/car-show/models/car/scene.gltf';
+const DEFAULT_QUEUE_CAR_MODEL = '/models/scene.gltf';
 const QUEUE_CAR_MODEL_PATHS = Object.freeze([
   '/car-models/red_car.glb',
   '/car-models/white_car.glb',
@@ -749,7 +802,7 @@ function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, hi
 
 function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   const internalRef = useRef();
-    const ref = carRef || internalRef;
+  const ref = carRef || internalRef;
   const vel = useRef(0);
   const heading = useRef(0);
   // Web Audio engine: more reliable playback and smooth fades
@@ -768,6 +821,9 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   const loadingRef = useRef(false);
   const lastMovingRef = useRef(false);
   const controlsEnabledRef = useRef(controlsEnabled);
+  const movementVector = useMemo(() => new THREE.Vector3(), []);
+  const nextPosition = useMemo(() => new THREE.Vector3(), []);
+  const slidePosition = useMemo(() => new THREE.Vector3(), []);
 
   useEffect(() => {
     controlsEnabledRef.current = controlsEnabled;
@@ -919,7 +975,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
         const turnSpeed = (4.5 * dt) * (0.55 + direction * 0.75);
         heading.current += THREE.MathUtils.clamp(angleDiff, -turnSpeed, turnSpeed);
         const rotationFactor = Math.max(0.12, Math.cos(Math.min(Math.PI, Math.abs(angleDiff))));
-        const desiredSpeed = direction * 13 * rotationFactor;
+        const desiredSpeed = direction * CAR_JOYSTICK_SPEED * rotationFactor;
         vel.current = THREE.MathUtils.damp(vel.current, desiredSpeed, 5, dt);
         forwardInput = direction;
         leftInput = angleDiff < -0.01 ? Math.min(1, Math.abs(angleDiff) / Math.PI) : 0;
@@ -938,12 +994,12 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
       leftInput = keyboardLeft ? 1 : joystickLeft;
       rightInput = keyboardRight ? 1 : joystickRight;
 
-      const accel = 10;
-      const decel = 12;
+      const accel = CAR_KEYBOARD_ACCEL;
+      const decel = CAR_KEYBOARD_DECEL;
       if (forwardInput > 0) {
-        vel.current = Math.min(vel.current + accel * Math.max(0.35, forwardInput) * dt, 14);
+        vel.current = Math.min(vel.current + accel * Math.max(0.35, forwardInput) * dt, CAR_MAX_FORWARD_SPEED);
       } else if (backwardInput > 0) {
-        vel.current = Math.max(vel.current - accel * Math.max(0.35, backwardInput) * dt, -8);
+        vel.current = Math.max(vel.current - accel * Math.max(0.35, backwardInput) * dt, CAR_MAX_REVERSE_SPEED);
       } else {
         if (vel.current > 0) vel.current = Math.max(0, vel.current - decel * dt);
         else if (vel.current < 0) vel.current = Math.min(0, vel.current + decel * dt);
@@ -966,8 +1022,27 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
     g.rotation.y = heading.current;
 
     // Movement direction: model appears oriented toward +Z, so use +Z as "forward".
-    const forwardMove = new THREE.Vector3(0, 0, 1).applyEuler(g.rotation).multiplyScalar(vel.current * dt);
-    g.position.add(forwardMove);
+    movementVector.set(0, 0, 1).applyEuler(g.rotation).multiplyScalar(vel.current * dt);
+    nextPosition.copy(g.position).add(movementVector);
+    let blocked = intersectsStaticColliders(nextPosition, CAR_COLLIDER_RADIUS);
+    if (blocked) {
+      slidePosition.set(g.position.x + movementVector.x, g.position.y + movementVector.y, g.position.z);
+      if (!intersectsStaticColliders(slidePosition, CAR_COLLIDER_RADIUS)) {
+        blocked = false;
+        nextPosition.copy(slidePosition);
+      } else {
+        slidePosition.set(g.position.x, g.position.y + movementVector.y, g.position.z + movementVector.z);
+        if (!intersectsStaticColliders(slidePosition, CAR_COLLIDER_RADIUS)) {
+          blocked = false;
+          nextPosition.copy(slidePosition);
+        }
+      }
+    }
+    if (!blocked) {
+      g.position.copy(nextPosition);
+    } else if (Math.abs(vel.current) > 0) {
+      vel.current = 0;
+    }
 
     // Engine/brake/reverse audio behavior via Web Audio
     const speedVal = vel.current;
@@ -994,7 +1069,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
             brakeGainRef.current = bg;
           }
           if (ensureBrakePlaying()) {
-            const targetBrake = Math.min(0.9, 0.4 + (speedAbs / 14) * 0.5);
+            const targetBrake = Math.min(0.9, 0.4 + (speedAbs / CAR_MAX_FORWARD_SPEED) * 0.5);
             try {
               const t2 = ctx.currentTime;
               brakeGainRef.current.gain.cancelScheduledValues(t2);
@@ -1024,14 +1099,15 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
             rg.connect(ctx.destination);
             reverseGainRef.current = rg;
           }
-            if (ensureReversePlaying()) {
-              const targetRev = Math.min(0.85, 0.35 + (speedAbs / 8) * 0.5);
-              try {
-                const t5 = ctx.currentTime;
-                reverseGainRef.current.gain.cancelScheduledValues(t5);
-                reverseGainRef.current.gain.setTargetAtTime(targetRev, t5, 0.08);
-              } catch {}
-            }
+          if (ensureReversePlaying()) {
+            const reverseCap = Math.abs(CAR_MAX_REVERSE_SPEED) || 1;
+            const targetRev = Math.min(0.85, 0.35 + (speedAbs / reverseCap) * 0.5);
+            try {
+              const t5 = ctx.currentTime;
+              reverseGainRef.current.gain.cancelScheduledValues(t5);
+              reverseGainRef.current.gain.setTargetAtTime(targetRev, t5, 0.08);
+            } catch {}
+          }
         } else {
           // Near zero: fade brake & reverse down
           if (brakeGainRef.current) {
@@ -1053,7 +1129,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
         // Normal engine logic
         if (moving && !reversing) {
           if (ensureEnginePlaying()) {
-            const target = Math.min(0.85, 0.25 + (speedAbs / 14) * 0.6);
+            const target = Math.min(0.85, 0.25 + (speedAbs / CAR_MAX_FORWARD_SPEED) * 0.6);
             try {
               const t = ctx.currentTime;
               gain.gain.cancelScheduledValues(t);
@@ -1126,13 +1202,13 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   );
 }
 
-function CameraRig({ targetRef, mode, stackTarget, queueTarget, interactTarget, interactActive }) {
-  const { camera } = useThree();
+function CameraRig({ targetRef, mode, stackTarget, queueTarget, interactTarget, interactActive, speed = 0 }) {
   const smoothPos = useRef(new THREE.Vector3());
   const initialized = useRef(false);
-  const followOffset = useMemo(() => new THREE.Vector3(0, 9, -16), []);
-  const tempQuaternion = useMemo(() => new THREE.Quaternion(), []);
-  const tempOffset = useMemo(() => new THREE.Vector3(), []);
+  const baseFollowOffset = useMemo(() => new THREE.Vector3(0, 9, -16), []);
+  const tempQuaternionRef = useRef(new THREE.Quaternion());
+  const tempOffsetRef = useRef(new THREE.Vector3());
+  const dynamicFollowOffsetRef = useRef(new THREE.Vector3());
   const lookAtPos = useRef(new THREE.Vector3());
   const desiredPos = useRef(new THREE.Vector3());
   const preInteractPosRef = useRef(new THREE.Vector3());
@@ -1146,19 +1222,38 @@ function CameraRig({ targetRef, mode, stackTarget, queueTarget, interactTarget, 
   const transitionDuration = CAMERA_TRANSITION_DURATION;
   const transitioningRef = useRef(false);
   const toInteractRef = useRef(false);
-  const transitionPos = useMemo(() => new THREE.Vector3(), []);
-  const transitionLook = useMemo(() => new THREE.Vector3(), []);
+  const transitionPosRef = useRef(new THREE.Vector3());
+  const transitionLookRef = useRef(new THREE.Vector3());
+  const speedInfluenceRef = useRef(0);
 
   useEffect(() => {
     initialized.current = false;
   }, [mode]);
 
-  useFrame(() => {
+  useFrame((state, dt) => {
+    const { camera } = state;
+    const dynamicFollowOffset = dynamicFollowOffsetRef.current;
+    const tempQuaternion = tempQuaternionRef.current;
+    const tempOffset = tempOffsetRef.current;
+    const transitionPos = transitionPosRef.current;
+    const transitionLook = transitionLookRef.current;
     const target = targetRef.current;
     if (!target) return;
     target.getWorldPosition(lookAtPos.current);
 
     const now = performance.now() / 1000;
+    const speedAbs = Math.abs(speed || 0);
+    const targetInfluence = Math.min(1, speedAbs / CAMERA_SPEED_EFFECT_MAX);
+    speedInfluenceRef.current = THREE.MathUtils.damp(
+      speedInfluenceRef.current,
+      targetInfluence,
+      3,
+      dt || 0.016,
+    );
+
+    dynamicFollowOffset.copy(baseFollowOffset);
+    dynamicFollowOffset.y += CAMERA_BOOST_Y * speedInfluenceRef.current;
+    dynamicFollowOffset.z += CAMERA_BOOST_Z * speedInfluenceRef.current;
 
     if (interactActive && interactTarget) {
       if (!toInteractRef.current) {
@@ -1239,7 +1334,7 @@ function CameraRig({ targetRef, mode, stackTarget, queueTarget, interactTarget, 
       }
     } else {
       target.getWorldQuaternion(tempQuaternion);
-      tempOffset.copy(followOffset).applyQuaternion(tempQuaternion);
+      tempOffset.copy(dynamicFollowOffset).applyQuaternion(tempQuaternion);
       desiredPos.current.copy(lookAtPos.current).add(tempOffset);
       if (!initialized.current) {
         smoothPos.current.copy(desiredPos.current);
@@ -1249,8 +1344,28 @@ function CameraRig({ targetRef, mode, stackTarget, queueTarget, interactTarget, 
       }
     }
 
+    dynamicFollowOffset.copy(baseFollowOffset);
+    dynamicFollowOffset.y += CAMERA_BOOST_Y * speedInfluenceRef.current;
+    dynamicFollowOffset.z += CAMERA_BOOST_Z * speedInfluenceRef.current;
+    target.getWorldQuaternion(tempQuaternion);
+    tempOffset.copy(dynamicFollowOffset).applyQuaternion(tempQuaternion);
+
     camera.position.copy(smoothPos.current);
     camera.lookAt(lookAtPos.current);
+
+    if (!interactActive && speedInfluenceRef.current > 0.001) {
+      const time = state.clock.elapsedTime;
+      const shakeStrength = speedInfluenceRef.current * CAMERA_SHAKE_INTENSITY;
+      camera.position.x += Math.sin(time * CAMERA_SHAKE_FREQUENCY) * shakeStrength;
+      camera.position.y += Math.cos(time * (CAMERA_SHAKE_FREQUENCY * 0.85)) * shakeStrength * 0.6;
+    }
+
+    const targetFov = THREE.MathUtils.lerp(CAMERA_BASE_FOV, CAMERA_MAX_FOV, speedInfluenceRef.current);
+    const nextFov = THREE.MathUtils.damp(camera.fov, targetFov, 2.8, dt || 0.016);
+    if (Math.abs(nextFov - camera.fov) > 1e-3) {
+      camera.fov = nextFov;
+      camera.updateProjectionMatrix();
+    }
   });
   return null;
 }
@@ -1326,9 +1441,25 @@ function ParkingToll() {
     });
     return cloned;
   }, [scene]);
+  const rootRef = useRef(null);
+  const colliderBoxRef = useRef(new THREE.Box3());
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const updateCollider = () => {
+      root.updateMatrixWorld(true);
+      colliderBoxRef.current.setFromObject(root);
+      registerStaticCollider('parking_toll', colliderBoxRef.current, true);
+    };
+    updateCollider();
+    return () => {
+      unregisterStaticCollider('parking_toll');
+    };
+  }, [tollScene]);
 
   return (
-    <group position={PARKING_TOLL_POSITION} rotation={PARKING_TOLL_ROTATION} scale={PARKING_TOLL_SCALE}>
+    <group ref={rootRef} position={PARKING_TOLL_POSITION} rotation={PARKING_TOLL_ROTATION} scale={PARKING_TOLL_SCALE}>
       <primitive object={tollScene} />
     </group>
   );
@@ -2199,10 +2330,6 @@ function MobileJoystick({ active }) {
     pointerActiveRef.current = true;
     setIsPressed(true);
     activePointerIdRef.current = event.pointerId;
-    const base = baseRef.current;
-    if (base) {
-      base.setPointerCapture?.(event.pointerId);
-    }
     updateFromPosition(event.clientX, event.clientY);
   }, [active, updateFromPosition]);
 
@@ -2212,12 +2339,7 @@ function MobileJoystick({ active }) {
     updateFromPosition(event.clientX, event.clientY);
   }, [updateFromPosition]);
 
-  const handlePointerEnd = useCallback((event) => {
-    if (!pointerActiveRef.current || event.pointerId !== activePointerIdRef.current) return;
-    const base = baseRef.current;
-    if (base) {
-      base.releasePointerCapture?.(event.pointerId);
-    }
+  const handlePointerEnd = useCallback(() => {
     resetMovement();
   }, [resetMovement]);
 
@@ -2385,7 +2507,7 @@ export default function ParkingScene({
   onQueueMinigameChange,
 }) {
   useEffect(() => {
-    useGLTF.preload('/car-show/models/car/scene.gltf');
+    useGLTF.preload('/models/scene.gltf');
     useGLTF.preload('/models/modern_parking_area.glb');
     useGLTF.preload('/models/street_road.glb');
     useGLTF.preload('/models/parking_toll.glb');
@@ -2396,6 +2518,39 @@ export default function ParkingScene({
   }, []);
   const [speed, setSpeed] = useState(0);
   const carRef = useRef(null);
+  const cameraBlurStrength = useMemo(() => {
+    const absSpeed = Math.abs(speed);
+    if (absSpeed <= CAMERA_BLUR_SPEED_THRESHOLD) {
+      return 0;
+    }
+    const span = Math.max(0.001, CAR_MAX_FORWARD_SPEED - CAMERA_BLUR_SPEED_THRESHOLD);
+    return THREE.MathUtils.clamp((absSpeed - CAMERA_BLUR_SPEED_THRESHOLD) / span, 0, 1);
+  }, [speed]);
+  const cameraBlurStyle = useMemo(() => {
+    if (cameraBlurStrength <= 0) {
+      return { opacity: 0, backdropFilter: 'blur(0px)' };
+    }
+    const blurPx = THREE.MathUtils.lerp(0, CAMERA_BLUR_MAX_PIXELS, cameraBlurStrength);
+    return {
+      opacity: Math.min(1, cameraBlurStrength * CAMERA_BLUR_MAX_OPACITY),
+      backdropFilter: `blur(${blurPx.toFixed(2)}px)`,
+    };
+  }, [cameraBlurStrength]);
+  const displaySpeed = Math.max(0, Math.round(Math.abs(speed) * SPEED_DISPLAY_MULTIPLIER));
+  const desktopSpeedProgress = useMemo(() => {
+    if (!Number.isFinite(speed)) return 0;
+    return Math.min(1, Math.abs(speed) / Math.max(1, CAR_MAX_FORWARD_SPEED));
+  }, [speed]);
+  const desktopGaugeNeedle = useMemo(() => {
+    const radius = 60;
+    const centerX = 80;
+    const centerY = 80;
+    const angle = Math.PI - (Math.PI * desktopSpeedProgress);
+    return {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY - Math.sin(angle) * radius,
+    };
+  }, [desktopSpeedProgress]);
 
   const {
     isActive: carOnQueueMarker,
@@ -2491,6 +2646,7 @@ export default function ParkingScene({
     () => activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
     [activeMinigame, interactPhase],
   );
+  const shouldShowSpeedDisplay = activeMinigame !== 'stack' && activeMinigame !== 'queue';
   const minigameLoadingMessage = QUEUE_LOADING_MESSAGES.length
     ? QUEUE_LOADING_MESSAGES[minigameLoadingStep % QUEUE_LOADING_MESSAGES.length]
     : 'Preparing the queue...';
@@ -3941,13 +4097,28 @@ export default function ParkingScene({
 
   return (
     <div className="relative w-full h-full">
-      <Canvas shadows camera={{ position: [10, 18, 15], fov: 50 }} style={{ width: '100%', height: '100%' }}>
-        <color attach="background" args={[ '#9cc9ff' ]} />
-        <fog attach="fog" args={[ '#cde4ff', 80, 260 ]} />
-        <ambientLight intensity={0.55} />
-        <directionalLight position={[38, 52, 24]} intensity={1.6} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
+      <Canvas shadows camera={{ position: [10, 18, 15], fov: CAMERA_BASE_FOV }} style={{ width: '100%', height: '100%' }}>
+        <color attach="background" args={[ '#ffae6d' ]} />
+        <fog attach="fog" args={[ '#f18a54', 80, 240 ]} />
+        <ambientLight intensity={0.65} color="#ff944a" />
+        <directionalLight
+          position={[18, 28, -10]}
+          intensity={1.85}
+          color="#ffbe6b"
+          castShadow
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+        />
         <Suspense fallback={null}>
-          <Sky sunPosition={[30, 160, -20]} turbidity={6} rayleigh={2.2} mieCoefficient={0.005} mieDirectionalG={0.7} inclination={0.38} azimuth={0.12} />
+          <Sky
+            sunPosition={[8, 10, -18]}
+            turbidity={12}
+            rayleigh={0.95}
+            mieCoefficient={0.02}
+            mieDirectionalG={0.88}
+            inclination={0.42}
+            azimuth={0.18}
+          />
           <ParkingArea />
           <StreetRoad />
           <ParkingToll />
@@ -4020,7 +4191,7 @@ export default function ParkingScene({
             carRef={carRef}
             controlsEnabled={!['stack', 'queue'].includes(activeMinigame)}
           />
-          <Environment preset="sunset" background />
+          <Environment preset="sunset" background={false} />
         </Suspense>
         <CameraRig
           targetRef={carRef}
@@ -4029,9 +4200,13 @@ export default function ParkingScene({
           queueTarget={QUEUE_CAMERA_CONFIG}
           interactTarget={securityGuardCameraTarget}
           interactActive={interactCameraActive}
+          speed={speed}
         />
-        <Stats />
       </Canvas>
+      <div
+        className="pointer-events-none absolute inset-0 z-[5] bg-white/5 transition-[opacity] duration-200 ease-out"
+        style={{ ...cameraBlurStyle, mixBlendMode: 'screen' }}
+      />
       <MobileJoystick active={joystickActive} />
       {showStackState && activeMinigame === 'stack' && (
         <StructureStateViewer
@@ -4052,13 +4227,58 @@ export default function ParkingScene({
           licenseStats={licenseStats}
         />
       )}
-      <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28">
-        <div className="text-xs uppercase tracking-wider text-white/80">Speed</div>
-        <div className="mt-0.5 flex items-baseline gap-1">
-          <div className="text-2xl font-extrabold tabular-nums">{Math.max(0, Math.round(Math.abs(speed) * 6))}</div>
-          <div className="text-[10px] opacity-80">km/h</div>
+      {shouldShowSpeedDisplay && (
+        <div className="pointer-events-none absolute right-4 bottom-24 z-10 select-none rounded-2xl bg-black/60 px-3 py-2 text-white ring-1 ring-white/20 backdrop-blur-sm sm:right-6 sm:bottom-28 md:hidden">
+          <div className="text-xs uppercase tracking-wider text-white/80">Speed</div>
+          <div className="mt-0.5 flex items-baseline gap-1">
+            <div className="text-2xl font-extrabold tabular-nums">{displaySpeed}</div>
+            <div className="text-[10px] opacity-80">km/h</div>
+          </div>
         </div>
-      </div>
+      )}
+      {shouldShowSpeedDisplay && (
+        <div className="pointer-events-none absolute left-1/2 bottom-10 z-10 hidden -translate-x-1/2 flex-col items-center gap-3 text-white drop-shadow-[0_12px_32px_rgba(15,23,42,0.65)] md:flex">
+          <svg viewBox="0 0 160 100" width="220" height="120" className="text-white/40">
+            <defs>
+              <linearGradient id="speedGaugeGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#22d3ee" />
+                <stop offset="55%" stopColor="#3b82f6" />
+                <stop offset="100%" stopColor="#e879f9" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M20 80 A60 60 0 0 1 140 80"
+              stroke="rgba(255,255,255,0.18)"
+              strokeWidth="12"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <path
+              d="M20 80 A60 60 0 0 1 140 80"
+              stroke="url(#speedGaugeGradient)"
+              strokeWidth="12"
+              strokeLinecap="round"
+              fill="none"
+              pathLength="1"
+              strokeDasharray={`${desktopSpeedProgress} 1`}
+            />
+            <line
+              x1="80"
+              y1="80"
+              x2={desktopGaugeNeedle.x}
+              y2={desktopGaugeNeedle.y}
+              stroke="#fef3c7"
+              strokeWidth="4"
+              strokeLinecap="round"
+            />
+            <circle cx="80" cy="80" r="6" fill="#fef3c7" />
+          </svg>
+          <div className="flex items-end gap-2">
+            <div className="text-5xl font-black tabular-nums tracking-tight">{displaySpeed}</div>
+            <span className="pb-1 text-sm uppercase tracking-[0.3em] text-white/70">km/h</span>
+          </div>
+        </div>
+      )}
       {minigameLoading && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
           <div className="pointer-events-auto flex w-[min(90vw,22rem)] flex-col items-center gap-4 rounded-3xl bg-slate-900/85 px-6 py-6 text-center text-sky-100 shadow-2xl ring-1 ring-sky-400/30">
@@ -4400,7 +4620,7 @@ export default function ParkingScene({
 // Ensure model is preloaded when module evaluated (optional redundancy)
 try {
   if (useGLTF.preload) {
-    useGLTF.preload('/car-show/models/car/scene.gltf');
+    useGLTF.preload('/models/scene.gltf');
     useGLTF.preload('/models/modern_parking_area.glb');
     QUEUE_CAR_MODEL_PATHS.forEach((path) => useGLTF.preload(path));
   }
