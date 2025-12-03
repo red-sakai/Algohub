@@ -233,15 +233,32 @@ export default function GameScroller() {
   return (
     <section className="relative z-10 h-[100dvh] w-full overflow-hidden">
       {isGamified && (
-        <div className="pointer-events-none absolute inset-0">
-          {items.map((game, idx) => (
-            <div
-              key={`bg-${game.id}`}
-              className={`absolute inset-0 bg-gradient-to-br ${game.colorFrom} ${game.colorTo} transition-opacity duration-700 ease-out`}
-              style={{ opacity: active === idx ? 0.95 : 0 }}
-            />
-          ))}
-          <div className="absolute inset-0 bg-black/25" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {items.map((game, idx) => {
+            const isStackEmQueue = game.id === "sorting-sprint";
+            return (
+              <div
+                key={`bg-${game.id}`}
+                className="absolute inset-0 transition-opacity duration-700 ease-out"
+                style={{ opacity: active === idx ? 1 : 0, zIndex: active === idx ? 2 : 1 }}
+              >
+                {isStackEmQueue ? (
+                  <video
+                    className="h-full w-full object-cover"
+                    src="/game-selector-bg/stack 'em queue.mp4"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="auto"
+                  />
+                ) : (
+                  <div className={`h-full w-full bg-gradient-to-br ${game.colorFrom} ${game.colorTo}`} />
+                )}
+                <div className="absolute inset-0 bg-black/30" />
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -291,8 +308,20 @@ export default function GameScroller() {
           }}
         >
           {items.map((g, i) => (
-            <div key={g.id} className="relative h-[100dvh] w-full">
-              <div className={`absolute inset-0 bg-gradient-to-br ${g.colorFrom} ${g.colorTo} opacity-90`} />
+            <div key={g.id} className="relative h-[100dvh] w-full overflow-hidden">
+              {g.id === "sorting-sprint" ? (
+                <video
+                  className="absolute inset-0 h-full w-full object-cover"
+                  src="/game-selector-bg/stack 'em queue.mp4"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                />
+              ) : (
+                <div className={`absolute inset-0 bg-gradient-to-br ${g.colorFrom} ${g.colorTo} opacity-90`} />
+              )}
               <div className="absolute inset-0 bg-black/20" />
               <div className="relative z-10 flex h-full w-full items-center justify-center p-6 text-center drop-shadow-lg">
                 <div className="mx-auto max-w-3xl">
