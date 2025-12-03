@@ -64,6 +64,7 @@ const GAMES: Game[] = [
 export default function GameScroller() {
   const items = useMemo(() => GAMES, []);
   const [active, setActive] = useState(0);
+  const [layoutMode, setLayoutMode] = useState<"simplified" | "gamified">("simplified");
   const [lastPlayed, setLastPlayed] = useState<number | null>(null);
   const pausedPlayerPrevRef = useRef(false);
   const globalAudioPlayHandlerRef = useRef<EventListener | null>(null);
@@ -191,9 +192,19 @@ export default function GameScroller() {
     } catch {}
   };
 
+  const resolveIndex = (target: number) => {
+    if (!items.length) return 0;
+    if (layoutMode === "gamified") {
+      const total = items.length;
+      const wrapped = ((target % total) + total) % total;
+      return wrapped;
+    }
+    return Math.max(0, Math.min(items.length - 1, target));
+  };
+
   const go = (dir: 1 | -1) => {
     setActive((i) => {
-      const nxt = Math.max(0, Math.min(items.length - 1, i + dir));
+      const nxt = resolveIndex(i + dir);
       handleSlideChange(i, nxt);
       if (items[nxt]?.id === "sorting-sprint" && !resumeTimesRef.current.has(nxt)) {
         playForIndex(nxt, { fromNav: true });
@@ -203,7 +214,7 @@ export default function GameScroller() {
   };
   const goTo = (idx: number) => {
     setActive((i) => {
-      const nxt = Math.max(0, Math.min(items.length - 1, idx));
+      const nxt = resolveIndex(idx);
       handleSlideChange(i, nxt);
       if (items[nxt]?.id === "sorting-sprint" && !resumeTimesRef.current.has(nxt)) {
         playForIndex(nxt, { fromNav: true });
@@ -211,98 +222,260 @@ export default function GameScroller() {
       return nxt;
     });
   };
+  const isGamified = layoutMode === "gamified";
+  const activeGame = items[active] ?? items[0];
+  const handleToggleLayout = (mode: "simplified" | "gamified") => {
+    if (layoutMode === mode) return;
+    try { playSfx("/button_click.mp3", 0.4); } catch {}
+    setLayoutMode(mode);
+  };
 
   return (
     <section className="relative z-10 h-[100dvh] w-full overflow-hidden">
-      {/* Slides track */}
-      <div
-        className="h-full w-full will-change-transform"
-        style={{
-          transform: `translate3d(0, ${-active * 100}dvh, 0)`,
-          transition: "transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-        }}
-      >
-        {items.map((g, i) => (
-          <div key={g.id} className="relative h-[100dvh] w-full">
-            <div className={`absolute inset-0 bg-gradient-to-br ${g.colorFrom} ${g.colorTo} opacity-90`} />
-            <div className="absolute inset-0 bg-black/20" />
-            <div className="relative z-10 flex h-full w-full items-center justify-center p-6 text-center drop-shadow-lg">
-              <div className="mx-auto max-w-3xl">
-                <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">{g.title}</h2>
-                <p className="mx-auto mt-3 max-w-prose text-base text-white/90 sm:text-lg md:text-xl">{g.desc}</p>
-                <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold ring-1 ring-white/25">
-                  <span className={`h-2 w-2 rounded-full ${lastPlayed === i ? "bg-green-300" : "bg-white/40"}`} />
-                  {lastPlayed === i ? `Now Playing: ${items[i].track.title}` : "Tap Next/Prev"}
-                  {lastPlayed === i && (
-                    <div className="ml-3 flex items-center gap-1">
-                      <input
-                        aria-label="Game volume"
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(gameVolume * 100)}
-                        onChange={(e) => setGameVolume(Number(e.target.value) / 100)}
-                        className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/30 accent-sky-500"
-                      />
-                      <span className="text-[10px] font-semibold tabular-nums">{Math.round(gameVolume * 100)}%</span>
-                    </div>
-                  )}
-                </div>
-                <div className="mt-5 flex items-center justify-center">
-                  <button
-                    onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch {} ; playForIndex(i); }}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-5 py-2.5 text-base font-extrabold tracking-wide text-white shadow-[0_8px_0_0_rgb(2,132,199)] ring-1 ring-white/20 transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_6px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
-                    aria-label={`Play ${g.title}`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                    Play
-                  </button>
-                </div>
-                {g.id === "sorting-sprint" && licensePhoto && (
-                  <div className="mt-4 text-center text-xs text-white/80">License photo saved.</div>
-                )}
-              </div>
+      {isGamified && (
+        <div className="pointer-events-none absolute inset-0">
+          {items.map((game, idx) => (
+            <div
+              key={`bg-${game.id}`}
+              className={`absolute inset-0 bg-gradient-to-br ${game.colorFrom} ${game.colorTo} transition-opacity duration-700 ease-out`}
+              style={{ opacity: active === idx ? 0.95 : 0 }}
+            />
+          ))}
+          <div className="absolute inset-0 bg-black/25" />
+        </div>
+      )}
+
+      <div className="absolute right-4 top-4 z-20 text-white">
+        <div className="group relative inline-flex">
+          <button
+            type="button"
+            aria-label="Toggle layout options"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-black/60 ring-1 ring-white/25 backdrop-blur transition hover:bg-black/80"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="6" height="6" rx="1.25" />
+              <rect x="15" y="3" width="6" height="6" rx="1.25" />
+              <rect x="3" y="15" width="6" height="6" rx="1.25" />
+              <rect x="15" y="15" width="6" height="6" rx="1.25" />
+            </svg>
+          </button>
+          <div className="pointer-events-none absolute right-0 top-[calc(100%+0.5rem)] w-52 rounded-2xl bg-black/85 p-4 opacity-0 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl transition duration-200 ease-out translate-y-1 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100">
+            <p className="text-[0.5rem] font-semibold uppercase tracking-[0.4em] text-white/55">Layout</p>
+            <div className="mt-3 flex flex-col gap-2">
+              {(["simplified", "gamified"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => handleToggleLayout(mode)}
+                  className={`inline-flex w-full items-center justify-between rounded-2xl px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.25em] transition ${
+                    layoutMode === mode ? "bg-white text-black" : "bg-white/10 text-white/75 hover:bg-white/20"
+                  }`}
+                  aria-pressed={layoutMode === mode}
+                >
+                  {mode === "simplified" ? "Simplified" : "Gamified"}
+                  <span className="text-[0.5rem] tracking-[0.3em] text-white/60">
+                    {layoutMode === mode ? "Active" : ""}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
-        ))}
+        </div>
       </div>
+
+      {!isGamified && (
+        <div
+          className="h-full w-full will-change-transform"
+          style={{
+            transform: `translate3d(0, ${-active * 100}dvh, 0)`,
+            transition: "transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+          }}
+        >
+          {items.map((g, i) => (
+            <div key={g.id} className="relative h-[100dvh] w-full">
+              <div className={`absolute inset-0 bg-gradient-to-br ${g.colorFrom} ${g.colorTo} opacity-90`} />
+              <div className="absolute inset-0 bg-black/20" />
+              <div className="relative z-10 flex h-full w-full items-center justify-center p-6 text-center drop-shadow-lg">
+                <div className="mx-auto max-w-3xl">
+                  <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">{g.title}</h2>
+                  <p className="mx-auto mt-3 max-w-prose text-base text-white/90 sm:text-lg md:text-xl">{g.desc}</p>
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-semibold ring-1 ring-white/25">
+                    <span className={`h-2 w-2 rounded-full ${lastPlayed === i ? "bg-green-300" : "bg-white/40"}`} />
+                    {lastPlayed === i ? `Now Playing: ${items[i].track.title}` : "Tap Next/Prev"}
+                    {lastPlayed === i && (
+                      <div className="ml-3 flex items-center gap-1">
+                        <input
+                          aria-label="Game volume"
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={Math.round(gameVolume * 100)}
+                          onChange={(e) => setGameVolume(Number(e.target.value) / 100)}
+                          className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/30 accent-sky-500"
+                        />
+                        <span className="text-[10px] font-semibold tabular-nums">{Math.round(gameVolume * 100)}%</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-5 flex items-center justify-center">
+                    <button
+                      onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch {} ; playForIndex(i); }}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-5 py-2.5 text-base font-extrabold tracking-wide text-white shadow-[0_8px_0_0_rgb(2,132,199)] ring-1 ring-white/20 transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_6px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
+                      aria-label={`Play ${g.title}`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                      Play
+                    </button>
+                  </div>
+                  {g.id === "sorting-sprint" && licensePhoto && (
+                    <div className="mt-4 text-center text-xs text-white/80">License photo saved.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isGamified && (
+        <div className="relative z-10 flex h-full w-full flex-col justify-center px-4 text-white sm:px-8">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-center sm:text-left">
+            <div>
+              <p className="text-[0.55rem] font-semibold uppercase tracking-[0.45em] text-white/70">Featured Game</p>
+              <h2 className="mt-2 text-4xl font-black sm:text-5xl md:text-6xl">{activeGame.title}</h2>
+              <p className="mt-3 text-base text-white/85 sm:text-lg md:text-xl">{activeGame.desc}</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 text-xs uppercase tracking-[0.35em] text-white/60 sm:justify-start">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 ring-1 ring-white/30">
+                <span className={`h-2 w-2 rounded-full ${lastPlayed === active ? "bg-green-300" : "bg-white/40"}`} />
+                {lastPlayed === active ? "Now Playing" : "Ready"}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/20">
+                OST · {activeGame.track.title}
+              </span>
+            </div>
+          </div>
+
+          <div className="relative mx-auto mt-10 h-[320px] w-full max-w-5xl sm:h-[360px]">
+            {items.map((game, idx) => {
+              const total = items.length || 1;
+              let offset = idx - active;
+              if (offset > total / 2) offset -= total;
+              if (offset < -total / 2) offset += total;
+              const translate = offset * 230;
+              const scale = Math.max(0.75, 1 - Math.abs(offset) * 0.12);
+              const opacity = Math.max(0.35, 1 - Math.abs(offset) * 0.18);
+              return (
+                <button
+                  key={game.id}
+                  type="button"
+                  onClick={() => goTo(idx)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      goTo(idx);
+                    }
+                  }}
+                  aria-current={idx === active}
+                  className={`absolute left-1/2 top-1/2 w-[70vw] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-white/20 bg-white/10 p-6 text-left backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
+                    idx === active ? "shadow-[0_25px_60px_rgba(15,23,42,0.55)] ring-2 ring-white/70" : "shadow-[0_15px_35px_rgba(15,23,42,0.35)]"
+                  }`}
+                  style={{
+                    transform: `translate(calc(-50% + ${translate}px), -50%) scale(${scale})`,
+                    opacity,
+                    zIndex: items.length - Math.abs(offset),
+                  }}
+                >
+                  <p className="text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">
+                    {idx === active ? "Selected" : "Preview"}
+                  </p>
+                  <h3 className="mt-2 text-2xl font-black">{game.title}</h3>
+                  <p className="mt-2 text-sm text-white/80">{game.desc}</p>
+                  <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-white/65">
+                    <span>OST</span>
+                    <span className="text-white/90">{game.track.title}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mx-auto mt-9 flex w-full max-w-5xl flex-col items-center justify-between gap-4 text-center text-white sm:flex-row sm:text-left">
+            <div>
+              {activeGame.id === "sorting-sprint" && licensePhoto && (
+                <div className="text-xs uppercase tracking-[0.3em] text-white/70">License photo saved.</div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch {} ; playForIndex(active); }}
+                className="inline-flex items-center gap-2 rounded-2xl bg-white/90 px-5 py-2.5 text-base font-extrabold tracking-wide text-black shadow-[0_8px_0_0_rgba(255,255,255,0.4)] transition hover:-translate-y-0.5"
+                aria-label={`Play ${activeGame.title}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Play
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Prev/Next controls */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center gap-4 sm:bottom-8">
-        <button
-          onClick={() => { try { playSfx("/previous.mp3", 0.65); } catch {}; go(-1); }}
-          disabled={active === 0}
-          className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
-          aria-label="Previous game"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-        </button>
-        <div className="pointer-events-auto select-none rounded-full bg-black/40 px-3 py-1 text-sm font-semibold ring-1 ring-white/20 text-white/90">
-          {active + 1} / {items.length}
+      {!isGamified && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center gap-4 transition-all sm:bottom-8">
+          <button
+            onClick={() => { try { playSfx("/previous.mp3", 0.65); } catch {}; go(-1); }}
+            disabled={active === 0}
+            className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
+            aria-label="Previous game"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+          </button>
+          <div className="pointer-events-auto select-none rounded-full bg-black/40 px-3 py-1 text-sm font-semibold ring-1 ring-white/20 text-white/90">
+            {active + 1} / {items.length}
+          </div>
+          <button
+            onClick={() => { try { playSfx("/next.mp3", 0.65); } catch {}; go(1); }}
+            disabled={active === items.length - 1}
+            className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
+            aria-label="Next game"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
+          </button>
         </div>
-        <button
-          onClick={() => { try { playSfx("/next.mp3", 0.65); } catch {}; go(1); }}
-          disabled={active === items.length - 1}
-          className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
-          aria-label="Next game"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
-        </button>
-      </div>
+      )}
 
       {/* Optional dot indicators */}
-      <div className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 flex-col gap-2 sm:flex">
-        {items.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => goTo(i)}
-            className={`pointer-events-auto h-2.5 w-2.5 rounded-full ring-1 ring-white/25 transition ${i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"}`}
-            aria-label={`Go to game ${i + 1}`}
-          />
-        ))}
-      </div>
+      {isGamified ? (
+        <div className="pointer-events-none absolute left-1/2 bottom-20 flex -translate-x-1/2 gap-3 sm:bottom-24">
+          {items.map((_, i) => (
+            <button
+              key={`dot-g-${i}`}
+              onClick={() => goTo(i)}
+              className={`pointer-events-auto h-3.5 w-3.5 rounded-full ring-1 ring-white/25 transition ${
+                i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
+              }`}
+              aria-label={`Go to game ${i + 1}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 flex-col gap-2 sm:flex">
+          {items.map((_, i) => (
+            <button
+              key={`dot-s-${i}`}
+              onClick={() => goTo(i)}
+              className={`pointer-events-auto h-2.5 w-2.5 rounded-full ring-1 ring-white/25 transition ${
+                i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
+              }`}
+              aria-label={`Go to game ${i + 1}`}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Camera modal for first game */}
       <CameraCaptureModal
