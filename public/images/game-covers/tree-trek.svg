@@ -1,0 +1,19 @@
+<svg width="400" height="260" viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tree Trek placeholder cover">
+  <defs>
+    <linearGradient id="treeTrekBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#fb7185" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="260" rx="28" fill="url(#treeTrekBg)" />
+  <g stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M140 190 L140 110 L90 60" />
+    <path d="M140 150 L190 100 L240 150 L290 100" />
+    <circle cx="90" cy="60" r="10" fill="#fff" />
+    <circle cx="190" cy="100" r="10" fill="#fff" />
+    <circle cx="240" cy="150" r="10" fill="#fff" />
+    <circle cx="290" cy="100" r="10" fill="#fff" />
+  </g>
+  <text x="30" y="220" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="28" font-weight="700">TREE TREK</text>
+  <text x="30" y="245" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="16" opacity="0.85">Traverse branching puzzles</text>
+</svg>

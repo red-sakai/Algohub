@@ -1,0 +1,19 @@
+<svg width="400" height="260" viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Graph Quest placeholder cover">
+  <defs>
+    <linearGradient id="graphQuestBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#0ea5e9" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="260" rx="28" fill="url(#graphQuestBg)" />
+  <g stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M80 190 L80 70 L320 70 L320 190 Z" opacity="0.25" />
+    <path d="M110 170 L190 110 L250 150 L290 90" />
+    <circle cx="110" cy="170" r="10" fill="#fff" />
+    <circle cx="190" cy="110" r="10" fill="#fff" />
+    <circle cx="250" cy="150" r="10" fill="#fff" />
+    <circle cx="290" cy="90" r="10" fill="#fff" />
+  </g>
+  <text x="30" y="220" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="28" font-weight="700">GRAPH QUEST</text>
+  <text x="30" y="245" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="16" opacity="0.85">Explore weighted paths</text>
+</svg>

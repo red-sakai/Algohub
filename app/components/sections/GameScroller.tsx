@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect } from "@/hooks/useEffect";
 import { useMemo } from "@/hooks/useMemo";
 import { useRef } from "@/hooks/useRef";
@@ -24,6 +25,7 @@ type Game = {
   colorFrom: string;
   colorTo: string;
   track: { title: string; src: string };
+  cover: string;
 };
 
 const GAMES: Game[] = [
@@ -34,6 +36,7 @@ const GAMES: Game[] = [
     colorFrom: "from-fuchsia-500",
     colorTo: "to-rose-500",
     track: { title: "Pokemon FireRed - Route 1", src: "/audio/Pokemon FireRed - Route 1.mp3" },
+    cover: "/images/game-covers/stack-em-queue.png",
   },
   {
     id: "graph-quest",
@@ -42,6 +45,7 @@ const GAMES: Game[] = [
     colorFrom: "from-emerald-500",
     colorTo: "to-teal-500",
     track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
+    cover: "/images/game-covers/graph-quest.svg",
   },
   {
     id: "dp-dungeon",
@@ -50,6 +54,7 @@ const GAMES: Game[] = [
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
     track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
+    cover: "/images/game-covers/dp-dungeon.svg",
   },
   {
     id: "tree-trek",
@@ -58,6 +63,7 @@ const GAMES: Game[] = [
     colorFrom: "from-amber-500",
     colorTo: "to-orange-500",
     track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
+    cover: "/images/game-covers/tree-trek.svg",
   },
 ];
 
@@ -368,13 +374,11 @@ export default function GameScroller() {
       )}
 
       {isGamified && (
-        <div className="relative z-10 flex h-full w-full flex-col justify-center px-4 text-white sm:px-8">
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-center sm:text-left">
-            <div>
-              <p className="text-[0.55rem] font-semibold uppercase tracking-[0.45em] text-white/70">Featured Game</p>
-              <h2 className="mt-2 text-4xl font-black sm:text-5xl md:text-6xl">{activeGame.title}</h2>
-              <p className="mt-3 text-base text-white/85 sm:text-lg md:text-xl">{activeGame.desc}</p>
-            </div>
+        <div className="relative z-10 flex h-full w-full flex-col justify-between px-4 py-10 text-white sm:px-8 sm:py-12">
+          <div className="mx-auto w-full max-w-5xl space-y-3 pb-4 text-center sm:text-left">
+            <p className="text-[0.55rem] font-semibold uppercase tracking-[0.45em] text-white/70">Featured Game</p>
+            <h2 className="text-4xl font-black sm:text-5xl md:text-6xl">{activeGame.title}</h2>
+            <p className="text-base text-white/85 sm:text-lg md:text-xl">{activeGame.desc}</p>
             <div className="flex flex-wrap items-center justify-center gap-3 text-xs uppercase tracking-[0.35em] text-white/60 sm:justify-start">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 ring-1 ring-white/30">
                 <span className={`h-2 w-2 rounded-full ${lastPlayed === active ? "bg-green-300" : "bg-white/40"}`} />
@@ -386,7 +390,7 @@ export default function GameScroller() {
             </div>
           </div>
 
-          <div className="relative mx-auto mt-10 h-[320px] w-full max-w-5xl sm:h-[360px]">
+          <div className="relative mx-auto mt-69 h-[320px] w-full max-w-5xl sm:mt-72 sm:h-[360px]">
             {items.map((game, idx) => {
               const total = items.length || 1;
               let offset = idx - active;
@@ -416,7 +420,19 @@ export default function GameScroller() {
                     zIndex: items.length - Math.abs(offset),
                   }}
                 >
-                  <p className="text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">
+                  <div
+                    className="relative overflow-hidden rounded-xl border border-white/15 bg-black/30"
+                    style={{ aspectRatio: "400 / 260" }}
+                  >
+                    <Image
+                      src={game.cover}
+                      alt={`${game.title} cover art`}
+                      fill
+                      className="object-contain"
+                      sizes="(min-width: 1024px) 380px, 60vw"
+                    />
+                  </div>
+                  <p className="mt-3 text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">
                     {idx === active ? "Selected" : "Preview"}
                   </p>
                   <h3 className="mt-2 text-2xl font-black">{game.title}</h3>
@@ -430,7 +446,7 @@ export default function GameScroller() {
             })}
           </div>
 
-          <div className="mx-auto mt-9 flex w-full max-w-5xl flex-col items-center justify-between gap-4 text-center text-white sm:flex-row sm:text-left">
+          <div className="mx-auto mt-3 flex w-full max-w-5xl flex-col items-center justify-between gap-4 text-center text-white sm:flex-row sm:text-left">
             <div>
               {activeGame.id === "sorting-sprint" && licensePhoto && (
                 <div className="text-xs uppercase tracking-[0.3em] text-white/70">License photo saved.</div>

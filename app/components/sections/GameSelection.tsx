@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect } from "@/hooks/useEffect";
 import { useMemo } from "@/hooks/useMemo";
 import { useState } from "@/hooks/useState";
@@ -14,6 +15,7 @@ type Game = {
   colorFrom: string;
   colorTo: string;
   track: { title: string; src: string };
+  cover: string;
 };
 
 const GAMES: Game[] = [
@@ -24,6 +26,7 @@ const GAMES: Game[] = [
     colorFrom: "from-fuchsia-500",
     colorTo: "to-rose-500",
     track: { title: "Pokemon FireRed - Route 1", src: "/audio/Pokemon FireRed - Route 1.mp3" },
+    cover: "/images/game-covers/stack-em-queue.png",
   },
   {
     id: "graph-quest",
@@ -32,6 +35,7 @@ const GAMES: Game[] = [
     colorFrom: "from-emerald-500",
     colorTo: "to-teal-500",
     track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
+    cover: "/images/game-covers/graph-quest.svg",
   },
   {
     id: "dp-dungeon",
@@ -40,6 +44,7 @@ const GAMES: Game[] = [
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
     track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
+    cover: "/images/game-covers/dp-dungeon.svg",
   },
   {
     id: "tree-trek",
@@ -48,6 +53,7 @@ const GAMES: Game[] = [
     colorFrom: "from-amber-500",
     colorTo: "to-orange-500",
     track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
+    cover: "/images/game-covers/tree-trek.svg",
   },
 ];
 
@@ -105,22 +111,36 @@ export default function GameSelection() {
           >
             <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity duration-200 group-hover:opacity-15" />
             <div className="relative z-10">
+              <div
+                className="relative overflow-hidden rounded-2xl border border-white/25 bg-black/30 shadow-inner transition duration-300 group-hover:scale-[1.01]"
+                style={{ aspectRatio: "400 / 260" }}
+              >
+                <Image
+                  src={g.cover}
+                  alt={`${g.title} cover art`}
+                  fill
+                  className="object-contain"
+                  sizes="(min-width: 1024px) 320px, (min-width: 640px) 45vw, 90vw"
+                />
+              </div>
+              <div className="mt-5">
               <h3 className="text-2xl font-extrabold tracking-tight drop-shadow-sm sm:text-3xl">
                 {g.title}
               </h3>
               <p className="mt-1 max-w-prose text-sm text-white/90 sm:text-base">
                 {g.desc}
               </p>
-              <div className="pointer-events-none mt-6 inline-flex items-center gap-2 rounded-full bg-black/30 px-3 py-1 text-xs font-semibold ring-1 ring-white/20">
-                {active === g.id ? (
-                  <span className="inline-flex items-center gap-2 text-green-300">
-                    <span className="h-2 w-2 rounded-full bg-green-300" /> Now Playing
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-2 text-white/80">
-                    <span className="h-2 w-2 rounded-full bg-white/70" /> Click to Play Theme
-                  </span>
-                )}
+                <div className="pointer-events-none mt-6 inline-flex items-center gap-2 rounded-full bg-black/30 px-3 py-1 text-xs font-semibold ring-1 ring-white/20">
+                  {active === g.id ? (
+                    <span className="inline-flex items-center gap-2 text-green-300">
+                      <span className="h-2 w-2 rounded-full bg-green-300" /> Now Playing
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 text-white/80">
+                      <span className="h-2 w-2 rounded-full bg-white/70" /> Click to Play Theme
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/15 blur-3xl sm:-right-16 sm:-top-16 sm:h-56 sm:w-56" />

@@ -1,0 +1,15 @@
+<svg width="400" height="260" viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DP Dungeon placeholder cover">
+  <defs>
+    <linearGradient id="dpDungeonBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="260" rx="28" fill="url(#dpDungeonBg)" />
+  <g stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9">
+    <rect x="80" y="70" width="240" height="120" rx="16" />
+    <path d="M120 150 L160 110 L200 150 L240 110 L280 150" />
+  </g>
+  <text x="30" y="220" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="28" font-weight="700">DP DUNGEON</text>
+  <text x="30" y="245" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="16" opacity="0.85">Plan optimal routes</text>
+</svg>
