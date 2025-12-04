@@ -1,0 +1,17 @@
+<svg width="400" height="260" viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sorting Sprint placeholder cover">
+  <defs>
+    <linearGradient id="sortingSprintBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6" />
+      <stop offset="100%" stop-color="#fb923c" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="260" rx="28" fill="url(#sortingSprintBg)" />
+  <g fill="none" stroke="#fff8" stroke-width="6" stroke-linecap="round">
+    <path d="M90 80 L160 80 L160 140 L230 140 L230 200 L310 200" />
+    <circle cx="90" cy="80" r="10" fill="#fff" />
+    <circle cx="160" cy="140" r="10" fill="#fff" />
+    <circle cx="230" cy="200" r="10" fill="#fff" />
+  </g>
+  <text x="30" y="220" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="28" font-weight="700">STACK 'EM QUEUE</text>
+  <text x="30" y="245" fill="#fff" font-family="'Space Grotesk', sans-serif" font-size="16" opacity="0.8">Parking logic mini-sim</text>
+</svg>
