@@ -3,20 +3,11 @@ import Image from "next/image";
 import { useEffect } from "@/hooks/useEffect";
 import { useMemo } from "@/hooks/useMemo";
 import { useState } from "@/hooks/useState";
+import type { Game } from "@/types/game-selection";
 import { playTracks } from "../../../lib/audio/musicBus";
 
 const LICENSE_STORAGE_KEY = "algohub-license-card-path";
 const LICENSE_EVENT = "algohub-license-card-updated";
-
-type Game = {
-  id: string;
-  title: string;
-  desc: string;
-  colorFrom: string;
-  colorTo: string;
-  track: { title: string; src: string };
-  cover: string;
-};
 
 const GAMES: Game[] = [
   {
