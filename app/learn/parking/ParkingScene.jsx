@@ -2505,6 +2505,7 @@ export default function ParkingScene({
   showQueueState = false,
   onStackMinigameChange,
   onQueueMinigameChange,
+  onRequestMainMenu,
 }) {
   useEffect(() => {
     useGLTF.preload('/models/scene.gltf');
@@ -2616,6 +2617,25 @@ export default function ParkingScene({
   const [licenseModalMode, setLicenseModalMode] = useState(null);
   const [licenseInputValue, setLicenseInputValue] = useState('');
   const [licenseModalError, setLicenseModalError] = useState('');
+  const [paused, setPaused] = useState(false);
+  const handlePauseMenuReturn = useCallback((event) => {
+    setActiveMinigame(null);
+    setPaused(false);
+    if (typeof onRequestMainMenu !== 'function') {
+      return;
+    }
+    let x;
+    let y;
+    if (event && typeof event.clientX === 'number' && typeof event.clientY === 'number' && (event.clientX || event.clientY)) {
+      x = event.clientX;
+      y = event.clientY;
+    } else if (event && event.currentTarget && typeof event.currentTarget.getBoundingClientRect === 'function') {
+      const rect = event.currentTarget.getBoundingClientRect();
+      x = rect.left + rect.width / 2;
+      y = rect.top + rect.height / 2;
+    }
+    onRequestMainMenu({ x, y });
+  }, [onRequestMainMenu]);
   const queuedRemovalIdsRef = useRef([]);
   const processQueuedRemovalsRef = useRef(() => {});
   const minigameStateRef = useRef(null);
@@ -2643,8 +2663,8 @@ export default function ParkingScene({
     [queueCars],
   );
   const joystickActive = useMemo(
-    () => activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
-    [activeMinigame, interactPhase],
+    () => !paused && activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
+    [activeMinigame, interactPhase, paused],
   );
   const shouldShowSpeedDisplay = activeMinigame !== 'stack' && activeMinigame !== 'queue';
   const minigameLoadingMessage = QUEUE_LOADING_MESSAGES.length
@@ -3641,6 +3661,25 @@ export default function ParkingScene({
   }, [licenseModalOpen, handleLicenseModalClose]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      if (licenseModalOpen) {
+        return;
+      }
+      setPaused((prev) => !prev);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [licenseModalOpen]);
+
+  useEffect(() => {
     if (carOnInteractMarker && interactCountdown <= 0 && interactPhase === 'idle') {
       const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
       schedule(() => setInteractPhase('prompt'));
@@ -4189,7 +4228,7 @@ export default function ParkingScene({
           <Car
             onSpeedChange={setSpeed}
             carRef={carRef}
-            controlsEnabled={!['stack', 'queue'].includes(activeMinigame)}
+            controlsEnabled={!paused && !['stack', 'queue'].includes(activeMinigame)}
           />
           <Environment preset="sunset" background={false} />
         </Suspense>
@@ -4208,6 +4247,18 @@ export default function ParkingScene({
         style={{ ...cameraBlurStyle, mixBlendMode: 'screen' }}
       />
       <MobileJoystick active={joystickActive} />
+      <button
+        type="button"
+        onClick={() => setPaused(true)}
+        className="pointer-events-auto absolute left-4 top-4 z-40 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-black/50 text-white ring-1 ring-white/30 backdrop-blur transition hover:bg-black/60 md:hidden"
+        aria-label="Open pause menu"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <line x1="4" y1="12" x2="16" y2="12" />
+          <line x1="4" y1="18" x2="12" y2="18" />
+        </svg>
+      </button>
       {showStackState && activeMinigame === 'stack' && (
         <StructureStateViewer
           slotState={queueSlotState}
@@ -4276,6 +4327,34 @@ export default function ParkingScene({
           <div className="flex items-end gap-2">
             <div className="text-5xl font-black tabular-nums tracking-tight">{displaySpeed}</div>
             <span className="pb-1 text-sm uppercase tracking-[0.3em] text-white/70">km/h</span>
+          </div>
+        </div>
+      )}
+      {paused && (
+        <div className="pointer-events-auto absolute inset-0 z-[120] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900/90 p-6 text-white shadow-[0_25px_55px_rgba(15,23,42,0.6)] ring-1 ring-white/15">
+            <div className="text-center">
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.4em] text-white/60">Game paused</p>
+              <h2 className="mt-2 text-3xl font-black">Stretch break?</h2>
+              <p className="mt-2 text-sm text-white/75">Everything is frozen until you hit resume.</p>
+            </div>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setPaused(false)}
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-white/95 px-4 py-2.5 text-base font-extrabold uppercase tracking-[0.3em] text-slate-900 shadow-lg transition hover:bg-white"
+              >
+                Resume Drive
+              </button>
+              <button
+                type="button"
+                onClick={handlePauseMenuReturn}
+                className="inline-flex w-full items-center justify-center rounded-2xl border border-white/25 px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.3em] text-white transition hover:bg-white/10"
+              >
+                Back to Main Menu
+              </button>
+            </div>
+            <p className="mt-4 text-center text-[0.55rem] uppercase tracking-[0.35em] text-white/55">Press Esc again to resume quickly</p>
           </div>
         </div>
       )}
@@ -4494,8 +4573,8 @@ export default function ParkingScene({
         </div>
       )}
       {activeMinigame === 'stack' && (
-        <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
-          <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+        <div className="pointer-events-none absolute inset-x-4 bottom-4 z-40 sm:inset-auto sm:right-6 sm:top-6">
+          <div className="pointer-events-auto flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <button
               type="button"
               aria-pressed={queueFastForward}
@@ -4555,8 +4634,8 @@ export default function ParkingScene({
         </div>
       )}
       {activeMinigame === 'queue' && (
-        <div className="pointer-events-none absolute right-4 top-4 z-40 sm:right-6 sm:top-6">
-          <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+        <div className="pointer-events-none absolute inset-x-4 bottom-4 z-40 sm:inset-auto sm:right-6 sm:top-6">
+          <div className="pointer-events-auto flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <button
               type="button"
               aria-pressed={queueFastForward}
