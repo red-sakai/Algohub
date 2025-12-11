@@ -9,6 +9,7 @@ import { useMarkerController } from '@/hooks/useMarkerController';
 import { playSfx } from '@/lib/audio/sfx';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { grantAchievementBySlug } from '@/lib/supabase/achievements';
+import { subscribeToParkingRadioWheel } from '@/lib/parking/radioWheelBus';
 
 // Simple key input
 const pressed = new Set();
@@ -800,7 +801,7 @@ function CarModel({ modelUrl = DEFAULT_QUEUE_CAR_MODEL, colorOverride = null, hi
   return <primitive object={clonedScene} {...props} />;
 }
 
-function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
+function Car({ onSpeedChange, carRef, controlsEnabled = true, timeScale = 1 }) {
   const internalRef = useRef();
   const ref = carRef || internalRef;
   const vel = useRef(0);
@@ -821,6 +822,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
   const loadingRef = useRef(false);
   const lastMovingRef = useRef(false);
   const controlsEnabledRef = useRef(controlsEnabled);
+  const timeScaleRef = useRef(1);
   const movementVector = useMemo(() => new THREE.Vector3(), []);
   const nextPosition = useMemo(() => new THREE.Vector3(), []);
   const slidePosition = useMemo(() => new THREE.Vector3(), []);
@@ -831,6 +833,11 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
       vel.current = 0;
     }
   }, [controlsEnabled]);
+
+  useEffect(() => {
+    const normalized = Number.isFinite(timeScale) ? Math.min(1, Math.max(0.2, timeScale)) : 1;
+    timeScaleRef.current = normalized;
+  }, [timeScale]);
 
   // Setup unlock and preload buffer after first gesture
   useEffect(() => {
@@ -944,7 +951,8 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true }) {
     }
   };
 
-  useFrame((_, dt) => {
+  useFrame((_, delta) => {
+    const dt = delta * (timeScaleRef.current || 1);
     const g = ref.current;
     if (!g) return;
 
@@ -2518,6 +2526,7 @@ export default function ParkingScene({
     QUEUE_CAR_MODEL_PATHS.forEach((path) => useGLTF.preload(path));
   }, []);
   const [speed, setSpeed] = useState(0);
+  const [radioWheelEngaged, setRadioWheelEngaged] = useState(false);
   const carRef = useRef(null);
   const cameraBlurStrength = useMemo(() => {
     const absSpeed = Math.abs(speed);
@@ -2537,6 +2546,12 @@ export default function ParkingScene({
       backdropFilter: `blur(${blurPx.toFixed(2)}px)`,
     };
   }, [cameraBlurStrength]);
+  const canvasStyle = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    filter: radioWheelEngaged ? 'grayscale(0.92) saturate(0.25) brightness(0.92)' : 'none',
+    transition: 'filter 220ms ease',
+  }), [radioWheelEngaged]);
   const displaySpeed = Math.max(0, Math.round(Math.abs(speed) * SPEED_DISPLAY_MULTIPLIER));
   const desktopSpeedProgress = useMemo(() => {
     if (!Number.isFinite(speed)) return 0;
@@ -2673,6 +2688,14 @@ export default function ParkingScene({
   const minigameLoadingProgress = QUEUE_LOADING_MESSAGES.length
     ? Math.min(100, Math.round(((Math.min(minigameLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
     : 100;
+  const carTimeScale = radioWheelEngaged ? 0.35 : 1;
+
+  useEffect(() => {
+    const unsubscribe = subscribeToParkingRadioWheel(({ slowMo }) => {
+      setRadioWheelEngaged(Boolean(slowMo));
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -4136,7 +4159,7 @@ export default function ParkingScene({
 
   return (
     <div className="relative w-full h-full">
-      <Canvas shadows camera={{ position: [10, 18, 15], fov: CAMERA_BASE_FOV }} style={{ width: '100%', height: '100%' }}>
+      <Canvas shadows camera={{ position: [10, 18, 15], fov: CAMERA_BASE_FOV }} style={canvasStyle}>
         <color attach="background" args={[ '#ffae6d' ]} />
         <fog attach="fog" args={[ '#f18a54', 80, 240 ]} />
         <ambientLight intensity={0.65} color="#ff944a" />
@@ -4229,6 +4252,7 @@ export default function ParkingScene({
             onSpeedChange={setSpeed}
             carRef={carRef}
             controlsEnabled={!paused && !['stack', 'queue'].includes(activeMinigame)}
+            timeScale={carTimeScale}
           />
           <Environment preset="sunset" background={false} />
         </Suspense>
