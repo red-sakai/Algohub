@@ -1,6 +1,7 @@
 "use client";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useCallback } from "@/hooks/useCallback";
 import { useEffect } from "@/hooks/useEffect";
 import { useMemo } from "@/hooks/useMemo";
 import { useRef } from "@/hooks/useRef";
@@ -9,6 +10,8 @@ import { usePathname } from "next/navigation";
 import { MUSIC_BUS } from "../../../lib/audio/musicBus";
 import { getGlobalAudio } from "../../../lib/audio/audioSingleton";
 import { getGameAudio } from "../../../lib/audio/gameAudio";
+import { playSfx } from "../../../lib/audio/sfx";
+import { emitParkingRadioWheelEvent } from "../../../lib/parking/radioWheelBus";
 
 // Default fallback playlist; real files are discovered from /api/audio
 const DEFAULT_PLAYLIST = [
@@ -16,12 +19,27 @@ const DEFAULT_PLAYLIST = [
   { title: "Route 1", src: "/audio/Pokemon FireRed - Route 1.mp3" },
 ];
 
+const PARKING_RADIO_MAX_OPTIONS = 6;
+const RADIAL_MIN_DRAG_DISTANCE = 56;
+const TWO_PI = Math.PI * 2;
+const computeRadialShade = (index: number, total: number, highlight = false) => {
+  if (!Number.isFinite(index) || !Number.isFinite(total) || total <= 0) {
+    return 'rgba(15, 23, 42, 0.9)';
+  }
+  const t = total <= 1 ? 0 : index / (total - 1);
+  const baseLightness = 32 + (t * 28);
+  const lightness = Math.min(baseLightness + (highlight ? 14 : 0), 88);
+  const saturation = highlight ? 92 : 70;
+  return `hsl(205, ${saturation}%, ${lightness}%)`;
+};
+
 type Track = { title: string; src: string };
 
 const STORE = "algohub_player_prefs_v1";
 
 export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   const pathname = usePathname();
+  const isParkingRoute = Boolean(pathname?.startsWith("/learn/parking"));
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playingRef = useRef(false);
@@ -30,6 +48,9 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   // UI state
   const [hoverDisc, setHoverDisc] = useState(false);
   const [hoverPanel, setHoverPanel] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(false);
+  const [radialOpen, setRadialOpen] = useState(false);
+  const [radialHoverIndex, setRadialHoverIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>(() => playlist ?? []);
   const [idx, setIdx] = useState(0);
@@ -43,6 +64,31 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   const mutedRef = useRef(false);
   const skipNextPersistRef = useRef(true);
   useEffect(() => { mutedRef.current = muted; }, [muted]);
+  const radialSelectionRef = useRef<number | null>(null);
+  const radialCenterRef = useRef({ x: 0, y: 0 });
+  const radialActiveRef = useRef(false);
+  const radialHoverSoundRef = useRef<number | null>(null);
+  const parkingRadioWheelEnabled = isParkingRoute && isDesktopViewport;
+  const effectiveTracks = useMemo(
+    () => (playlist?.length ? playlist : (tracks.length ? tracks : DEFAULT_PLAYLIST)),
+    [playlist, tracks],
+  );
+  const current = useMemo(
+    () => effectiveTracks[Math.max(0, Math.min(idx, effectiveTracks.length - 1))],
+    [effectiveTracks, idx],
+  );
+  const radialOptions = useMemo(
+    () => effectiveTracks.map((track, optionIndex) => ({ track, index: optionIndex })).slice(0, PARKING_RADIO_MAX_OPTIONS),
+    [effectiveTracks],
+  );
+  const radialOptionColors = useMemo(
+    () => radialOptions.map((_, idx) => computeRadialShade(idx, radialOptions.length)),
+    [radialOptions],
+  );
+  const radialReady = parkingRadioWheelEnabled && radialOptions.length >= 2;
+  const radialHoverTrack = radialHoverIndex != null && radialHoverIndex < effectiveTracks.length
+    ? effectiveTracks[radialHoverIndex]
+    : null;
 
   // Ensure the player UI anchors to the viewport instead of animated containers.
   useEffect(() => {
@@ -60,6 +106,220 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
       }
     };
   }, []);
+
+  // Detect desktop layouts (fine pointer + large viewport) for keyboard shortcut eligibility.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    const pointerQuery = window.matchMedia("(pointer: fine)");
+    const update = () => setIsDesktopViewport(desktopQuery.matches && pointerQuery.matches);
+    const add = (mq: MediaQueryList) => {
+      if (typeof mq.addEventListener === "function") {
+        mq.addEventListener("change", update);
+      } else if (typeof mq.addListener === "function") {
+        mq.addListener(update);
+      }
+    };
+    const remove = (mq: MediaQueryList) => {
+      if (typeof mq.removeEventListener === "function") {
+        mq.removeEventListener("change", update);
+      } else if (typeof mq.removeListener === "function") {
+        mq.removeListener(update);
+      }
+    };
+    update();
+    add(desktopQuery);
+    add(pointerQuery);
+    return () => {
+      remove(desktopQuery);
+      remove(pointerQuery);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!radialReady) {
+      setRadialOpen(false);
+      setRadialHoverIndex(null);
+      radialSelectionRef.current = null;
+    }
+  }, [radialReady]);
+
+  useEffect(() => {
+    radialActiveRef.current = radialOpen;
+  }, [radialOpen]);
+
+  useEffect(() => {
+    if (!radialOpen || !parkingRadioWheelEnabled) {
+      radialHoverSoundRef.current = null;
+      return;
+    }
+    if (radialHoverIndex == null) {
+      radialHoverSoundRef.current = null;
+      return;
+    }
+    if (radialHoverSoundRef.current === radialHoverIndex) {
+      return;
+    }
+    radialHoverSoundRef.current = radialHoverIndex;
+    playSfx("/radio_select.mp3", 0.5);
+  }, [radialHoverIndex, radialOpen, parkingRadioWheelEnabled]);
+
+  useEffect(() => {
+    if (!parkingRadioWheelEnabled) {
+      emitParkingRadioWheelEvent({ slowMo: false });
+      return;
+    }
+    emitParkingRadioWheelEvent({ slowMo: radialOpen });
+    return () => {
+      emitParkingRadioWheelEvent({ slowMo: false });
+    };
+  }, [parkingRadioWheelEnabled, radialOpen]);
+
+  const updateRadialSelection = useCallback((clientX: number, clientY: number) => {
+    if (!radialOpen || !radialOptions.length) {
+      setRadialHoverIndex(null);
+      radialSelectionRef.current = null;
+      return;
+    }
+    const dx = clientX - radialCenterRef.current.x;
+    const dy = clientY - radialCenterRef.current.y;
+    const distance = Math.sqrt((dx * dx) + (dy * dy));
+    if (distance < RADIAL_MIN_DRAG_DISTANCE) {
+      setRadialHoverIndex(null);
+      radialSelectionRef.current = null;
+      return;
+    }
+    const angle = Math.atan2(dy, dx);
+    const normalized = (angle + TWO_PI) % TWO_PI;
+    const adjusted = (normalized + (Math.PI / 2)) % TWO_PI;
+    const segmentAngle = TWO_PI / radialOptions.length;
+    let rawIndex = Math.floor(adjusted / segmentAngle);
+    if (rawIndex >= radialOptions.length) {
+      rawIndex = radialOptions.length - 1;
+    }
+    const option = radialOptions[rawIndex];
+    if (!option) {
+      setRadialHoverIndex(null);
+      radialSelectionRef.current = null;
+      return;
+    }
+    setRadialHoverIndex(option.index);
+    radialSelectionRef.current = option.index;
+  }, [radialOpen, radialOptions]);
+
+  useEffect(() => {
+    if (!radialOpen || !radialReady) {
+      return;
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      updateRadialSelection(event.clientX, event.clientY);
+    };
+    const resetSelection = () => {
+      setRadialHoverIndex(null);
+      radialSelectionRef.current = null;
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("mouseleave", resetSelection);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("mouseleave", resetSelection);
+    };
+  }, [radialOpen, radialReady, updateRadialSelection]);
+
+  useEffect(() => {
+    if (!radialReady) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (typeof event.key !== "string" || event.key.toLowerCase() !== "r") {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+          return;
+        }
+      }
+      if (event.repeat || radialActiveRef.current) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      radialCenterRef.current = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
+      radialSelectionRef.current = null;
+      setRadialHoverIndex(null);
+      radialActiveRef.current = true;
+      setRadialOpen(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (typeof event.key !== "string" || event.key.toLowerCase() !== "r") {
+        return;
+      }
+      if (!radialActiveRef.current) {
+        return;
+      }
+      event.preventDefault();
+      radialActiveRef.current = false;
+      setRadialOpen(false);
+      const choice = radialSelectionRef.current;
+      radialSelectionRef.current = null;
+      setRadialHoverIndex(null);
+      if (choice == null || choice < 0 || choice >= effectiveTracks.length) {
+        return;
+      }
+      setIdx((currentIdx) => {
+        if (currentIdx === choice) {
+          const audio = audioRef.current;
+          if (audio) {
+            autoPlayRef.current = true;
+            audio.currentTime = 0;
+            void audio.play().catch(() => {});
+          }
+          return currentIdx;
+        }
+        autoPlayRef.current = true;
+        return choice;
+      });
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [radialReady, effectiveTracks.length, setIdx]);
+
+  useEffect(() => {
+    if (!radialOpen) {
+      return;
+    }
+    const handleBlur = () => {
+      radialActiveRef.current = false;
+      setRadialOpen(false);
+      setRadialHoverIndex(null);
+      radialSelectionRef.current = null;
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [radialOpen]);
+
+  useEffect(() => {
+    if (radialHoverIndex != null && radialHoverIndex >= effectiveTracks.length) {
+      setRadialHoverIndex(null);
+    }
+    if (radialSelectionRef.current != null && radialSelectionRef.current >= effectiveTracks.length) {
+      radialSelectionRef.current = null;
+    }
+  }, [effectiveTracks.length, radialHoverIndex]);
 
   // Load stored prefs once on mount to avoid hydration mismatches.
   useEffect(() => {
@@ -90,9 +350,6 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     } catch {}
   }, [volume, muted, loop, prefsLoaded]);
 
-  // Resolve playlist (API fallback)
-  const effectiveTracks = useMemo(() => (playlist?.length ? playlist : (tracks.length ? tracks : DEFAULT_PLAYLIST)), [playlist, tracks]);
-  const current = useMemo(() => effectiveTracks[Math.max(0, Math.min(idx, effectiveTracks.length - 1))], [effectiveTracks, idx]);
   // Keep a ref of current src for first-interaction unlock handler
   const currentSrcRef = useRef<string | undefined>(undefined);
   useEffect(() => { currentSrcRef.current = current?.src; }, [current?.src]);
@@ -101,7 +358,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   useEffect(() => {
     if (playlist?.length) return;
     let cancelled = false;
-    const endpoint = pathname?.startsWith("/learn/parking") ? "/api/car-radio" : "/api/audio";
+    const endpoint = isParkingRoute ? "/api/car-radio" : "/api/audio";
     (async () => {
       try {
         const res = await fetch(endpoint, { cache: "no-store" });
@@ -120,7 +377,7 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [playlist, pathname]);
+  }, [playlist, isParkingRoute]);
 
   // Keep track count in a ref for event handlers
   const lenRef = useRef(1);
@@ -343,72 +600,162 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
   const handleVolume = (v: number) => setVolume(Math.max(0, Math.min(1, v)));
 
   const isOpen = hoverDisc || hoverPanel;
+  const radialArcDegrees = radialOptions.length ? 360 / radialOptions.length : 0;
+  const radialBackgroundStyle = useMemo(() => {
+    if (!radialOptions.length) {
+      return { background: 'radial-gradient(circle at center, rgba(8,47,73,0.85), rgba(2,6,23,0.95))' };
+    }
+    const total = radialOptions.length;
+    const segment = 360 / total;
+    const segments = radialOptions.map((option, idx) => {
+      const start = idx * segment;
+      const end = start + segment;
+      const baseColor = radialOptionColors[idx] ?? computeRadialShade(idx, total);
+      const color = option.index === radialHoverIndex
+        ? computeRadialShade(idx, total, true)
+        : baseColor;
+      return `${color} ${start}deg ${end}deg`;
+    }).join(', ');
+    return {
+      background: `conic-gradient(from -90deg, ${segments})`,
+    };
+  }, [radialOptions, radialOptionColors, radialHoverIndex]);
 
   const playerMarkup = (
-    <div
-      className="fixed bottom-4 right-4 z-50 select-none"
-      onMouseLeave={() => { setHoverDisc(false); setHoverPanel(false); }}
-    >
-  <div className={`flex items-center gap-3 rounded-2xl bg-black/50 p-2 text-white ring-1 ring-white/20 backdrop-blur-md transition-all duration-300 ease-out`}>
-        {/* Disc / Play-Pause */}
-        <button
-          onClick={handleToggle}
-          onMouseEnter={() => setHoverDisc(true)}
-          onMouseLeave={() => setHoverDisc(false)}
-          onFocus={() => setHoverDisc(true)}
-          onBlur={() => setHoverDisc(false)}
-          aria-label={playing ? "Pause" : "Play"}
-          className={`relative grid h-12 w-12 place-items-center rounded-full ${playing ? "bg-sky-600/90" : "bg-black/40"} ring-1 ring-white/20`}
-          title={current?.title}
-        >
-          <div className={`relative h-8 w-8 rounded-full border-[3px] border-white/70 bg-gradient-to-br from-white/60 to-white/20 shadow-inner ${playing ? "motion-safe:animate-[spinSlow_6s_linear_infinite]" : ""}`}>
-            <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60" />
-            <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 30%, rgba(0,0,0,.06) 0 40%, transparent 41%)" }} />
-          </div>
-          <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ${playing ? "bg-green-400" : "bg-white/50"}`} />
-        </button>
+    <>
+      <div
+        className="fixed bottom-4 right-4 z-50 select-none"
+        onMouseLeave={() => { setHoverDisc(false); setHoverPanel(false); }}
+      >
+        <div className="flex items-center gap-3 rounded-2xl bg-black/50 p-2 text-white ring-1 ring-white/20 backdrop-blur-md transition-all duration-300 ease-out">
+          {/* Disc / Play-Pause */}
+          <button
+            onClick={handleToggle}
+            onMouseEnter={() => setHoverDisc(true)}
+            onMouseLeave={() => setHoverDisc(false)}
+            onFocus={() => setHoverDisc(true)}
+            onBlur={() => setHoverDisc(false)}
+            aria-label={playing ? "Pause" : "Play"}
+            className={`relative grid h-12 w-12 place-items-center rounded-full ${playing ? "bg-sky-600/90" : "bg-black/40"} ring-1 ring-white/20`}
+            title={current?.title}
+          >
+            <div className={`relative h-8 w-8 rounded-full border-[3px] border-white/70 bg-gradient-to-br from-white/60 to-white/20 shadow-inner ${playing ? "motion-safe:animate-[spinSlow_6s_linear_infinite]" : ""}`}>
+              <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60" />
+              <div className="absolute inset-0 rounded-full" style={{ background: "radial-gradient(circle at 30% 30%, rgba(0,0,0,.06) 0 40%, transparent 41%)" }} />
+            </div>
+            <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ${playing ? "bg-green-400" : "bg-white/50"}`} />
+          </button>
 
-        {/* Expanded panel (animated in/out) */}
-        <div
-          className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
-            isOpen ? "opacity-100 translate-x-0 scale-100 max-w-[320px] w-auto pointer-events-auto" : "opacity-0 -translate-x-1 scale-95 max-w-0 w-0 pointer-events-none"
-          }`}
-          onMouseEnter={() => setHoverPanel(true)}
-          onMouseLeave={() => setHoverPanel(false)}
-          onFocus={() => setHoverPanel(true)}
-          onBlur={() => setHoverPanel(false)}
-          aria-hidden={!isOpen}
-        >
-          <div className="hidden max-w-[180px] truncate text-xs opacity-90 sm:block" title={current?.title}>
-            {current?.title}
-            {error ? " (missing)" : ""}
-          </div>
-          <IconButton label="Previous" onClick={handlePrev}><Icon name="prev" /></IconButton>
-          <IconButton label={playing ? "Pause" : "Play"} onClick={handleToggle} bigger>
-            {playing ? <Icon name="pause" /> : <Icon name="play" />}
-          </IconButton>
-          <IconButton label="Next" onClick={handleNext}><Icon name="next" /></IconButton>
-          <div className="ml-1 hidden items-center gap-2 sm:flex">
-            <IconButton label={muted ? "Unmute" : "Mute"} onClick={handleMute}>
-              <Icon name={muted ? "mute" : "volume"} />
+          {parkingRadioWheelEnabled && (
+            <div className="hidden flex-col items-center text-[10px] font-semibold uppercase tracking-[0.45em] text-white/60 lg:flex">
+              <span className="rounded-full border border-white/40 px-2 py-0.5 text-[11px] leading-none">Hold R</span>
+              <span className="mt-1 text-[9px] tracking-[0.5em]">Radio Wheel</span>
+            </div>
+          )}
+
+          {/* Expanded panel (animated in/out) */}
+          <div
+            className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+              isOpen ? "opacity-100 translate-x-0 scale-100 max-w-[320px] w-auto pointer-events-auto" : "opacity-0 -translate-x-1 scale-95 max-w-0 w-0 pointer-events-none"
+            }`}
+            onMouseEnter={() => setHoverPanel(true)}
+            onMouseLeave={() => setHoverPanel(false)}
+            onFocus={() => setHoverPanel(true)}
+            onBlur={() => setHoverPanel(false)}
+            aria-hidden={!isOpen}
+          >
+            <div className="hidden max-w-[180px] truncate text-xs opacity-90 sm:block" title={current?.title}>
+              {current?.title}
+              {error ? " (missing)" : ""}
+            </div>
+            <IconButton label="Previous" onClick={handlePrev}>
+              <Icon name="prev" />
             </IconButton>
-            <input
-              aria-label="Volume"
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(volume * 100)}
-              onChange={(e) => handleVolume(Number(e.target.value) / 100)}
-              onInput={(e) => handleVolume(Number((e.target as HTMLInputElement).value) / 100)}
-              className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/25 accent-sky-500"
-            />
-            <IconButton label={loop ? "Disable loop" : "Enable loop"} onClick={handleLoop}>
-              <Icon name={loop ? "loopOn" : "loop"} />
+            <IconButton label={playing ? "Pause" : "Play"} onClick={handleToggle} bigger>
+              {playing ? <Icon name="pause" /> : <Icon name="play" />}
             </IconButton>
+            <IconButton label="Next" onClick={handleNext}>
+              <Icon name="next" />
+            </IconButton>
+            <div className="ml-1 hidden items-center gap-2 sm:flex">
+              <IconButton label={muted ? "Unmute" : "Mute"} onClick={handleMute}>
+                <Icon name={muted ? "mute" : "volume"} />
+              </IconButton>
+              <input
+                aria-label="Volume"
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(volume * 100)}
+                onChange={(e) => handleVolume(Number(e.target.value) / 100)}
+                onInput={(e) => handleVolume(Number((e.target as HTMLInputElement).value) / 100)}
+                className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-white/25 accent-sky-500"
+              />
+              <IconButton label={loop ? "Disable loop" : "Enable loop"} onClick={handleLoop}>
+                <Icon name={loop ? "loopOn" : "loop"} />
+              </IconButton>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      {radialReady && (
+        <div
+          aria-hidden={!radialOpen}
+          className={`pointer-events-none fixed inset-0 z-[999] flex items-center justify-center transition duration-150 ease-out ${radialOpen ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
+          style={{ transitionProperty: "opacity, transform" }}
+        >
+          <div className="relative h-[26rem] w-[26rem] max-h-[90vh] max-w-[90vw]">
+            <div className="absolute inset-0 rounded-full border border-white/15 bg-slate-950/80 shadow-[0_35px_65px_rgba(2,6,23,0.65)] backdrop-blur-xl" />
+            <div className="absolute inset-6 rounded-full border border-white/10 opacity-95" style={radialBackgroundStyle} />
+            <div className="absolute left-1/2 top-1/2 flex w-40 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center text-white">
+              <div className="text-[10px] uppercase tracking-[0.4em] text-white/60">Garage Radio</div>
+              <div className="mt-1 text-xs text-white/70">Hold R + move</div>
+              {radialHoverTrack ? (
+                <div className="mt-3 text-sm font-semibold leading-snug text-sky-100">
+                  {radialHoverTrack.title}
+                </div>
+              ) : (
+                <div className="mt-3 text-[11px] text-white/55">Select a station</div>
+              )}
+              <div className="mt-2 text-[10px] uppercase tracking-[0.3em] text-white/35">Release to play</div>
+            </div>
+            {radialOptions.map((option, idx) => {
+              const rotation = (idx * radialArcDegrees) - 90;
+              const selected = option.index === radialHoverIndex;
+              const baseColor = radialOptionColors[idx] ?? computeRadialShade(idx, radialOptions.length);
+              const accentColor = selected
+                ? computeRadialShade(idx, radialOptions.length, true)
+                : baseColor;
+              return (
+                <div
+                  key={`${option.index}-${option.track.title}`}
+                  className="absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 origin-center text-center"
+                  style={{ transform: `rotate(${rotation}deg) translateY(-125px) rotate(${-rotation}deg)` }}
+                >
+                  <div
+                    className="mx-auto mb-2 h-2.5 w-2.5 rounded-full"
+                    style={{
+                      background: accentColor,
+                      boxShadow: selected ? `0 0 22px ${accentColor}` : undefined,
+                    }}
+                  />
+                  <div
+                    className="mx-auto max-w-[7rem] text-[10px] font-semibold uppercase tracking-[0.35em] leading-tight"
+                    style={{
+                      color: selected ? "#fefefe" : "#e7f1ff",
+                      textShadow: "0 4px 12px rgba(2,6,23,0.9)",
+                      opacity: selected ? 1 : 0.85,
+                    }}
+                  >
+                    {option.track.title}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
   );
 
   if (!portalContainer) {
