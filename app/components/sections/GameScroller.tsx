@@ -48,13 +48,13 @@ const GAMES: Game[] = [
     cover: "/images/game-covers/graph-quest.svg",
   },
   {
-    id: "dp-dungeon",
-    title: "DP Dungeon",
-    desc: "Coming soon.",
+    id: "binary-tree",
+    title: "Binary Skill Tree",
+    desc: "Build a binary tree, explore traversals, then navigate it using sign-based clues to maximize your score.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
     track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
-    cover: "/images/game-covers/dp-dungeon.svg",
+    cover: "/images/game-covers/binary-skill-tree.png",
   },
   {
     id: "tree-trek",
@@ -87,7 +87,7 @@ export default function GameScroller() {
   // Cleanup on unmount (stop game audio only; let global resume naturally on landing page)
   useEffect(() => {
     return () => {
-      try { getGameAudio().pause(); } catch {}
+      try { getGameAudio().pause(); } catch { }
       const ga = getGlobalAudio();
       if (globalAudioPlayHandlerRef.current) {
         ga.removeEventListener("play", globalAudioPlayHandlerRef.current);
@@ -106,23 +106,23 @@ export default function GameScroller() {
   const GAME_VOL_KEY = "algohub_game_volume_v1";
   const [gameVolume, setGameVolume] = useState<number>(() => {
     if (typeof window === "undefined") return 0.8;
-    try { const raw = localStorage.getItem(GAME_VOL_KEY); if (raw) return Math.max(0, Math.min(1, parseFloat(raw))); } catch {}
+    try { const raw = localStorage.getItem(GAME_VOL_KEY); if (raw) return Math.max(0, Math.min(1, parseFloat(raw))); } catch { }
     return 0.8;
   });
-  useEffect(() => { try { localStorage.setItem(GAME_VOL_KEY, String(gameVolume)); } catch {} }, [gameVolume]);
-  useEffect(() => { try { const a = getGameAudio(); a.volume = gameVolume; } catch {} }, [gameVolume]);
+  useEffect(() => { try { localStorage.setItem(GAME_VOL_KEY, String(gameVolume)); } catch { } }, [gameVolume]);
+  useEffect(() => { try { const a = getGameAudio(); a.volume = gameVolume; } catch { } }, [gameVolume]);
 
   const ensureGlobalPlayerPaused = () => {
     const ga = getGlobalAudio();
     if (!ga.paused) {
       pausedPlayerPrevRef.current = true;
-      try { ga.pause(); } catch {}
+      try { ga.pause(); } catch { }
     }
     if (!globalAudioPlayHandlerRef.current) {
       const handler: EventListener = () => {
         const a = getGameAudio();
         if (!a.paused) {
-          try { ga.pause(); } catch {}
+          try { ga.pause(); } catch { }
         }
       };
       ga.addEventListener("play", handler);
@@ -136,21 +136,21 @@ export default function GameScroller() {
     if (pathname.startsWith("/learn")) {
       const firstIdx = items.findIndex(g => g.id === "sorting-sprint");
       if (firstIdx >= 0) {
-        try { getGlobalAudio().pause(); } catch {}
+        try { getGlobalAudio().pause(); } catch { }
         ensureGlobalPlayerPaused();
         const a = getGameAudio();
         a.loop = true;
         a.src = items[firstIdx].track.src;
         a.currentTime = 0;
         a.play().then(() => setLastPlayed(firstIdx)).catch(() => {
-          const retry = () => { a.play().catch(() => {}); window.removeEventListener("pointerdown", retry); };
+          const retry = () => { a.play().catch(() => { }); window.removeEventListener("pointerdown", retry); };
           window.addEventListener("pointerdown", retry, { once: true } as AddEventListenerOptions);
         });
       }
     } else if (pathname === "/") {
       const ga = getGlobalAudio();
-      try { ga.play().catch(() => {}); } catch {}
-      try { getGameAudio().pause(); } catch {}
+      try { ga.play().catch(() => { }); } catch { }
+      try { getGameAudio().pause(); } catch { }
     }
   }, [pathname, items]);
   const playForIndex = (idx: number, opts?: { fromNav?: boolean }) => {
@@ -168,8 +168,8 @@ export default function GameScroller() {
     a.volume = gameVolume;
     a.src = g.track.src;
     a.currentTime = 0;
-    a.play().catch(() => {});
-  setLastPlayed(idx);
+    a.play().catch(() => { });
+    setLastPlayed(idx);
   };
 
   // Handle pausing current slide's music when leaving and resuming when returning
@@ -191,11 +191,11 @@ export default function GameScroller() {
         a.volume = gameVolume;
         a.src = items[nextIdx].track.src;
         a.currentTime = resumeTime || 0;
-        a.play().catch(() => {});
+        a.play().catch(() => { });
         setLastPlayed(nextIdx);
         resumeTimesRef.current.delete(nextIdx);
       }
-    } catch {}
+    } catch { }
   };
 
   const resolveIndex = (target: number) => {
@@ -232,7 +232,7 @@ export default function GameScroller() {
   const activeGame = items[active] ?? items[0];
   const handleToggleLayout = (mode: "simplified" | "gamified") => {
     if (layoutMode === mode) return;
-    try { playSfx("/button_click.mp3", 0.4); } catch {}
+    try { playSfx("/button_click.mp3", 0.4); } catch { }
     setLayoutMode(mode);
   };
 
@@ -289,9 +289,8 @@ export default function GameScroller() {
                 <button
                   key={mode}
                   onClick={() => handleToggleLayout(mode)}
-                  className={`inline-flex w-full items-center justify-between rounded-2xl px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.25em] transition ${
-                    layoutMode === mode ? "bg-white text-black" : "bg-white/10 text-white/75 hover:bg-white/20"
-                  }`}
+                  className={`inline-flex w-full items-center justify-between rounded-2xl px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.25em] transition ${layoutMode === mode ? "bg-white text-black" : "bg-white/10 text-white/75 hover:bg-white/20"
+                    }`}
                   aria-pressed={layoutMode === mode}
                 >
                   {mode === "simplified" ? "Simplified" : "Gamified"}
@@ -353,7 +352,7 @@ export default function GameScroller() {
                   </div>
                   <div className="mt-5 flex items-center justify-center">
                     <button
-                      onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch {} ; playForIndex(i); }}
+                      onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch { }; playForIndex(i); }}
                       className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-5 py-2.5 text-base font-extrabold tracking-wide text-white shadow-[0_8px_0_0_rgb(2,132,199)] ring-1 ring-white/20 transition-all duration-200 hover:translate-y-[1px] hover:shadow-[0_6px_0_0_rgb(2,132,199)] hover:scale-[1.02] active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(2,132,199)]"
                       aria-label={`Play ${g.title}`}
                     >
@@ -411,9 +410,8 @@ export default function GameScroller() {
                     }
                   }}
                   aria-current={idx === active}
-                  className={`absolute left-1/2 top-1/2 w-[70vw] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-white/20 bg-white/10 p-6 text-left backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
-                    idx === active ? "shadow-[0_25px_60px_rgba(15,23,42,0.55)] ring-2 ring-white/70" : "shadow-[0_15px_35px_rgba(15,23,42,0.35)]"
-                  }`}
+                  className={`absolute left-1/2 top-1/2 w-[70vw] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-white/20 bg-white/10 p-6 text-left backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${idx === active ? "shadow-[0_25px_60px_rgba(15,23,42,0.55)] ring-2 ring-white/70" : "shadow-[0_15px_35px_rgba(15,23,42,0.35)]"
+                    }`}
                   style={{
                     transform: `translate(calc(-50% + ${translate}px), -50%) scale(${scale})`,
                     opacity,
@@ -454,7 +452,7 @@ export default function GameScroller() {
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
-                onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch {} ; playForIndex(active); }}
+                onClick={() => { try { playSfx("/button_click.mp3", 0.6); } catch { }; playForIndex(active); }}
                 className="inline-flex items-center gap-2 rounded-2xl bg-white/90 px-5 py-2.5 text-base font-extrabold tracking-wide text-black shadow-[0_8px_0_0_rgba(255,255,255,0.4)] transition hover:-translate-y-0.5"
                 aria-label={`Play ${activeGame.title}`}
               >
@@ -472,23 +470,23 @@ export default function GameScroller() {
       {!isGamified && (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 flex items-center justify-center gap-4 transition-all sm:bottom-8">
           <button
-            onClick={() => { try { playSfx("/previous.mp3", 0.65); } catch {}; go(-1); }}
+            onClick={() => { try { playSfx("/previous.mp3", 0.65); } catch { }; go(-1); }}
             disabled={active === 0}
             className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
             aria-label="Previous game"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" /></svg>
           </button>
           <div className="pointer-events-auto select-none rounded-full bg-black/40 px-3 py-1 text-sm font-semibold ring-1 ring-white/20 text-white/90">
             {active + 1} / {items.length}
           </div>
           <button
-            onClick={() => { try { playSfx("/next.mp3", 0.65); } catch {}; go(1); }}
+            onClick={() => { try { playSfx("/next.mp3", 0.65); } catch { }; go(1); }}
             disabled={active === items.length - 1}
             className="pointer-events-auto inline-grid h-12 w-12 place-items-center rounded-full bg-black/50 text-white ring-1 ring-white/20 backdrop-blur-md transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/60"
             aria-label="Next game"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z" /></svg>
           </button>
         </div>
       )}
@@ -500,9 +498,8 @@ export default function GameScroller() {
             <button
               key={`dot-g-${i}`}
               onClick={() => goTo(i)}
-              className={`pointer-events-auto h-3.5 w-3.5 rounded-full ring-1 ring-white/25 transition ${
-                i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
-              }`}
+              className={`pointer-events-auto h-3.5 w-3.5 rounded-full ring-1 ring-white/25 transition ${i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
+                }`}
               aria-label={`Go to game ${i + 1}`}
             />
           ))}
@@ -513,9 +510,8 @@ export default function GameScroller() {
             <button
               key={`dot-s-${i}`}
               onClick={() => goTo(i)}
-              className={`pointer-events-auto h-2.5 w-2.5 rounded-full ring-1 ring-white/25 transition ${
-                i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
-              }`}
+              className={`pointer-events-auto h-2.5 w-2.5 rounded-full ring-1 ring-white/25 transition ${i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
+                }`}
               aria-label={`Go to game ${i + 1}`}
             />
           ))}
@@ -545,10 +541,10 @@ export default function GameScroller() {
             try {
               localStorage.setItem(LICENSE_STORAGE_KEY, data.licenseCardPath);
               window.dispatchEvent(new CustomEvent(LICENSE_EVENT, { detail: data.licenseCardPath }));
-            } catch {}
+            } catch { }
           }
           // Capture a center point for iris
-          try { setIrisPoint(window.innerWidth / 2, window.innerHeight / 2); } catch {}
+          try { setIrisPoint(window.innerWidth / 2, window.innerHeight / 2); } catch { }
           const beginParkingTransfer = (loaderVisible: boolean) => {
             if (!loaderVisible) {
               showGlobalLoader();
@@ -561,7 +557,7 @@ export default function GameScroller() {
               a.volume = gameVolume;
               a.src = items[firstIdx].track.src;
               a.currentTime = 0;
-              a.play().catch(() => {});
+              a.play().catch(() => { });
               setLastPlayed(firstIdx);
             }
             (async () => {
@@ -582,7 +578,7 @@ export default function GameScroller() {
               clearTimeout(loaderDelayRef.current);
             }
             loaderDelayRef.current = window.setTimeout(() => {
-              try { router.push("/learn/parking"); } catch {}
+              try { router.push("/learn/parking"); } catch { }
               loaderDelayRef.current = null;
             }, GLOBAL_LOADER_MIN_MS);
           };

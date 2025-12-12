@@ -29,13 +29,13 @@ const GAMES: Game[] = [
     cover: "/images/game-covers/graph-quest.svg",
   },
   {
-    id: "dp-dungeon",
-    title: "DP Dungeon",
-    desc: "Coming soon.",
+    id: "binary-tree",
+    title: "Binary Skill Tree",
+    desc: "Build a binary tree, explore traversals, then navigate it using sign-based clues to maximize your score.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
     track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
-    cover: "/images/game-covers/dp-dungeon.svg",
+    cover: "/images/game-covers/binary-skill-tree.png",
   },
   {
     id: "tree-trek",
