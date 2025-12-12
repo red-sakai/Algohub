@@ -47,7 +47,7 @@ const GAMES: Game[] = [
   {
     id: "dungeon-explorer",
     title: "Dungeon Explorer",
-    desc: "Navigate through a maze-like dungeon and collect all the coins using arrow keys or WASD!",
+    desc: "Fight through a dark dungeon with customizable enemy levels! Choose your character, set enemy levels (10-11), and battle your way through. Level up by defeating enemies of your level.",
     colorFrom: "from-purple-600",
     colorTo: "to-indigo-600",
     track: {
@@ -219,10 +219,7 @@ export default function GameScroller() {
       try {
         setIrisPoint(window.innerWidth / 2, window.innerHeight / 2);
       } catch {}
-      const beginDungeonTransfer = (loaderVisible: boolean) => {
-        if (!loaderVisible) {
-          showGlobalLoader();
-        }
+      const beginDungeonTransfer = () => {
         const a = getGameAudio();
         a.loop = true;
         a.volume = gameVolume;
@@ -230,26 +227,20 @@ export default function GameScroller() {
         a.currentTime = 0;
         a.play().catch(() => {});
         setLastPlayed(idx);
-        if (loaderDelayRef.current !== null) {
-          clearTimeout(loaderDelayRef.current);
-        }
-        loaderDelayRef.current = window.setTimeout(() => {
-          try {
-            router.push("/learn/dungeon");
-          } catch {}
-          loaderDelayRef.current = null;
-        }, GLOBAL_LOADER_MIN_MS);
+        try {
+          router.push("/learn/dungeon");
+        } catch {}
       };
       const controller = irisRef.current;
       if (controller) {
         controller.start({
           durationMs: 650,
           mode: "close",
-          showLoaderOnClose: true,
-          onDone: () => beginDungeonTransfer(true),
+          showLoaderOnClose: false,
+          onDone: () => beginDungeonTransfer(),
         });
       } else {
-        beginDungeonTransfer(false);
+        beginDungeonTransfer();
       }
       return;
     }

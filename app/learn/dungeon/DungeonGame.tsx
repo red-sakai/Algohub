@@ -1513,10 +1513,11 @@ class DungeonScene extends Phaser.Scene {
     const shadowOffset = (this.FRAME_HEIGHT * this.SPRITE_SCALE) / 2 - 10;
 
     // Use provided enemy levels, or fallback to default order
+    // Fallback array has 10 elements to support both map10 (9 enemies) and map11 (10 enemies)
     const enemyLevelsByOrder =
       this.enemyLevels.length > 0
         ? this.enemyLevels
-        : [1, 6, 5, 2, 7, 4, 3, 8, 9];
+        : [1, 6, 5, 2, 7, 4, 3, 8, 9, 10];
     let enemyIndex = 0;
     this.nodes.forEach((node: { x: number; y: number }, index: number) => {
       // Skip the first node (player spawn)
@@ -1931,7 +1932,7 @@ class DungeonScene extends Phaser.Scene {
 
     // Redraw the darkness overlay to cover the entire viewport
     this.darknessOverlay.clear();
-    this.darknessOverlay.fillStyle(0x000000, 0.2); // Dark overlay
+    this.darknessOverlay.fillStyle(0x000000, 1); // Dark overlay
     this.darknessOverlay.fillRect(0, 0, width, height);
 
     // Get player position relative to camera
