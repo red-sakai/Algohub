@@ -1,0 +1,53 @@
+<svg width="400" height="260" viewBox="0 0 400 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="260" fill="url(#dungeonGradient)"/>
+  
+  <!-- Define gradient -->
+  <defs>
+    <linearGradient id="dungeonGradient" x1="0" y1="0" x2="400" y2="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Dungeon floor tiles -->
+  <rect x="40" y="80" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="90" y="80" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="140" y="80" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="190" y="80" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="240" y="80" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="290" y="80" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="340" y="80" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  
+  <rect x="40" y="130" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="90" y="130" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="140" y="130" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="190" y="130" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="240" y="130" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="290" y="130" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="340" y="130" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  
+  <rect x="40" y="180" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="90" y="180" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="140" y="180" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="190" y="180" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="240" y="180" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  <rect x="290" y="180" width="50" height="50" fill="#1a1a2e" opacity="0.5"/>
+  <rect x="340" y="180" width="50" height="50" fill="#16213e" opacity="0.5"/>
+  
+  <!-- Walls -->
+  <rect x="150" y="100" width="15" height="120" fill="#9333ea" stroke="#a855f7" stroke-width="2"/>
+  <rect x="280" y="80" width="15" height="80" fill="#9333ea" stroke="#a855f7" stroke-width="2"/>
+  
+  <!-- Player (knight) -->
+  <rect x="95" y="140" width="32" height="32" fill="#4ade80" stroke="#22c55e" stroke-width="3" rx="2"/>
+  
+  <!-- Coins -->
+  <circle cx="220" cy="110" r="10" fill="#fbbf24" stroke="#f59e0b" stroke-width="2"/>
+  <circle cx="330" cy="150" r="10" fill="#fbbf24" stroke="#f59e0b" stroke-width="2"/>
+  <circle cx="70" cy="200" r="10" fill="#fbbf24" stroke="#f59e0b" stroke-width="2"/>
+  
+  <!-- Title -->
+  <text x="200" y="40" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">DUNGEON</text>
+  <text x="200" y="245" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#fbbf24" text-anchor="middle">EXPLORER</text>
+</svg>
