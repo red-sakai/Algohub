@@ -34,6 +34,10 @@ const computeRadialShade = (index: number, total: number, highlight = false) => 
 };
 
 type Track = { title: string; src: string };
+type RadialOption = { track: Track; index: number; isOff?: boolean };
+
+const RADIO_OFF_OPTION_INDEX = -1;
+const RADIO_OFF_TRACK: Track = { title: "Radio Off", src: "" };
 
 const STORE = "algohub_player_prefs_v1";
 
@@ -77,18 +81,30 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
     () => effectiveTracks[Math.max(0, Math.min(idx, effectiveTracks.length - 1))],
     [effectiveTracks, idx],
   );
-  const radialOptions = useMemo(
-    () => effectiveTracks.map((track, optionIndex) => ({ track, index: optionIndex })).slice(0, PARKING_RADIO_MAX_OPTIONS),
-    [effectiveTracks],
-  );
+  const radialOptions = useMemo<RadialOption[]>(() => {
+    const maxTrackSlots = Math.max(1, PARKING_RADIO_MAX_OPTIONS - 1);
+    const trackOptions = effectiveTracks
+      .map((track, optionIndex) => ({ track, index: optionIndex }))
+      .slice(0, maxTrackSlots);
+    if (!trackOptions.length) {
+      return trackOptions;
+    }
+    return [...trackOptions, { track: RADIO_OFF_TRACK, index: RADIO_OFF_OPTION_INDEX, isOff: true }];
+  }, [effectiveTracks]);
   const radialOptionColors = useMemo(
-    () => radialOptions.map((_, idx) => computeRadialShade(idx, radialOptions.length)),
+    () => radialOptions.map((option, idx) => (
+      option?.isOff
+        ? "rgba(15,23,42,0.85)"
+        : computeRadialShade(idx, radialOptions.length)
+    )),
     [radialOptions],
   );
   const radialReady = parkingRadioWheelEnabled && radialOptions.length >= 2;
-  const radialHoverTrack = radialHoverIndex != null && radialHoverIndex < effectiveTracks.length
+  const radialHoverIsOff = radialHoverIndex === RADIO_OFF_OPTION_INDEX;
+  const radialHoverTrack = !radialHoverIsOff && radialHoverIndex != null && radialHoverIndex >= 0 && radialHoverIndex < effectiveTracks.length
     ? effectiveTracks[radialHoverIndex]
     : null;
+  const radialHoverLabel = radialHoverIsOff ? RADIO_OFF_TRACK.title : radialHoverTrack?.title;
 
   // Ensure the player UI anchors to the viewport instead of animated containers.
   useEffect(() => {
@@ -271,6 +287,17 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
       const choice = radialSelectionRef.current;
       radialSelectionRef.current = null;
       setRadialHoverIndex(null);
+      if (choice === RADIO_OFF_OPTION_INDEX) {
+        const audio = audioRef.current;
+        if (audio) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+        playingRef.current = false;
+        autoPlayRef.current = false;
+        setPlaying(false);
+        return;
+      }
       if (choice == null || choice < 0 || choice >= effectiveTracks.length) {
         return;
       }
@@ -601,6 +628,37 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
 
   const isOpen = hoverDisc || hoverPanel;
   const radialArcDegrees = radialOptions.length ? 360 / radialOptions.length : 0;
+  const radialSelectedSlot = useMemo(
+    () => radialOptions.findIndex((option) => option.index === radialHoverIndex),
+    [radialOptions, radialHoverIndex],
+  );
+  const radialPointerStyle = useMemo(() => {
+    const angle = radialSelectedSlot >= 0 && radialArcDegrees !== 0
+      ? (radialSelectedSlot * radialArcDegrees) + (radialArcDegrees / 2) - 90
+      : -90;
+    return {
+      opacity: radialSelectedSlot >= 0 ? 1 : 0.15,
+      transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-150px)`,
+    };
+  }, [radialSelectedSlot, radialArcDegrees]);
+  const radialSweepStyle = useMemo(() => {
+    if (radialSelectedSlot < 0 || radialArcDegrees === 0) {
+      return { opacity: 0 };
+    }
+    const segment = radialArcDegrees;
+    const start = radialSelectedSlot * segment;
+    const end = start + segment;
+    return {
+      opacity: 0.9,
+      background: `conic-gradient(from -90deg, transparent ${start}deg, rgba(14,165,233,0.08) ${start + segment * 0.2}deg, rgba(14,165,233,0.45) ${start + segment * 0.55}deg, rgba(56,189,248,0.4) ${start + segment * 0.85}deg, transparent ${end}deg)`,
+    };
+  }, [radialSelectedSlot, radialArcDegrees]);
+  const radialPulseStyle = useMemo(() => ({
+    opacity: radialHoverIndex != null ? 0.5 : 0.2,
+    transform: radialHoverIndex != null ? "scale(1.04)" : "scale(1)",
+    transition: "opacity 200ms ease, transform 200ms ease",
+  }), [radialHoverIndex]);
+  const radialTicks = useMemo(() => Array.from({ length: 32 }, (_, idx) => idx), []);
   const radialBackgroundStyle = useMemo(() => {
     if (!radialOptions.length) {
       return { background: 'radial-gradient(circle at center, rgba(8,47,73,0.85), rgba(2,6,23,0.95))' };
@@ -704,15 +762,47 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
           className={`pointer-events-none fixed inset-0 z-[999] flex items-center justify-center transition duration-150 ease-out ${radialOpen ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
           style={{ transitionProperty: "opacity, transform" }}
         >
-          <div className="relative h-[26rem] w-[26rem] max-h-[90vh] max-w-[90vw]">
+          <div className="relative h-[30rem] w-[30rem] max-h-[92vh] max-w-[95vw]">
             <div className="absolute inset-0 rounded-full border border-white/15 bg-slate-950/80 shadow-[0_35px_65px_rgba(2,6,23,0.65)] backdrop-blur-xl" />
+            <div className="absolute inset-3 rounded-full bg-sky-500/10 blur-3xl" style={radialPulseStyle} />
             <div className="absolute inset-6 rounded-full border border-white/10 opacity-95" style={radialBackgroundStyle} />
-            <div className="absolute left-1/2 top-1/2 flex w-40 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center text-white">
+            <div className="pointer-events-none absolute inset-6 rounded-full" style={radialSweepStyle} />
+            <div className="pointer-events-none absolute inset-8 rounded-full border border-dashed border-white/10" />
+            <div className="pointer-events-none absolute inset-0">
+              {radialTicks.map((tick) => {
+                const major = tick % 4 === 0;
+                const angle = (tick / radialTicks.length) * 360;
+                const translate = major ? -220 : -214;
+                return (
+                  <span
+                    key={`tick-${tick}`}
+                    className="pointer-events-none absolute left-1/2 top-1/2 origin-bottom"
+                    style={{
+                      transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(${translate}px)`,
+                      height: major ? "18px" : "9px",
+                      width: major ? "3px" : "2px",
+                      background: major
+                        ? "linear-gradient(180deg, rgba(248,250,252,0.75), rgba(14,165,233,0.5))"
+                        : "linear-gradient(180deg, rgba(255,255,255,0.35), rgba(14,165,233,0.25))",
+                      opacity: major ? 0.5 : 0.25,
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div
+              className="pointer-events-none absolute left-1/2 top-1/2 flex items-start"
+              style={radialPointerStyle}
+            >
+              <div className="h-28 w-[3px] rounded-full bg-gradient-to-b from-cyan-100 via-sky-400 to-blue-600 shadow-[0_0_22px_rgba(14,165,233,0.7)]" />
+              <div className="ml-1 h-3 w-3 rounded-full bg-cyan-50 shadow-[0_0_18px_rgba(191,219,254,0.9)]" />
+            </div>
+            <div className="absolute left-1/2 top-1/2 z-10 flex w-48 -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center text-white">
               <div className="text-[10px] uppercase tracking-[0.4em] text-white/60">Garage Radio</div>
               <div className="mt-1 text-xs text-white/70">Hold R + move</div>
-              {radialHoverTrack ? (
+              {radialHoverLabel ? (
                 <div className="mt-3 text-sm font-semibold leading-snug text-sky-100">
-                  {radialHoverTrack.title}
+                  {radialHoverLabel}
                 </div>
               ) : (
                 <div className="mt-3 text-[11px] text-white/55">Select a station</div>
@@ -722,32 +812,47 @@ export default function MusicPlayer({ playlist }: { playlist?: Track[] }) {
             {radialOptions.map((option, idx) => {
               const rotation = (idx * radialArcDegrees) - 90;
               const selected = option.index === radialHoverIndex;
+              const isOff = Boolean(option.isOff);
               const baseColor = radialOptionColors[idx] ?? computeRadialShade(idx, radialOptions.length);
-              const accentColor = selected
-                ? computeRadialShade(idx, radialOptions.length, true)
-                : baseColor;
+              const accentColor = isOff
+                ? (selected ? "rgba(248,250,252,0.9)" : baseColor)
+                : (selected
+                  ? computeRadialShade(idx, radialOptions.length, true)
+                  : baseColor);
+              const rankLabel = option.isOff ? "OFF" : `CH${String(option.index + 1).padStart(2, "0")}`;
+              const descriptor = option.isOff ? "Power Down" : "Now Tuning";
               return (
                 <div
                   key={`${option.index}-${option.track.title}`}
-                  className="absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 origin-center text-center"
-                  style={{ transform: `rotate(${rotation}deg) translateY(-125px) rotate(${-rotation}deg)` }}
+                  className="absolute left-1/2 top-1/2 w-36 -translate-x-1/2 -translate-y-1/2 origin-center text-center"
+                  style={{ transform: `rotate(${rotation}deg) translateY(-150px) rotate(${-rotation}deg)` }}
                 >
                   <div
-                    className="mx-auto mb-2 h-2.5 w-2.5 rounded-full"
+                    className={`mx-auto w-[9.5rem] rounded-2xl border px-3 py-2 text-[10px] uppercase tracking-[0.38em] shadow-[0_12px_35px_rgba(2,6,23,0.55)] ${selected ? "backdrop-blur-md" : "backdrop-blur"}`}
                     style={{
-                      background: accentColor,
-                      boxShadow: selected ? `0 0 22px ${accentColor}` : undefined,
-                    }}
-                  />
-                  <div
-                    className="mx-auto max-w-[7rem] text-[10px] font-semibold uppercase tracking-[0.35em] leading-tight"
-                    style={{
-                      color: selected ? "#fefefe" : "#e7f1ff",
-                      textShadow: "0 4px 12px rgba(2,6,23,0.9)",
-                      opacity: selected ? 1 : 0.85,
+                      background: selected ? "rgba(8,47,73,0.9)" : "rgba(2,6,23,0.75)",
+                      borderColor: selected ? accentColor : "rgba(255,255,255,0.12)",
+                      color: selected ? "#f8fbff" : "#dbeafe",
+                      boxShadow: selected ? `0 18px 45px rgba(14,165,233,0.45)` : undefined,
                     }}
                   >
-                    {option.track.title}
+                    <div className="text-[8px] font-semibold tracking-[0.55em] text-white/45">{rankLabel}</div>
+                    <div className="mt-1 text-[11px] font-semibold tracking-[0.25em] text-white">
+                      {option.track.title}
+                    </div>
+                    <div className="mt-1 text-[8px] tracking-[0.4em] text-white/40">{descriptor}</div>
+                    <div className="mt-2 h-1 w-full rounded-full bg-white/15">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: option.isOff ? "35%" : `${selected ? 100 : 45 + (idx / Math.max(1, radialOptions.length - 1)) * 35}%`,
+                          background: selected
+                            ? `linear-gradient(90deg, ${accentColor}, #fde68a)`
+                            : "rgba(255,255,255,0.5)",
+                          boxShadow: selected ? `0 0 18px ${accentColor}` : undefined,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               );
