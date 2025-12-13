@@ -244,16 +244,46 @@ export default function GameScroller() {
       }
       return;
     }
-    // For CRITICAL MIGRATION (dp-dungeon), play its track
+    // For CRITICAL MIGRATION (dp-dungeon), play its track and navigate with iris transition
     if (g.id === "dp-dungeon") {
-      ensureGlobalPlayerPaused();
-      const a = getGameAudio();
-      a.loop = true;
-      a.volume = Math.min(1, gameVolume * 5);
-      a.src = g.track.src;
-      a.currentTime = 0;
-      a.play().catch(() => {});
-      setLastPlayed(idx);
+      if (!fromNav) {
+        ensureGlobalPlayerPaused();
+        try {
+          setIrisPoint(window.innerWidth / 2, window.innerHeight / 2);
+        } catch {}
+        const beginCriticalTransfer = () => {
+          const a = getGameAudio();
+          a.loop = true;
+          a.volume = Math.min(1, gameVolume * 5);
+          a.src = g.track.src;
+          a.currentTime = 0;
+          a.play().catch(() => {});
+          setLastPlayed(idx);
+          try {
+            router.push("/learn/tower-of-hanoi");
+          } catch {}
+        };
+        const controller = irisRef.current;
+        if (controller) {
+          controller.start({
+            durationMs: 650,
+            mode: "close",
+            showLoaderOnClose: true,
+            onDone: () => beginCriticalTransfer(),
+          });
+        } else {
+          beginCriticalTransfer();
+        }
+      } else {
+        ensureGlobalPlayerPaused();
+        const a = getGameAudio();
+        a.loop = true;
+        a.volume = Math.min(1, gameVolume * 5);
+        a.src = g.track.src;
+        a.currentTime = 0;
+        a.play().catch(() => {});
+        setLastPlayed(idx);
+      }
       return;
     }
     ensureGlobalPlayerPaused();
