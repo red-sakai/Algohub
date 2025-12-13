@@ -68,11 +68,11 @@ const GAMES: Game[] = [
   {
     id: "dp-dungeon",
     title: "CRITICAL MIGRATION: Server Maintenance Night",
-    desc: "Critical Migration is a Tower of Hanoi game where players reorder priority-based processes across three server racks, demonstrating stack discipline and recursion in a data center emergency.",
+    desc: "Critical Migration is the Tower of Hanoi re-imagined as a server maintenance game, where you reorder processes to fix a corrupted stack.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
     track: { title: "Aylex - Tension Rising", src: "/audio/Aylex - Tension Rising.mp3" },
-    cover: "/images/game-covers/dp-dungeon.svg",
+    cover: "/images/game-covers/critical.png",
   },
   {
     id: "tree-trek",
@@ -249,7 +249,7 @@ export default function GameScroller() {
       ensureGlobalPlayerPaused();
       const a = getGameAudio();
       a.loop = true;
-      a.volume = gameVolume;
+      a.volume = Math.min(1, gameVolume * 5);
       a.src = g.track.src;
       a.currentTime = 0;
       a.play().catch(() => {});
@@ -347,6 +347,7 @@ export default function GameScroller() {
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {items.map((game, idx) => {
             const isStackEmQueue = game.id === "sorting-sprint";
+            const isCritical = game.id === "dp-dungeon";
             return (
               <div
                 key={`bg-${game.id}`}
@@ -365,6 +366,12 @@ export default function GameScroller() {
                     loop
                     playsInline
                     preload="auto"
+                  />
+                ) : isCritical ? (
+                  <img
+                    className="h-full w-full object-cover"
+                    src="/game-selector-bg/recursionbg.gif"
+                    alt="DP Dungeon background"
                   />
                 ) : (
                   <div
