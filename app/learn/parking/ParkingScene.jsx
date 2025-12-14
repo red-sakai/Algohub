@@ -4,13 +4,12 @@ import Image from 'next/image';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Billboard, Environment, RoundedBox, Sky, Text, useCursor, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/license/license';
 import { useMarkerController } from '@/hooks/useMarkerController';
+import { useParkingAchievements } from '@/hooks/useParkingAchievements';
+import { useParkingLicenseHandover } from '@/hooks/useParkingLicenseHandover';
+import { useParkingLicenseImage } from '@/hooks/useParkingLicenseImage';
+import { useParkingSpeedTelemetry } from '@/hooks/useParkingSpeedTelemetry';
 import { playSfx } from '@/lib/audio/sfx';
-import { getSupabaseClient } from '@/lib/supabase/client';
-import { clearStaleSupabaseSession } from '@/lib/supabase/sessionCleanup';
-import { grantAchievementBySlug } from '@/lib/supabase/achievements';
-import { subscribeToParkingRadioWheel } from '@/lib/parking/radioWheelBus';
 
 // Simple key input
 const pressed = new Set();
@@ -25,6 +24,13 @@ const setJoystickVector = (x, y) => {
   joystickVector.y = THREE.MathUtils.clamp(Number.isFinite(y) ? y : 0, -1, 1);
 };
 const getJoystickVector = () => joystickVector;
+const runSoon = (callback) => {
+  if (typeof queueMicrotask === 'function') {
+    queueMicrotask(callback);
+  } else {
+    Promise.resolve().then(callback);
+  }
+};
 const easeOutCubic = (t) => {
   const clamped = THREE.MathUtils.clamp(t, 0, 1);
   return 1 - ((1 - clamped) ** 3);
@@ -2526,48 +2532,7 @@ export default function ParkingScene({
     Object.values(COUNTDOWN_MODELS).forEach((path) => useGLTF.preload(path));
     QUEUE_CAR_MODEL_PATHS.forEach((path) => useGLTF.preload(path));
   }, []);
-  const [speed, setSpeed] = useState(0);
-  const [radioWheelEngaged, setRadioWheelEngaged] = useState(false);
   const carRef = useRef(null);
-  const cameraBlurStrength = useMemo(() => {
-    const absSpeed = Math.abs(speed);
-    if (absSpeed <= CAMERA_BLUR_SPEED_THRESHOLD) {
-      return 0;
-    }
-    const span = Math.max(0.001, CAR_MAX_FORWARD_SPEED - CAMERA_BLUR_SPEED_THRESHOLD);
-    return THREE.MathUtils.clamp((absSpeed - CAMERA_BLUR_SPEED_THRESHOLD) / span, 0, 1);
-  }, [speed]);
-  const cameraBlurStyle = useMemo(() => {
-    if (cameraBlurStrength <= 0) {
-      return { opacity: 0, backdropFilter: 'blur(0px)' };
-    }
-    const blurPx = THREE.MathUtils.lerp(0, CAMERA_BLUR_MAX_PIXELS, cameraBlurStrength);
-    return {
-      opacity: Math.min(1, cameraBlurStrength * CAMERA_BLUR_MAX_OPACITY),
-      backdropFilter: `blur(${blurPx.toFixed(2)}px)`,
-    };
-  }, [cameraBlurStrength]);
-  const canvasStyle = useMemo(() => ({
-    width: '100%',
-    height: '100%',
-    filter: radioWheelEngaged ? 'grayscale(0.92) saturate(0.25) brightness(0.92)' : 'none',
-    transition: 'filter 220ms ease',
-  }), [radioWheelEngaged]);
-  const displaySpeed = Math.max(0, Math.round(Math.abs(speed) * SPEED_DISPLAY_MULTIPLIER));
-  const desktopSpeedProgress = useMemo(() => {
-    if (!Number.isFinite(speed)) return 0;
-    return Math.min(1, Math.abs(speed) / Math.max(1, CAR_MAX_FORWARD_SPEED));
-  }, [speed]);
-  const desktopGaugeNeedle = useMemo(() => {
-    const radius = 60;
-    const centerX = 80;
-    const centerY = 80;
-    const angle = Math.PI - (Math.PI * desktopSpeedProgress);
-    return {
-      x: centerX + Math.cos(angle) * radius,
-      y: centerY - Math.sin(angle) * radius,
-    };
-  }, [desktopSpeedProgress]);
 
   const {
     isActive: carOnQueueMarker,
@@ -2605,25 +2570,53 @@ export default function ParkingScene({
     countdownVolume: 0.8,
   });
   const [interactPhase, setInteractPhase] = useState('idle');
-  const [licenseDropped, setLicenseDropped] = useState(false);
-  const [isDragOverDropzone, setIsDragOverDropzone] = useState(false);
-  const [licenseImageUrl, setLicenseImageUrl] = useState(DEFAULT_LICENSE_IMAGE);
-  const currentLicenseImageSrc = licenseImageUrl || DEFAULT_LICENSE_IMAGE;
-  const [barrierShouldOpen, setBarrierShouldOpen] = useState(false);
+  const { currentLicenseImageSrc } = useParkingLicenseImage({
+    defaultImage: DEFAULT_LICENSE_IMAGE,
+    storageKey: LICENSE_STORAGE_KEY,
+    eventName: LICENSE_EVENT,
+  });
+  const {
+    licenseDropped,
+    isDragOverDropzone,
+    dropZoneRef,
+    licenseTouchStyle,
+    handleInteractPromptNext,
+    handleLicenseDragStart,
+    handleDropZoneDragOver,
+    handleDropZoneDragLeave,
+    handleLicenseDrop,
+    handleInteractApprovedAcknowledge,
+    handleLicenseDragEnd,
+    handleLicensePointerDown,
+    handleLicensePointerMove,
+    handleLicensePointerUp,
+    handleLicensePointerCancel,
+    resetHandoverState,
+  } = useParkingLicenseHandover({ interactPhase, setInteractPhase });
   const [activeMinigame, setActiveMinigame] = useState(null);
+  const {
+    speed,
+    setSpeed,
+    cameraBlurStyle,
+    canvasStyle,
+    displaySpeed,
+    desktopSpeedProgress,
+    desktopGaugeNeedle,
+    shouldShowSpeedDisplay,
+    carTimeScale,
+  } = useParkingSpeedTelemetry({
+    activeMinigame,
+    maxForwardSpeed: CAR_MAX_FORWARD_SPEED,
+    blurThreshold: CAMERA_BLUR_SPEED_THRESHOLD,
+    blurMaxPixels: CAMERA_BLUR_MAX_PIXELS,
+    blurMaxOpacity: CAMERA_BLUR_MAX_OPACITY,
+    speedDisplayMultiplier: SPEED_DISPLAY_MULTIPLIER,
+  });
   const [stackMinigameArmed, setStackMinigameArmed] = useState(true);
   const [queueMinigameArmed, setQueueMinigameArmed] = useState(true);
   const [queueCars, setQueueCars] = useState([]);
   const [queueFastForward, setQueueFastForward] = useState(false);
   const [selectedQueueCarIds, setSelectedQueueCarIds] = useState([]);
-  const supabase = useMemo(() => getSupabaseClient(), []);
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const queueMarkerVisitedRef = useRef(false);
-  const stackMarkerVisitedRef = useRef(false);
-  const stackingAchievementInFlightRef = useRef(false);
-  const stackingAchievementUnlockedRef = useRef(false);
-  const gdayAchievementInFlightRef = useRef(false);
-  const gdayAchievementUnlockedRef = useRef(false);
   const [minigameLoading, setMinigameLoading] = useState(false);
   const [minigameLoadingStep, setMinigameLoadingStep] = useState(0);
   const [minigameLoadingMode, setMinigameLoadingMode] = useState(null);
@@ -2634,6 +2627,10 @@ export default function ParkingScene({
   const [licenseInputValue, setLicenseInputValue] = useState('');
   const [licenseModalError, setLicenseModalError] = useState('');
   const [paused, setPaused] = useState(false);
+  const { markQueueVisit, markStackVisit, markInteractionComplete } = useParkingAchievements({
+    stackingSlug: STACKING_EM_QUEUES_SLUG,
+    greetingSlug: GDAY_SIR_SLUG,
+  });
   const handlePauseMenuReturn = useCallback((event) => {
     setActiveMinigame(null);
     setPaused(false);
@@ -2664,11 +2661,7 @@ export default function ParkingScene({
   const minigameLoadingTimeoutRef = useRef(null);
   const guardPromptSfxPlayedRef = useRef(false);
   const guardApprovalSfxPlayedRef = useRef(false);
-  const dropZoneRef = useRef(null);
   const licenseInputRef = useRef(null);
-  const touchPointerIdRef = useRef(null);
-  const touchStartRef = useRef({ x: 0, y: 0 });
-  const [touchDragState, setTouchDragState] = useState(null);
   const activeSlotDataset = useMemo(
     () => getSlotDataset(activeMinigame === 'stack' ? 'stack' : 'queue'),
     [activeMinigame],
@@ -2682,136 +2675,12 @@ export default function ParkingScene({
     () => !paused && activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
     [activeMinigame, interactPhase, paused],
   );
-  const shouldShowSpeedDisplay = activeMinigame !== 'stack' && activeMinigame !== 'queue';
   const minigameLoadingMessage = QUEUE_LOADING_MESSAGES.length
     ? QUEUE_LOADING_MESSAGES[minigameLoadingStep % QUEUE_LOADING_MESSAGES.length]
     : 'Preparing the queue...';
   const minigameLoadingProgress = QUEUE_LOADING_MESSAGES.length
     ? Math.min(100, Math.round(((Math.min(minigameLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
     : 100;
-  const carTimeScale = radioWheelEngaged ? 0.35 : 1;
-
-  useEffect(() => {
-    const unsubscribe = subscribeToParkingRadioWheel(({ slowMo }) => {
-      setRadioWheelEngaged(Boolean(slowMo));
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const primeSession = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (!isMounted) {
-          return;
-        }
-        if (error) {
-          const handled = await clearStaleSupabaseSession(supabase, error, 'ParkingScene primeSession');
-          if (!handled) {
-            console.error('[ParkingScene] Failed to read Supabase session', error);
-          }
-          setCurrentUserId(null);
-          return;
-        }
-        setCurrentUserId(data?.session?.user?.id ?? null);
-      } catch (sessionError) {
-        if (!isMounted) {
-          return;
-        }
-        const handled = await clearStaleSupabaseSession(supabase, sessionError, 'ParkingScene primeSession');
-        if (!handled) {
-          console.error('[ParkingScene] Unexpected Supabase session failure', sessionError);
-        }
-        setCurrentUserId(null);
-      }
-    };
-
-    primeSession().catch((error) => {
-      console.error('[ParkingScene] Unhandled Supabase session error', error);
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!isMounted) {
-        return;
-      }
-      setCurrentUserId(session?.user?.id ?? null);
-    });
-
-    return () => {
-      isMounted = false;
-      authListener?.subscription?.unsubscribe();
-    };
-  }, [supabase]);
-
-  useEffect(() => {
-    if (!currentUserId) {
-      queueMarkerVisitedRef.current = false;
-      stackMarkerVisitedRef.current = false;
-      stackingAchievementUnlockedRef.current = false;
-      stackingAchievementInFlightRef.current = false;
-      gdayAchievementUnlockedRef.current = false;
-      gdayAchievementInFlightRef.current = false;
-    }
-  }, [currentUserId]);
-
-  const maybeAwardStackingAchievement = useCallback(async () => {
-    if (!currentUserId) {
-      return;
-    }
-    if (stackingAchievementUnlockedRef.current) {
-      return;
-    }
-    if (!queueMarkerVisitedRef.current || !stackMarkerVisitedRef.current) {
-      return;
-    }
-    if (stackingAchievementInFlightRef.current) {
-      return;
-    }
-    stackingAchievementInFlightRef.current = true;
-    try {
-      const result = await grantAchievementBySlug(supabase, currentUserId, STACKING_EM_QUEUES_SLUG);
-      if (result.success || result.alreadyUnlocked) {
-        stackingAchievementUnlockedRef.current = true;
-      } else {
-        console.warn('[ParkingScene] Unable to grant stacking achievement', result);
-      }
-    } catch (error) {
-      console.error('[ParkingScene] Failed to grant stacking achievement', error);
-    } finally {
-      stackingAchievementInFlightRef.current = false;
-    }
-  }, [currentUserId, supabase]);
-
-  const maybeAwardGdayAchievement = useCallback(async () => {
-    if (!currentUserId) {
-      return;
-    }
-    if (gdayAchievementUnlockedRef.current || gdayAchievementInFlightRef.current) {
-      return;
-    }
-    gdayAchievementInFlightRef.current = true;
-    try {
-      const result = await grantAchievementBySlug(supabase, currentUserId, GDAY_SIR_SLUG);
-      if (result.success || result.alreadyUnlocked) {
-        gdayAchievementUnlockedRef.current = true;
-      } else {
-        console.warn("[ParkingScene] Unable to grant G'day Sir achievement", result);
-      }
-    } catch (error) {
-      console.error("[ParkingScene] Failed to grant G'day Sir achievement", error);
-    } finally {
-      gdayAchievementInFlightRef.current = false;
-    }
-  }, [currentUserId, supabase]);
-
-  useEffect(() => {
-    if (!currentUserId) {
-      return;
-    }
-    void maybeAwardStackingAchievement();
-  }, [currentUserId, maybeAwardStackingAchievement]);
 
   const securityGuardCameraTarget = useMemo(() => ({
     position: new THREE.Vector3(...SECURITY_GUARD_CAMERA_POSITION),
@@ -2889,15 +2758,15 @@ export default function ParkingScene({
   }, [licenseModalError]);
 
   const interactCameraActive = carOnInteractMarker && INTERACT_CAMERA_PHASES.has(interactPhase);
+  const barrierShouldOpen = interactPhase === 'approved' || interactPhase === 'complete';
 
   const handleInteractMarkerPresence = useCallback((isInside) => {
     rawHandleInteractPresence(isInside);
     if (!isInside) {
       setInteractPhase('idle');
-      setLicenseDropped(false);
-      setIsDragOverDropzone(false);
+      resetHandoverState();
     }
-  }, [rawHandleInteractPresence]);
+  }, [rawHandleInteractPresence, resetHandoverState]);
 
   useEffect(() => {
     if (interactPhase === 'prompt' && interactCountdown <= 0 && carOnInteractMarker) {
@@ -2925,28 +2794,26 @@ export default function ParkingScene({
     if (interactPhase !== 'complete') {
       return;
     }
-    void maybeAwardGdayAchievement();
-  }, [interactPhase, maybeAwardGdayAchievement]);
+    markInteractionComplete();
+  }, [interactPhase, markInteractionComplete]);
 
   const handleQueueMarkerPresence = useCallback((isInside) => {
     rawHandleQueueMarkerPresence(isInside);
     if (isInside) {
-      queueMarkerVisitedRef.current = true;
-      void maybeAwardStackingAchievement();
+      markQueueVisit();
     } else {
       setQueueMinigameArmed(true);
     }
-  }, [maybeAwardStackingAchievement, rawHandleQueueMarkerPresence]);
+  }, [markQueueVisit, rawHandleQueueMarkerPresence]);
 
   const handleStackMarkerPresence = useCallback((isInside) => {
     rawHandleStackMarkerPresence(isInside);
     if (isInside) {
-      stackMarkerVisitedRef.current = true;
-      void maybeAwardStackingAchievement();
+      markStackVisit();
     } else {
       setStackMinigameArmed(true);
     }
-  }, [maybeAwardStackingAchievement, rawHandleStackMarkerPresence]);
+  }, [markStackVisit, rawHandleStackMarkerPresence]);
 
   useEffect(() => {
     queueCarsRef.current = queueCars;
@@ -2960,10 +2827,8 @@ export default function ParkingScene({
 
   useEffect(() => {
     if (!minigameLoading) {
-      setMinigameLoadingStep(0);
       return undefined;
     }
-    setMinigameLoadingStep(0);
     if (QUEUE_LOADING_MESSAGES.length < 2) {
       return undefined;
     }
@@ -3635,7 +3500,9 @@ export default function ParkingScene({
       break;
     }
   }, [handleRemoveQueueCar, setSelectedQueueCarIds]);
-  processQueuedRemovalsRef.current = processQueuedRemovals;
+  useEffect(() => {
+    processQueuedRemovalsRef.current = processQueuedRemovals;
+  }, [processQueuedRemovals]);
 
   const handleQueueFastForwardPress = useCallback(() => {
     setQueueFastForward(true);
@@ -3652,10 +3519,12 @@ export default function ParkingScene({
     if (activeMinigame === licenseModalMode) {
       return;
     }
-    setLicenseModalOpen(false);
-    setLicenseModalError('');
-    setLicenseInputValue('');
-    setLicenseModalMode(null);
+    runSoon(() => {
+      setLicenseModalOpen(false);
+      setLicenseModalError('');
+      setLicenseInputValue('');
+      setLicenseModalMode(null);
+    });
   }, [activeMinigame, licenseModalMode]);
 
   useEffect(() => {
@@ -3746,6 +3615,7 @@ export default function ParkingScene({
         queuedRemovalIdsRef.current = [];
         setActiveMinigame('stack');
         setMinigameLoading(false);
+        setMinigameLoadingStep(0);
         setMinigameLoadingMode(null);
       }, QUEUE_LOADING_DELAY_MS);
       minigameLoadingTimeoutRef.current = timeoutId;
@@ -3780,6 +3650,7 @@ export default function ParkingScene({
         queuedRemovalIdsRef.current = [];
         setActiveMinigame('queue');
         setMinigameLoading(false);
+        setMinigameLoadingStep(0);
         setMinigameLoadingMode(null);
       }, QUEUE_LOADING_DELAY_MS);
       minigameLoadingTimeoutRef.current = timeoutId;
@@ -3819,10 +3690,12 @@ export default function ParkingScene({
       window.clearTimeout(minigameLoadingTimeoutRef.current);
       minigameLoadingTimeoutRef.current = null;
     }
-    setMinigameLoading(false);
-    setMinigameLoadingStep(0);
-    setMinigameLoadingMode(null);
-    setStackMinigameArmed(true);
+    runSoon(() => {
+      setMinigameLoading(false);
+      setMinigameLoadingStep(0);
+      setMinigameLoadingMode(null);
+      setStackMinigameArmed(true);
+    });
     return undefined;
   }, [minigameLoading, minigameLoadingMode, carOnStackMarker, stackCountdown]);
 
@@ -3837,10 +3710,12 @@ export default function ParkingScene({
       window.clearTimeout(minigameLoadingTimeoutRef.current);
       minigameLoadingTimeoutRef.current = null;
     }
-    setMinigameLoading(false);
-    setMinigameLoadingStep(0);
-    setMinigameLoadingMode(null);
-    setQueueMinigameArmed(true);
+    runSoon(() => {
+      setMinigameLoading(false);
+      setMinigameLoadingStep(0);
+      setMinigameLoadingMode(null);
+      setQueueMinigameArmed(true);
+    });
     return undefined;
   }, [minigameLoading, minigameLoadingMode, carOnQueueMarker, queueCountdown]);
 
@@ -3860,7 +3735,10 @@ export default function ParkingScene({
   }, [queueFastForward, applyRemovalPlanTimeline]);
 
   useEffect(() => {
-    if (activeMinigame !== 'stack') {
+    if (activeMinigame === 'stack') {
+      return;
+    }
+    runSoon(() => {
       minigameStateRef.current = null;
       setQueueCars([]);
       setQueueFastForward(false);
@@ -3884,7 +3762,7 @@ export default function ParkingScene({
       setMinigameLoadingStep(0);
       setMinigameLoadingMode(null);
       currentRemovalPlanRef.current = null;
-    }
+    });
   }, [activeMinigame]);
 
   useEffect(() => {
@@ -3925,103 +3803,6 @@ export default function ParkingScene({
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    let active = true;
-
-    const loadFromLocalStorage = async () => {
-      try {
-        const stored = window.localStorage.getItem(LICENSE_STORAGE_KEY);
-        if (stored) {
-          const url = await resolveLicenseImageUrl(stored);
-          if (url && active) {
-            setLicenseImageUrl(url);
-            return true;
-          }
-        }
-      } catch {}
-      return false;
-    };
-
-    const loadFromDatabase = async () => {
-      const objectPath = await fetchLatestLicenseObjectPath();
-      if (!objectPath) {
-        return;
-      }
-      const resolvedUrl = await resolveLicenseImageUrl(objectPath);
-      if (resolvedUrl && active) {
-        setLicenseImageUrl(resolvedUrl);
-        try {
-          window.localStorage.setItem(LICENSE_STORAGE_KEY, objectPath);
-        } catch {}
-      }
-    };
-
-    const run = async () => {
-      const hasLocal = await loadFromLocalStorage();
-      if (!hasLocal) {
-        await loadFromDatabase();
-      }
-    };
-
-    run();
-
-    const handleLicenseUpdated = (event) => {
-      const detail = event && typeof event === 'object' && 'detail' in event ? event.detail : null;
-      const objectPath = typeof detail === 'string' && detail.trim().length > 0 ? detail : null;
-      if (!objectPath) {
-        setLicenseImageUrl(DEFAULT_LICENSE_IMAGE);
-        try {
-          window.localStorage.removeItem(LICENSE_STORAGE_KEY);
-        } catch {}
-        return;
-      }
-      resolveLicenseImageUrl(objectPath).then((url) => {
-        if (!url || !active) return;
-        setLicenseImageUrl(url);
-        try {
-          window.localStorage.setItem(LICENSE_STORAGE_KEY, objectPath);
-        } catch {}
-      }).catch(() => {});
-    };
-
-    window.addEventListener(LICENSE_EVENT, handleLicenseUpdated);
-
-    return () => {
-      active = false;
-      try {
-        window.removeEventListener(LICENSE_EVENT, handleLicenseUpdated);
-      } catch {}
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (!licenseImageUrl || licenseImageUrl === DEFAULT_LICENSE_IMAGE) {
-      return undefined;
-    }
-    let cancelled = false;
-    const validateImage = async () => {
-      try {
-        const res = await fetch(licenseImageUrl, { method: 'HEAD', cache: 'no-store' });
-        if (!res.ok) {
-          throw new Error(`status ${res.status}`);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.warn('[InteractMarker] License image unreachable, falling back', err);
-        setLicenseImageUrl(DEFAULT_LICENSE_IMAGE);
-        try {
-          window.localStorage.removeItem(LICENSE_STORAGE_KEY);
-        } catch {}
-      }
-    };
-    validateImage();
-    return () => {
-      cancelled = true;
-    };
-  }, [licenseImageUrl]);
-
-  useEffect(() => {
     if (interactPhase === 'checking') {
       const timer = window.setTimeout(() => {
         setInteractPhase('approved');
@@ -4030,141 +3811,6 @@ export default function ParkingScene({
     }
     return undefined;
   }, [interactPhase]);
-
-  useEffect(() => {
-    if (interactPhase === 'approved' || interactPhase === 'complete') {
-      setBarrierShouldOpen(true);
-      return;
-    }
-    if (interactPhase === 'idle') {
-      setBarrierShouldOpen(false);
-    }
-  }, [interactPhase]);
-
-  const handleInteractPromptNext = useCallback(() => {
-    setLicenseDropped(false);
-    setIsDragOverDropzone(false);
-    setInteractPhase('handover');
-  }, []);
-
-  const handleLicenseDragStart = useCallback((event) => {
-    try {
-      event.dataTransfer.setData('text/plain', 'drivers-license');
-    } catch {}
-  }, []);
-
-  const handleDropZoneDragOver = useCallback((event) => {
-    if (interactPhase !== 'handover') return;
-    event.preventDefault();
-    setIsDragOverDropzone(true);
-  }, [interactPhase]);
-
-  const handleDropZoneDragLeave = useCallback((event) => {
-    if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) {
-      return;
-    }
-    setIsDragOverDropzone(false);
-  }, []);
-
-  const completeLicenseDrop = useCallback(() => {
-    setIsDragOverDropzone(false);
-    if (interactPhase !== 'handover') return;
-    setLicenseDropped(true);
-    setInteractPhase('checking');
-  }, [interactPhase]);
-
-  const handleLicenseDrop = useCallback((event) => {
-    event.preventDefault();
-    completeLicenseDrop();
-  }, [completeLicenseDrop]);
-
-  const handleInteractApprovedAcknowledge = useCallback(() => {
-    setInteractPhase('complete');
-  }, []);
-
-  const handleLicenseDragEnd = useCallback(() => {
-    setIsDragOverDropzone(false);
-  }, []);
-
-  const handleLicensePointerDown = useCallback((event) => {
-    if (event.pointerType !== 'touch') return;
-    if (interactPhase !== 'handover' || licenseDropped) return;
-    event.preventDefault();
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {}
-    touchPointerIdRef.current = event.pointerId;
-    touchStartRef.current = { x: event.clientX, y: event.clientY };
-    setIsDragOverDropzone(false);
-    setTouchDragState({ deltaX: 0, deltaY: 0 });
-  }, [interactPhase, licenseDropped]);
-
-  const handleLicensePointerMove = useCallback((event) => {
-    if (event.pointerType !== 'touch') return;
-    if (touchPointerIdRef.current !== event.pointerId) return;
-    event.preventDefault();
-    const deltaX = event.clientX - touchStartRef.current.x;
-    const deltaY = event.clientY - touchStartRef.current.y;
-    setTouchDragState({ deltaX, deltaY });
-    const dropRect = dropZoneRef.current?.getBoundingClientRect();
-    if (!dropRect) {
-      return;
-    }
-    const inside = event.clientX >= dropRect.left
-      && event.clientX <= dropRect.right
-      && event.clientY >= dropRect.top
-      && event.clientY <= dropRect.bottom;
-    setIsDragOverDropzone(inside);
-  }, []);
-
-  const handleLicensePointerUp = useCallback((event) => {
-    if (event.pointerType !== 'touch') return;
-    if (touchPointerIdRef.current !== event.pointerId) return;
-    event.preventDefault();
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {}
-    let dropped = false;
-    const dropRect = dropZoneRef.current?.getBoundingClientRect();
-    if (dropRect) {
-      const inside = event.clientX >= dropRect.left
-        && event.clientX <= dropRect.right
-        && event.clientY >= dropRect.top
-        && event.clientY <= dropRect.bottom;
-      if (inside) {
-        completeLicenseDrop();
-        dropped = true;
-      }
-    }
-    if (!dropped) {
-      setIsDragOverDropzone(false);
-    }
-    touchPointerIdRef.current = null;
-    touchStartRef.current = { x: 0, y: 0 };
-    setTouchDragState(null);
-  }, [completeLicenseDrop]);
-
-  const handleLicensePointerCancel = useCallback((event) => {
-    if (event.pointerType !== 'touch') return;
-    if (touchPointerIdRef.current !== event.pointerId) return;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {}
-    setIsDragOverDropzone(false);
-    touchPointerIdRef.current = null;
-    touchStartRef.current = { x: 0, y: 0 };
-    setTouchDragState(null);
-  }, []);
-
-  const licenseTouchStyle = useMemo(() => {
-    if (!touchDragState) {
-      return { touchAction: 'none' };
-    }
-    return {
-      touchAction: 'none',
-      transform: `translate3d(${touchDragState.deltaX}px, ${touchDragState.deltaY}px, 0)`,
-    };
-  }, [touchDragState]);
 
   return (
     <div className="relative w-full h-full">
