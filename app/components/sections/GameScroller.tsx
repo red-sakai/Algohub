@@ -401,10 +401,13 @@ export default function GameScroller() {
                     preload="auto"
                   />
                 ) : isCritical ? (
-                  <img
+                  <Image
                     className="h-full w-full object-cover"
                     src="/game-selector-bg/recursionbg.gif"
                     alt="DP Dungeon background"
+                    width={1920}
+                    height={1080}
+                    unoptimized
                   />
                 ) : (
                   <div
@@ -492,10 +495,13 @@ export default function GameScroller() {
                   preload="auto"
                 />
               ) : g.id === "dp-dungeon" ? (
-                <img
+                <Image
                   className="absolute inset-0 h-full w-full object-cover"
                   src="/game-selector-bg/recursionbg.gif"
                   alt="DP Dungeon background"
+                  width={1920}
+                  height={1080}
+                  unoptimized
                   style={{ zIndex: 0 }}
                 />
               ) : (
@@ -597,18 +603,18 @@ export default function GameScroller() {
       )}
 
       {isGamified && (
-        <div className="relative z-10 flex h-full w-full flex-col justify-between px-4 py-10 text-white sm:px-8 sm:py-12">
-          <div className="mx-auto w-full max-w-5xl space-y-3 pb-4 text-center sm:text-left">
+        <div className="relative z-10 flex h-full w-full flex-col justify-between px-4 py-8 text-white sm:px-8 sm:py-10">
+          <div className="mx-auto w-full max-w-5xl space-y-3 text-center">
             <p className="text-[0.55rem] font-semibold uppercase tracking-[0.45em] text-white/70">
               Featured Game
             </p>
             <h2 className="text-4xl font-black sm:text-5xl md:text-6xl">
               {activeGame.title}
             </h2>
-            <p className="text-base text-white/85 sm:text-lg md:text-xl">
+            <p className="mx-auto max-w-3xl text-base text-white/85 sm:text-lg md:text-xl">
               {activeGame.desc}
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-3 text-xs uppercase tracking-[0.35em] text-white/60 sm:justify-start">
+            <div className="flex flex-wrap items-center justify-center gap-3 text-xs uppercase tracking-[0.35em] text-white/60">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 ring-1 ring-white/30">
                 <span
                   className={`h-2 w-2 rounded-full ${
@@ -623,15 +629,19 @@ export default function GameScroller() {
             </div>
           </div>
 
-          <div className="relative mx-auto mt-69 h-[320px] w-full max-w-5xl sm:mt-72 sm:h-[360px]">
+          <div className="relative mx-auto flex h-[420px] w-full max-w-6xl items-center justify-center overflow-visible px-4 sm:h-[460px]">
             {items.map((game, idx) => {
               const total = items.length || 1;
               let offset = idx - active;
               if (offset > total / 2) offset -= total;
               if (offset < -total / 2) offset += total;
-              const translate = offset * 230;
-              const scale = Math.max(0.75, 1 - Math.abs(offset) * 0.12);
-              const opacity = Math.max(0.35, 1 - Math.abs(offset) * 0.18);
+              
+              // Only render cards that are close to active position
+              if (Math.abs(offset) > 2) return null;
+              
+              const translate = offset * 420;
+              const scale = idx === active ? 1 : 0.85;
+              const opacity = Math.max(0, 1 - Math.abs(offset) * 0.4);
               return (
                 <button
                   key={game.id}
@@ -644,20 +654,20 @@ export default function GameScroller() {
                     }
                   }}
                   aria-current={idx === active}
-                  className={`absolute left-1/2 top-1/2 w-[70vw] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] border border-white/20 bg-white/10 p-6 text-left backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
+                  className={`absolute left-1/2 top-1/2 w-[360px] rounded-2xl border bg-white/10 p-5 text-left backdrop-blur-xl transition-all duration-500 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-[400px] sm:p-6 ${
                     idx === active
-                      ? "shadow-[0_25px_60px_rgba(15,23,42,0.55)] ring-2 ring-white/70"
-                      : "shadow-[0_15px_35px_rgba(15,23,42,0.35)]"
+                      ? "border-white/50 shadow-[0_25px_60px_rgba(0,0,0,0.6)] ring-2 ring-white/70 cursor-default"
+                      : "border-white/20 shadow-[0_15px_40px_rgba(0,0,0,0.4)] cursor-pointer hover:border-white/30"
                   }`}
                   style={{
                     transform: `translate(calc(-50% + ${translate}px), -50%) scale(${scale})`,
                     opacity,
-                    zIndex: items.length - Math.abs(offset),
+                    zIndex: 100 - Math.abs(offset),
                   }}
                 >
                   <div
-                    className="relative overflow-hidden rounded-xl border border-white/15 bg-black/30"
-                    style={{ aspectRatio: "400 / 260" }}
+                    className="relative overflow-hidden rounded-xl border border-white/15 bg-black/40"
+                    style={{ aspectRatio: "16 / 10" }}
                   >
                     <Image
                       src={game.cover}
@@ -681,14 +691,12 @@ export default function GameScroller() {
             })}
           </div>
 
-          <div className="mx-auto mt-3 flex w-full max-w-5xl flex-col items-center justify-between gap-4 text-center text-white sm:flex-row sm:text-left">
-            <div>
-              {activeGame.id === "sorting-sprint" && licensePhoto && (
-                <div className="text-xs uppercase tracking-[0.3em] text-white/70">
-                  License photo saved.
-                </div>
-              )}
-            </div>
+          <div className="mx-auto flex w-full max-w-5xl flex-col items-center justify-center gap-4 text-center text-white">
+            {activeGame.id === "sorting-sprint" && licensePhoto && (
+              <div className="text-xs uppercase tracking-[0.3em] text-white/70">
+                License photo saved.
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={() => {
@@ -756,13 +764,15 @@ export default function GameScroller() {
 
       {/* Optional dot indicators */}
       {isGamified ? (
-        <div className="pointer-events-none absolute left-1/2 bottom-20 flex -translate-x-1/2 gap-3 sm:bottom-24">
+        <div className="pointer-events-none absolute left-1/2 bottom-20 flex -translate-x-1/2 gap-2.5 sm:bottom-24">
           {items.map((_, i) => (
             <button
               key={`dot-g-${i}`}
               onClick={() => goTo(i)}
-              className={`pointer-events-auto h-3.5 w-3.5 rounded-full ring-1 ring-white/25 transition ${
-                i === active ? "bg-white" : "bg-white/40 hover:bg-white/60"
+              className={`pointer-events-auto h-2.5 w-2.5 rounded-full transition-all duration-300 ${
+                i === active 
+                  ? "bg-white w-8 ring-2 ring-white/40" 
+                  : "bg-white/50 hover:bg-white/70 ring-1 ring-white/20"
               }`}
               aria-label={`Go to game ${i + 1}`}
             />
