@@ -40,7 +40,7 @@ const GAMES: Game[] = [
     colorTo: "to-rose-500",
     track: {
       title: "Pokemon FireRed - Route 1",
-      src: "/audio/Pokemon FireRed - Route 1.mp3",
+      src: "/game-selector-audio/Pokemon FireRed - Route 1.mp3",
     },
     cover: "/images/game-covers/stack-em-queue.png",
   },
@@ -71,7 +71,10 @@ const GAMES: Game[] = [
     desc: "Critical Migration is the Tower of Hanoi re-imagined as a server maintenance game, where you reorder processes to fix a corrupted stack.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
-    track: { title: "Aylex - Tension Rising", src: "/audio/Aylex - Tension Rising.mp3" },
+    track: {
+      title: "Aylex - Tension Rising",
+      src: "/game-selector-audio/Aylex - Tension Rising.mp3",
+    },
     cover: "/images/game-covers/critical.png",
   },
   {
