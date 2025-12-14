@@ -401,10 +401,13 @@ export default function GameScroller() {
                     preload="auto"
                   />
                 ) : isCritical ? (
-                  <img
+                  <Image
                     className="h-full w-full object-cover"
                     src="/game-selector-bg/recursionbg.gif"
                     alt="DP Dungeon background"
+                    width={1920}
+                    height={1080}
+                    unoptimized
                   />
                 ) : (
                   <div
@@ -492,10 +495,13 @@ export default function GameScroller() {
                   preload="auto"
                 />
               ) : g.id === "dp-dungeon" ? (
-                <img
+                <Image
                   className="absolute inset-0 h-full w-full object-cover"
                   src="/game-selector-bg/recursionbg.gif"
                   alt="DP Dungeon background"
+                  width={1920}
+                  height={1080}
+                  unoptimized
                   style={{ zIndex: 0 }}
                 />
               ) : (

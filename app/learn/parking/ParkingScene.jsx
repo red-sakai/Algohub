@@ -8,6 +8,7 @@ import { fetchLatestLicenseObjectPath, resolveLicenseImageUrl } from '@/actions/
 import { useMarkerController } from '@/hooks/useMarkerController';
 import { playSfx } from '@/lib/audio/sfx';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { clearStaleSupabaseSession } from '@/lib/supabase/sessionCleanup';
 import { grantAchievementBySlug } from '@/lib/supabase/achievements';
 import { subscribeToParkingRadioWheel } from '@/lib/parking/radioWheelBus';
 
@@ -2707,14 +2708,22 @@ export default function ParkingScene({
           return;
         }
         if (error) {
-          console.error('[ParkingScene] Failed to read Supabase session', error);
+          const handled = await clearStaleSupabaseSession(supabase, error, 'ParkingScene primeSession');
+          if (!handled) {
+            console.error('[ParkingScene] Failed to read Supabase session', error);
+          }
+          setCurrentUserId(null);
+          return;
         }
         setCurrentUserId(data?.session?.user?.id ?? null);
       } catch (sessionError) {
         if (!isMounted) {
           return;
         }
-        console.error('[ParkingScene] Unexpected Supabase session failure', sessionError);
+        const handled = await clearStaleSupabaseSession(supabase, sessionError, 'ParkingScene primeSession');
+        if (!handled) {
+          console.error('[ParkingScene] Unexpected Supabase session failure', sessionError);
+        }
         setCurrentUserId(null);
       }
     };

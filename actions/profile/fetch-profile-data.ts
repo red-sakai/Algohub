@@ -4,6 +4,7 @@ import type { AuthUserSummary, UserProfile } from '@/types/auth';
 import type { UserAchievement } from '@/types/achievements';
 import type { ProfileAchievementRow, ProfileDataResponse, ProfileRow } from '@/types/profile';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { clearStaleSupabaseSession } from '@/lib/supabase/sessionCleanup';
 
 const allowedRoles: UserProfile['role'][] = ['student', 'instructor', 'admin'];
 
@@ -75,7 +76,10 @@ export async function fetchProfileData(): Promise<ProfileDataResponse> {
 
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
-      console.error('Failed to read Supabase session', sessionError);
+      const handled = await clearStaleSupabaseSession(supabase, sessionError, 'fetchProfileData');
+      if (!handled) {
+        console.error('Failed to read Supabase session', sessionError);
+      }
       return {
         authSummary: null,
         profile: null,
