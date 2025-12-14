@@ -40,7 +40,7 @@ const GAMES: Game[] = [
     colorTo: "to-rose-500",
     track: {
       title: "Pokemon FireRed - Route 1",
-      src: "/audio/Pokemon FireRed - Route 1.mp3",
+      src: "/game-selector-audio/Pokemon FireRed - Route 1.mp3",
     },
     cover: "/images/game-covers/stack-em-queue.png",
   },
@@ -67,12 +67,15 @@ const GAMES: Game[] = [
   },
   {
     id: "dp-dungeon",
-    title: "DP Dungeon",
-    desc: "Coming soon.",
+    title: "CRITICAL MIGRATION: Server Maintenance Night",
+    desc: "Critical Migration is the Tower of Hanoi re-imagined as a server maintenance game, where you reorder processes to fix a corrupted stack.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
-    track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
-    cover: "/images/game-covers/dp-dungeon.svg",
+    track: {
+      title: "Aylex - Tension Rising",
+      src: "/game-selector-audio/Aylex - Tension Rising.mp3",
+    },
+    cover: "/images/game-covers/critical.png",
   },
   {
     id: "tree-trek",
@@ -244,6 +247,48 @@ export default function GameScroller() {
       }
       return;
     }
+    // For CRITICAL MIGRATION (dp-dungeon), play its track and navigate with iris transition
+    if (g.id === "dp-dungeon") {
+      if (!fromNav) {
+        ensureGlobalPlayerPaused();
+        try {
+          setIrisPoint(window.innerWidth / 2, window.innerHeight / 2);
+        } catch {}
+        const beginCriticalTransfer = () => {
+          const a = getGameAudio();
+          a.loop = true;
+          a.volume = Math.min(1, gameVolume * 5);
+          a.src = g.track.src;
+          a.currentTime = 0;
+          a.play().catch(() => {});
+          setLastPlayed(idx);
+          try {
+            router.push("/learn/tower-of-hanoi");
+          } catch {}
+        };
+        const controller = irisRef.current;
+        if (controller) {
+          controller.start({
+            durationMs: 650,
+            mode: "close",
+            showLoaderOnClose: true,
+            onDone: () => beginCriticalTransfer(),
+          });
+        } else {
+          beginCriticalTransfer();
+        }
+      } else {
+        ensureGlobalPlayerPaused();
+        const a = getGameAudio();
+        a.loop = true;
+        a.volume = Math.min(1, gameVolume * 5);
+        a.src = g.track.src;
+        a.currentTime = 0;
+        a.play().catch(() => {});
+        setLastPlayed(idx);
+      }
+      return;
+    }
     ensureGlobalPlayerPaused();
     const a = getGameAudio();
     a.loop = true;
@@ -295,7 +340,7 @@ export default function GameScroller() {
       const nxt = resolveIndex(i + dir);
       handleSlideChange(i, nxt);
       if (
-        items[nxt]?.id === "sorting-sprint" &&
+        (items[nxt]?.id === "sorting-sprint" || items[nxt]?.id === "dp-dungeon") &&
         !resumeTimesRef.current.has(nxt)
       ) {
         playForIndex(nxt, { fromNav: true });
@@ -308,7 +353,7 @@ export default function GameScroller() {
       const nxt = resolveIndex(idx);
       handleSlideChange(i, nxt);
       if (
-        items[nxt]?.id === "sorting-sprint" &&
+        (items[nxt]?.id === "sorting-sprint" || items[nxt]?.id === "dp-dungeon") &&
         !resumeTimesRef.current.has(nxt)
       ) {
         playForIndex(nxt, { fromNav: true });
@@ -327,11 +372,15 @@ export default function GameScroller() {
   };
 
   return (
-    <section className="relative z-10 h-[100dvh] w-full overflow-hidden">
+    <>
+      {/* Nosifer font for CRITICAL MIGRATION */}
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Nosifer&display=swap');`}</style>
+      <section className="relative z-10 h-[100dvh] w-full overflow-hidden">
       {isGamified && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {items.map((game, idx) => {
             const isStackEmQueue = game.id === "sorting-sprint";
+            const isCritical = game.id === "dp-dungeon";
             return (
               <div
                 key={`bg-${game.id}`}
@@ -350,6 +399,12 @@ export default function GameScroller() {
                     loop
                     playsInline
                     preload="auto"
+                  />
+                ) : isCritical ? (
+                  <img
+                    className="h-full w-full object-cover"
+                    src="/game-selector-bg/recursionbg.gif"
+                    alt="DP Dungeon background"
                   />
                 ) : (
                   <div
@@ -436,6 +491,13 @@ export default function GameScroller() {
                   playsInline
                   preload="auto"
                 />
+              ) : g.id === "dp-dungeon" ? (
+                <img
+                  className="absolute inset-0 h-full w-full object-cover"
+                  src="/game-selector-bg/recursionbg.gif"
+                  alt="DP Dungeon background"
+                  style={{ zIndex: 0 }}
+                />
               ) : (
                 <div
                   className={`absolute inset-0 bg-gradient-to-br ${g.colorFrom} ${g.colorTo} opacity-90`}
@@ -444,9 +506,31 @@ export default function GameScroller() {
               <div className="absolute inset-0 bg-black/20" />
               <div className="relative z-10 flex h-full w-full items-center justify-center p-6 text-center drop-shadow-lg">
                 <div className="mx-auto max-w-3xl">
-                  <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">
-                    {g.title}
-                  </h2>
+                  {g.id === "dp-dungeon" ? (
+                    <h2
+                      className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl font-scary text-red-600 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+                    >
+                      <span style={{ fontFamily: 'Nosifer, cursive', display: 'inline-block' }}>
+                        CRITICAL MIGRATION
+                      </span>
+                      <br />
+                      <span
+                        className="text-lg sm:text-xl md:text-2xl text-white font-normal align-top"
+                        style={{
+                          marginTop: '-0.1em',
+                          display: 'inline-block',
+                          fontFamily: 'Arial, Helvetica, sans-serif',
+                          letterSpacing: '0.01em',
+                        }}
+                      >
+                        Server Maintenance Night
+                      </span>
+                    </h2>
+                  ) : (
+                    <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">
+                      {g.title}
+                    </h2>
+                  )}
                   <p className="mx-auto mt-3 max-w-prose text-base text-white/90 sm:text-lg md:text-xl">
                     {g.desc}
                   </p>
@@ -459,7 +543,7 @@ export default function GameScroller() {
                     {lastPlayed === i
                       ? `Now Playing: ${items[i].track.title}`
                       : "Tap Next/Prev"}
-                    {lastPlayed === i && (
+                    {(lastPlayed === i || g.id === "dp-dungeon" && active === i) && (
                       <div className="ml-3 flex items-center gap-1">
                         <input
                           aria-label="Game volume"
@@ -791,6 +875,7 @@ export default function GameScroller() {
       />
       {/* Iris overlay for transitions */}
       <IrisTransition ref={irisRef} zIndex={1600} />
-    </section>
+      </section>
+    </>
   );
 }

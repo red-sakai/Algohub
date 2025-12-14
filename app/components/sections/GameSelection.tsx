@@ -16,7 +16,10 @@ const GAMES: Game[] = [
     desc: "Jump into the 3D parking yard and master stacks and queues to shuffle cars into place.",
     colorFrom: "from-fuchsia-500",
     colorTo: "to-rose-500",
-    track: { title: "Pokemon FireRed - Route 1", src: "/audio/Pokemon FireRed - Route 1.mp3" },
+    track: {
+      title: "Pokemon FireRed - Route 1",
+      src: "/game-selector-audio/Pokemon FireRed - Route 1.mp3",
+    },
     cover: "/images/game-covers/stack-em-queue.png",
   },
   {
@@ -34,7 +37,10 @@ const GAMES: Game[] = [
     desc: "Coming soon.",
     colorFrom: "from-sky-500",
     colorTo: "to-indigo-500",
-    track: { title: "AlgoHub Theme", src: "/audio/algohub-theme.mp3" },
+    track: {
+      title: "Aylex - Tension Rising",
+      src: "/game-selector-audio/Aylex - Tension Rising.mp3",
+    },
     cover: "/images/game-covers/dp-dungeon.svg",
   },
   {
