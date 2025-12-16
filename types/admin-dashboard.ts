@@ -57,3 +57,21 @@ export type AchievementGainChartProps = {
   formatter: Intl.NumberFormat;
   comparisonLabel: string;
 };
+
+export type AiInsightData = {
+  insight: string;
+  metrics: {
+    studentsTotal: number;
+    studentsNew7d: number;
+    studentsNew30d: number;
+    achievementsTotal: number;
+    achievementsNew7d: number;
+    achievementsNew30d: number;
+  };
+};
+
+export type AiInsightResponse = {
+  data?: AiInsightData;
+  generatedAt?: string;
+  error?: string;
+};

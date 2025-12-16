@@ -15,6 +15,7 @@ import type {
   AchievementGainChartProps,
   AchievementGainPoint,
   AchievementGainResponse,
+  AiInsightResponse,
   StudentGrowthCardProps,
   StudentGrowthChartProps,
   StudentGrowthPoint,
@@ -125,6 +126,10 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
   const [achievementGain, setAchievementGain] = useState<AchievementGainPoint[] | null>(null);
   const [achievementGainLoading, setAchievementGainLoading] = useState(true);
   const [achievementGainError, setAchievementGainError] = useState<string | null>(null);
+  const [aiInsight, setAiInsight] = useState<string | null>(null);
+  const [aiInsightGeneratedAt, setAiInsightGeneratedAt] = useState<string | null>(null);
+  const [aiInsightLoading, setAiInsightLoading] = useState(true);
+  const [aiInsightError, setAiInsightError] = useState<string | null>(null);
   const [signOutPending, setSignOutPending] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
@@ -174,6 +179,54 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
     }
 
     loadGrowth();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadAiInsight = async () => {
+      setAiInsightLoading(true);
+      setAiInsightError(null);
+      try {
+        const response = await fetch('/api/admin/ai-insight', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const payload = (await response.json()) as AiInsightResponse;
+        if (payload.error) {
+          throw new Error(payload.error);
+        }
+
+        const insightText = payload.data?.insight ?? '';
+        if (!isActive) {
+          return;
+        }
+
+        setAiInsight(insightText.length > 0 ? insightText : null);
+        setAiInsightGeneratedAt(payload.generatedAt ?? null);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+        console.error('[AdminDashboard] Failed to fetch AI insight', error);
+        setAiInsight(null);
+        setAiInsightGeneratedAt(null);
+        setAiInsightError('Unable to generate an AI insight right now.');
+      } finally {
+        if (isActive) {
+          setAiInsightLoading(false);
+        }
+      }
+    };
+
+    loadAiInsight().catch((error) => {
+      console.error('[AdminDashboard] Unexpected AI insight failure', error);
+    });
 
     return () => {
       isActive = false;
@@ -439,6 +492,8 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
 
             <AchievementsGainedCard data={achievementGain} loading={achievementGainLoading} error={achievementGainError} />
 
+            <AiInsightCard insight={aiInsight} generatedAt={aiInsightGeneratedAt} loading={aiInsightLoading} error={aiInsightError} />
+
             <section className="grid gap-5 lg:grid-cols-3">
               {PLACEHOLDER_PANELS.map((panel) => (
                 <article
@@ -489,6 +544,113 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
         </div>
       </main>
     </>
+  );
+}
+
+function AiInsightCard({
+  insight,
+  generatedAt,
+  loading,
+  error,
+}: {
+  insight: string | null;
+  generatedAt: string | null;
+  loading: boolean;
+  error: string | null;
+}): ReactElement {
+  const parsed = useMemo(() => {
+    const raw = typeof insight === 'string' ? insight.trim() : '';
+    if (!raw) {
+      return { summary: null as string | null, bullets: [] as string[] };
+    }
+
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length === 0) {
+      return { summary: null as string | null, bullets: [] as string[] };
+    }
+
+    const summary = lines[0];
+    const bullets = lines
+      .slice(1)
+      .map((line) => (line.startsWith('-') ? line.slice(1).trim() : line))
+      .filter((line) => line.length > 0);
+
+    return { summary, bullets };
+  }, [insight]);
+
+  const generatedLabel = useMemo(() => {
+    if (!generatedAt) {
+      return null;
+    }
+    const date = new Date(generatedAt);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  }, [generatedAt]);
+
+  return (
+    <article className="rounded-3xl border border-sky-300/35 bg-sky-500/10 p-6 text-sky-50 shadow-[0_20px_42px_rgba(2,132,199,0.22)] backdrop-blur">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold text-white">Jhezar</h2>
+            <span className="inline-flex items-center rounded-full border border-sky-200/30 bg-sky-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-100/90">
+              AI Insight
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-sky-100/80">
+            A quick summary of student growth and achievement activity.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white/10 px-4 py-2 text-right text-xs uppercase tracking-[0.18em] text-white/80 shadow-inner ring-1 ring-white/15">
+          <div className="text-[10px] font-semibold text-sky-200/85">Generated</div>
+          <div className="mt-1 text-[11px] font-semibold text-white/90">{loading ? '…' : generatedLabel ?? '—'}</div>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        {loading ? (
+          <div className="flex min-h-[10rem] w-full items-center justify-center rounded-2xl border border-dashed border-white/20 bg-sky-950/20 text-sm text-sky-100/80">
+            Generating AI insight…
+          </div>
+        ) : error ? (
+          <div className="flex min-h-[10rem] w-full items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/10 text-sm font-medium text-rose-100">
+            {error}
+          </div>
+        ) : parsed.summary ? (
+          <div className="rounded-2xl border border-white/15 bg-slate-950/35 p-5 text-slate-100">
+            <p className="text-base font-semibold leading-relaxed text-white">{parsed.summary}</p>
+            {parsed.bullets.length > 0 && (
+              <ul className="mt-4 space-y-2 text-sm leading-relaxed text-slate-100/90">
+                {parsed.bullets.slice(0, 6).map((bullet, index) => (
+                  <li key={`jhezar-bullet-${index}`} className="flex items-start gap-3">
+                    <span className="mt-1.5 inline-flex h-2 w-2 flex-none rounded-full bg-sky-300" />
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-4 text-xs text-slate-300/80">
+              Suggestions are general; validate with your analytics.
+            </p>
+          </div>
+        ) : (
+          <div className="flex min-h-[10rem] w-full items-center justify-center rounded-2xl border border-white/20 bg-sky-950/20 text-sm text-sky-100/80">
+            No AI insight available yet.
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 
