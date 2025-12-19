@@ -234,12 +234,6 @@ const SLOT_PARKING_HEADING = Object.freeze([
 ]);
 const SELECTED_QUEUE_CAR_HIGHLIGHT = '#43ff9a';
 const QUEUE_LOADING_DELAY_MS = 1500;
-const QUEUE_LOADING_MESSAGES = Object.freeze([
-  'Calibrating parking sensors',
-  'Synchronizing traffic lights',
-  'Charging EV batteries',
-  'Plotting the perfect parking path',
-]);
 const DEFAULT_QUEUE_CAR_MODEL = '/models/scene.gltf';
 const QUEUE_CAR_MODEL_PATHS = Object.freeze([
   '/car-models/red_car.glb',
@@ -771,6 +765,9 @@ const LICENSE_STORAGE_KEY = 'algohub-license-card-path';
 const LICENSE_EVENT = 'algohub-license-card-updated';
 const DEFAULT_LICENSE_IMAGE = '/drivers_license.png';
 const DEFAULT_LICENSE_STATS = Object.freeze({ arrivals: 0, departures: 0 });
+const GARAGE_LOADING_IMAGE = '/algohub-garage.png';
+const GARAGE_CLOSE_SFX_URL = '/garage_close.mp3';
+const GARAGE_OPEN_SFX_URL = '/garage_open.mp3';
 const STACK_CAR_TOOLTIP_OFFSET = Object.freeze([0, 5, 0]);
 const STACK_CAR_TOOLTIP_SCALE = 2;
 const STACK_CAR_TOOLTIP_BACKGROUND = Object.freeze({
@@ -2268,6 +2265,25 @@ function QueueCarFleet({
   );
 }
 
+function GarageDoorLoadingOverlay({ active }) {
+  const doorClosed = Boolean(active);
+  const doorTransform = doorClosed ? 'translate3d(0, 0%, 0)' : 'translate3d(0, -100%, 0)';
+  const overlayOpacity = doorClosed ? 0.7 : 0;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+      <div
+        className="absolute inset-0 bg-slate-950 transition-opacity duration-700 ease-in-out"
+        style={{ opacity: overlayOpacity }}
+      />
+      <div
+        className="absolute inset-0 bg-no-repeat bg-cover bg-center will-change-transform transition-transform duration-700 ease-in-out"
+        style={{ transform: doorTransform, backgroundImage: `url('${GARAGE_LOADING_IMAGE}')` }}
+      />
+    </div>
+  );
+}
+
 function MobileJoystick({ active }) {
   const baseRef = useRef(null);
   const pointerActiveRef = useRef(false);
@@ -2618,7 +2634,6 @@ export default function ParkingScene({
   const [queueFastForward, setQueueFastForward] = useState(false);
   const [selectedQueueCarIds, setSelectedQueueCarIds] = useState([]);
   const [minigameLoading, setMinigameLoading] = useState(false);
-  const [minigameLoadingStep, setMinigameLoadingStep] = useState(0);
   const [minigameLoadingMode, setMinigameLoadingMode] = useState(null);
   const [queueRemovalActive, setQueueRemovalActive] = useState(false);
   const [licenseStats, setLicenseStats] = useState({});
@@ -2659,6 +2674,7 @@ export default function ParkingScene({
   const currentRemovalPlanRef = useRef(null);
   const queueCarsRef = useRef(queueCars);
   const minigameLoadingTimeoutRef = useRef(null);
+  const minigameExitTimeoutRef = useRef(null);
   const guardPromptSfxPlayedRef = useRef(false);
   const guardApprovalSfxPlayedRef = useRef(false);
   const licenseInputRef = useRef(null);
@@ -2675,12 +2691,69 @@ export default function ParkingScene({
     () => !paused && activeMinigame !== 'stack' && !['prompt', 'handover', 'checking', 'approved'].includes(interactPhase),
     [activeMinigame, interactPhase, paused],
   );
-  const minigameLoadingMessage = QUEUE_LOADING_MESSAGES.length
-    ? QUEUE_LOADING_MESSAGES[minigameLoadingStep % QUEUE_LOADING_MESSAGES.length]
-    : 'Preparing the queue...';
-  const minigameLoadingProgress = QUEUE_LOADING_MESSAGES.length
-    ? Math.min(100, Math.round(((Math.min(minigameLoadingStep, QUEUE_LOADING_MESSAGES.length - 1) + 1) / QUEUE_LOADING_MESSAGES.length) * 100))
-    : 100;
+  const garageAudioRef = useRef({ close: null, open: null });
+  const prevMinigameLoadingRef = useRef(false);
+
+  const playGarageSfx = useCallback((type) => {
+    if (typeof window === 'undefined') return;
+    const url = type === 'close' ? GARAGE_CLOSE_SFX_URL : GARAGE_OPEN_SFX_URL;
+    try {
+      const key = type === 'close' ? 'close' : 'open';
+      if (!garageAudioRef.current[key]) {
+        garageAudioRef.current[key] = new Audio(url);
+        garageAudioRef.current[key].preload = 'auto';
+        garageAudioRef.current[key].volume = 0.9;
+      }
+      const audio = garageAudioRef.current[key];
+      audio.currentTime = 0;
+      const result = audio.play();
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => {});
+      }
+    } catch {}
+  }, []);
+
+  const handleBackToFreeRoam = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setActiveMinigame(null);
+      return;
+    }
+    if (minigameLoading) {
+      return;
+    }
+    if (minigameExitTimeoutRef.current) {
+      window.clearTimeout(minigameExitTimeoutRef.current);
+      minigameExitTimeoutRef.current = null;
+    }
+
+    // Prevent instantly re-triggering the marker countdown when we return to roam.
+    setStackMinigameArmed(false);
+    setQueueMinigameArmed(false);
+
+    setMinigameLoadingMode('exit');
+    setMinigameLoading(true);
+
+    // Let the garage door close before switching modes.
+    minigameExitTimeoutRef.current = window.setTimeout(() => {
+      minigameExitTimeoutRef.current = null;
+      setActiveMinigame(null);
+      setMinigameLoading(false);
+      setMinigameLoadingMode(null);
+    }, 800);
+  }, [minigameLoading]);
+
+  useEffect(() => {
+    const prev = prevMinigameLoadingRef.current;
+    prevMinigameLoadingRef.current = Boolean(minigameLoading);
+
+    if (minigameLoading && !prev) {
+      playGarageSfx('close');
+      return;
+    }
+    if (!minigameLoading && prev) {
+      playGarageSfx('open');
+    }
+  }, [minigameLoading, playGarageSfx]);
 
   const securityGuardCameraTarget = useMemo(() => ({
     position: new THREE.Vector3(...SECURITY_GUARD_CAMERA_POSITION),
@@ -2824,25 +2897,6 @@ export default function ParkingScene({
       processQueuedRemovalsRef.current();
     }
   }, [queueCars]);
-
-  useEffect(() => {
-    if (!minigameLoading) {
-      return undefined;
-    }
-    if (QUEUE_LOADING_MESSAGES.length < 2) {
-      return undefined;
-    }
-    let currentStep = 0;
-    const stepWindow = Math.max(1, Math.min(QUEUE_LOADING_MESSAGES.length, 3));
-    const intervalDuration = Math.max(400, Math.floor(QUEUE_LOADING_DELAY_MS / stepWindow));
-    const intervalId = window.setInterval(() => {
-      currentStep = (currentStep + 1) % QUEUE_LOADING_MESSAGES.length;
-      setMinigameLoadingStep(currentStep);
-    }, intervalDuration);
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [minigameLoading]);
 
   const handleToggleQueueCarSelection = useCallback((carId) => {
     const target = queueCars.find((entry) => entry.id === carId);
@@ -3597,7 +3651,6 @@ export default function ParkingScene({
     const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
     schedule(() => {
       setMinigameLoading(true);
-      setMinigameLoadingStep(0);
       setMinigameLoadingMode('stack');
       setStackMinigameArmed(false);
       if (minigameLoadingTimeoutRef.current) {
@@ -3615,7 +3668,6 @@ export default function ParkingScene({
         queuedRemovalIdsRef.current = [];
         setActiveMinigame('stack');
         setMinigameLoading(false);
-        setMinigameLoadingStep(0);
         setMinigameLoadingMode(null);
       }, QUEUE_LOADING_DELAY_MS);
       minigameLoadingTimeoutRef.current = timeoutId;
@@ -3632,7 +3684,6 @@ export default function ParkingScene({
     const schedule = typeof queueMicrotask === 'function' ? queueMicrotask : (fn) => Promise.resolve().then(fn);
     schedule(() => {
       setMinigameLoading(true);
-      setMinigameLoadingStep(0);
       setMinigameLoadingMode('queue');
       setQueueMinigameArmed(false);
       if (minigameLoadingTimeoutRef.current) {
@@ -3650,7 +3701,6 @@ export default function ParkingScene({
         queuedRemovalIdsRef.current = [];
         setActiveMinigame('queue');
         setMinigameLoading(false);
-        setMinigameLoadingStep(0);
         setMinigameLoadingMode(null);
       }, QUEUE_LOADING_DELAY_MS);
       minigameLoadingTimeoutRef.current = timeoutId;
@@ -3692,7 +3742,6 @@ export default function ParkingScene({
     }
     runSoon(() => {
       setMinigameLoading(false);
-      setMinigameLoadingStep(0);
       setMinigameLoadingMode(null);
       setStackMinigameArmed(true);
     });
@@ -3712,7 +3761,6 @@ export default function ParkingScene({
     }
     runSoon(() => {
       setMinigameLoading(false);
-      setMinigameLoadingStep(0);
       setMinigameLoadingMode(null);
       setQueueMinigameArmed(true);
     });
@@ -3759,7 +3807,6 @@ export default function ParkingScene({
         minigameLoadingTimeoutRef.current = null;
       }
       setMinigameLoading(false);
-      setMinigameLoadingStep(0);
       setMinigameLoadingMode(null);
       currentRemovalPlanRef.current = null;
     });
@@ -3795,11 +3842,21 @@ export default function ParkingScene({
       window.clearTimeout(minigameLoadingTimeoutRef.current);
       minigameLoadingTimeoutRef.current = null;
     }
+    if (minigameExitTimeoutRef.current) {
+      window.clearTimeout(minigameExitTimeoutRef.current);
+      minigameExitTimeoutRef.current = null;
+    }
     currentRemovalPlanRef.current = null;
     queuedRemovalIdsRef.current = [];
     queueRemovalInProgressRef.current = false;
     setQueueRemovalActive(false);
     setMinigameLoadingMode(null);
+    if (garageAudioRef.current?.close) {
+      try { garageAudioRef.current.close.pause(); } catch {}
+    }
+    if (garageAudioRef.current?.open) {
+      try { garageAudioRef.current.open.pause(); } catch {}
+    }
   }, []);
 
   useEffect(() => {
@@ -3925,6 +3982,7 @@ export default function ParkingScene({
         className="pointer-events-none absolute inset-0 z-[5] bg-white/5 transition-[opacity] duration-200 ease-out"
         style={{ ...cameraBlurStyle, mixBlendMode: 'screen' }}
       />
+      <GarageDoorLoadingOverlay active={minigameLoading} />
       <MobileJoystick active={joystickActive} />
       <button
         type="button"
@@ -4034,23 +4092,6 @@ export default function ParkingScene({
               </button>
             </div>
             <p className="mt-4 text-center text-[0.55rem] uppercase tracking-[0.35em] text-white/55">Press Esc again to resume quickly</p>
-          </div>
-        </div>
-      )}
-      {minigameLoading && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
-          <div className="pointer-events-auto flex w-[min(90vw,22rem)] flex-col items-center gap-4 rounded-3xl bg-slate-900/85 px-6 py-6 text-center text-sky-100 shadow-2xl ring-1 ring-sky-400/30">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-sky-300/80">
-              <span className="inline-flex h-2 w-2 animate-ping rounded-full bg-sky-300" />
-              {minigameLoadingMode === 'stack' ? 'Initializing stack' : 'Initializing queue'}
-            </div>
-            <div className="text-base font-semibold leading-relaxed sm:text-lg">{minigameLoadingMessage}</div>
-            <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-sky-100/15">
-              <div
-                className="h-full bg-sky-400 transition-[width] duration-300 ease-out"
-                style={{ width: `${minigameLoadingProgress}%` }}
-              />
-            </div>
           </div>
         </div>
       )}
@@ -4303,7 +4344,7 @@ export default function ParkingScene({
             </button>
             <button
               type="button"
-              onClick={() => setActiveMinigame(null)}
+              onClick={handleBackToFreeRoam}
               className="inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-white/25 transition hover:bg-slate-800/80"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -4362,7 +4403,7 @@ export default function ParkingScene({
             </button>
             <button
               type="button"
-              onClick={() => setActiveMinigame(null)}
+              onClick={handleBackToFreeRoam}
               className="inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-2 text-sm font-semibold text-white shadow ring-1 ring-white/25 transition hover:bg-slate-800/80"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
