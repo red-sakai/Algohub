@@ -101,7 +101,13 @@ const intersectsStaticColliders = (position, radius = CAR_COLLIDER_RADIUS) => {
   }
   return false;
 };
-const JOYSTICK_DEADZONE = 0.22;
+// Mobile joystick tuning:
+// - Lower deadzone so small movements register.
+// - Apply a response curve (exponent) so near-center steering is less twitchy.
+// - Separate threshold for considering the joystick "active" after remapping.
+const JOYSTICK_DEADZONE = 0.12;
+const JOYSTICK_ACTIVE_THRESHOLD = 0.05;
+const JOYSTICK_RESPONSE_EXPONENT = 1.45;
 const STACK_CAMERA_CONFIG = {
   position: new THREE.Vector3(-40, 74, -58),
   lookAt: new THREE.Vector3(-40, 0, -10),
@@ -965,7 +971,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true, timeScale = 1 }) {
     const jx = controlsAllowed ? joystick.x : 0;
     const jy = controlsAllowed ? joystick.y : 0;
     const joystickMagnitude = controlsAllowed ? Math.hypot(jx, jy) : 0;
-    let joystickActive = controlsAllowed && joystickMagnitude > JOYSTICK_DEADZONE;
+    let joystickActive = controlsAllowed && joystickMagnitude > JOYSTICK_ACTIVE_THRESHOLD;
 
     const keyboardForward = controlsAllowed ? (key('w') || key('arrowup')) : false;
     const keyboardBackward = controlsAllowed ? (key('s') || key('arrowdown')) : false;
@@ -980,7 +986,7 @@ function Car({ onSpeedChange, carRef, controlsEnabled = true, timeScale = 1 }) {
 
     if (controlsAllowed && joystickActive && !usingKeyboard) {
       const direction = Math.min(1, joystickMagnitude);
-      if (direction > JOYSTICK_DEADZONE) {
+      if (direction > JOYSTICK_ACTIVE_THRESHOLD) {
         const vertical = -jy;
         const targetHeading = Math.atan2(-jx, Math.abs(vertical) < 1e-4 && Math.abs(jx) < 1e-4 ? 1e-4 : vertical);
         const angleDiff = normalizeAngle(targetHeading - heading.current);
@@ -2350,9 +2356,25 @@ function MobileJoystick({ active }) {
     const offsetX = dx * angle;
     const offsetY = dy * angle;
     setThumbPos({ x: offsetX, y: offsetY });
-    const nx = offsetX / radius;
-    const ny = offsetY / radius;
-    setJoystickVector(nx, ny);
+    const nxRaw = offsetX / radius;
+    const nyRaw = offsetY / radius;
+    const magRaw = Math.hypot(nxRaw, nyRaw);
+    if (!Number.isFinite(magRaw) || magRaw <= 1e-6) {
+      setJoystickVector(0, 0);
+      return;
+    }
+
+    // Radial deadzone + remap so small drags register, but still reach full scale.
+    if (magRaw <= JOYSTICK_DEADZONE) {
+      setJoystickVector(0, 0);
+      return;
+    }
+
+    const magNormalized = THREE.MathUtils.clamp((magRaw - JOYSTICK_DEADZONE) / (1 - JOYSTICK_DEADZONE), 0, 1);
+    const curved = Math.pow(magNormalized, JOYSTICK_RESPONSE_EXPONENT);
+    const ux = nxRaw / magRaw;
+    const uy = nyRaw / magRaw;
+    setJoystickVector(ux * curved, uy * curved);
   }, []);
 
   const handlePointerDown = useCallback((event) => {
@@ -2361,6 +2383,9 @@ function MobileJoystick({ active }) {
     pointerActiveRef.current = true;
     setIsPressed(true);
     activePointerIdRef.current = event.pointerId;
+    try {
+      event.currentTarget?.setPointerCapture?.(event.pointerId);
+    } catch {}
     updateFromPosition(event.clientX, event.clientY);
   }, [active, updateFromPosition]);
 
@@ -2370,7 +2395,12 @@ function MobileJoystick({ active }) {
     updateFromPosition(event.clientX, event.clientY);
   }, [updateFromPosition]);
 
-  const handlePointerEnd = useCallback(() => {
+  const handlePointerEnd = useCallback((event) => {
+    try {
+      if (event?.pointerId != null) {
+        event.currentTarget?.releasePointerCapture?.(event.pointerId);
+      }
+    } catch {}
     resetMovement();
   }, [resetMovement]);
 
@@ -2424,13 +2454,13 @@ function MobileJoystick({ active }) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
-        className={`pointer-events-auto relative flex h-28 w-28 items-center justify-center rounded-full ${isPressed ? 'bg-black/60' : 'bg-black/40'} ring-2 ring-white/25 backdrop-blur-md transition`}
+        className={`pointer-events-auto relative flex h-32 w-32 items-center justify-center rounded-full ${isPressed ? 'bg-black/60' : 'bg-black/40'} ring-2 ring-white/25 backdrop-blur-md transition`}
         style={{ touchAction: 'none' }}
       >
         <div className="absolute inset-2 rounded-full border border-white/20" />
         <div className="absolute inset-6 rounded-full border border-white/15" />
         <div
-          className="pointer-events-none h-14 w-14 rounded-full bg-sky-400/70 shadow-[0_0_16px_rgba(56,189,248,0.45)] ring-2 ring-white/40 transition-transform"
+          className="pointer-events-none h-16 w-16 rounded-full bg-sky-400/70 shadow-[0_0_16px_rgba(56,189,248,0.45)] ring-2 ring-white/40 transition-transform"
           style={{ transform: `translate3d(${thumbPos.x}px, ${thumbPos.y}px, 0)` }}
         />
       </div>
