@@ -271,7 +271,7 @@ export default function GameScroller() {
           controller.start({
             durationMs: 650,
             mode: "close",
-            showLoaderOnClose: true,
+            showLoaderOnClose: false,
             onDone: () => beginCriticalTransfer(),
           });
         } else {

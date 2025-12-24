@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import MusicPlayer from "./components/ui/MusicPlayer";
-import CustomCursor from "./components/ui/CustomCursor";
 import GlobalLoaderHost from "./components/ui/GlobalLoaderHost";
 import { SlideTransitionProvider } from "./components/ui/SlideTransition";
 
@@ -37,8 +36,6 @@ export default function RootLayout({
           <MusicPlayer />
           {/* Global loader portal so transitions persist across routes */}
           <GlobalLoaderHost />
-          {/* Site-wide custom cursor rendered last to guarantee topmost stacking */}
-          <CustomCursor />
         </SlideTransitionProvider>
       </body>
     </html>
