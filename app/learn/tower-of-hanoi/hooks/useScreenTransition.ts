@@ -2,7 +2,7 @@ import { useState } from "@/hooks/useState";
 import { useEffect } from "@/hooks/useEffect";
 import { hideGlobalLoader, GLOBAL_LOADER_MIN_MS } from "@/lib/transition/globalLoaderBus";
 
-export type ScreenType = "logo" | "welcome" | "desktop" | "game" | "terminal";
+export type ScreenType = "logo" | "welcome" | "desktop" | "game" | "terminal" | "playcanvas";
 
 export function useScreenTransition() {
 	const [screen, setScreen] = useState<ScreenType>("logo");

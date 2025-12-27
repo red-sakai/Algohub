@@ -5,35 +5,38 @@ interface ErrorPopupProps {
 
 export function ErrorPopup({ onClose, onRetry }: ErrorPopupProps) {
 	return (
-		<div className="absolute inset-0 flex items-center justify-center z-20 bg-black/80 animate-in fade-in duration-200">
-			<div className="bg-gray-900 border-2 border-red-600 shadow-2xl shadow-red-900/50 w-[500px] animate-in zoom-in duration-300">
+		<div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/80 animate-in fade-in duration-200">
+			<div className="bg-[#0c0c0c] rounded-lg shadow-2xl w-[500px] animate-in zoom-in duration-300 border border-gray-700">
 				{/* Window title bar */}
-				<div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between">
-					<div className="flex items-center gap-2">
+				<div className="bg-gradient-to-b from-gray-800 to-gray-900 text-white px-4 py-2 flex items-center justify-between rounded-t-lg border-b border-gray-700">
+					<div className="flex items-center gap-3">
 						<span className="text-xl">⚠</span>
-						<span className="font-bold text-sm">CRITICAL ERROR</span>
+						<span className="font-semibold text-sm">Command Prompt - Error</span>
 					</div>
-					<button
-						onClick={onClose}
-						className="hover:bg-red-700 px-2 py-1 text-xs"
-					>
-						✕
-					</button>
+					<div className="flex gap-2">
+						<button className="w-6 h-6 flex items-center justify-center text-xs rounded opacity-50 ">_</button>
+						<button className="w-6 h-6 flex items-center justify-center text-xs rounded opacity-50 ">□</button>
+						<button
+							className="w-6 h-6 flex items-center justify-center text-xs rounded opacity-50 "
+						>
+							✕
+						</button>
+					</div>
 				</div>
 
 				{/* Window content */}
-				<div className="p-6 space-y-4">
+				<div className="p-6 space-y-4 font-mono">
 					<div className="flex items-start gap-4">
-						<div className="text-red-500 text-4xl">⚠</div>
+						<div className="text-red-400 text-4xl">⚠</div>
 						<div className="flex-1 space-y-2">
-							<h2 className="text-white font-bold text-lg">
+							<h2 className="text-red-400 font-bold text-base">
 								DATA CORRUPTION ERROR
 							</h2>
-							<p className="text-gray-300 text-sm">
+							<p className="text-gray-300 text-sm leading-relaxed">
 								Critical system error detected. Memory address 0x7F4A39B2
 								has been compromised.
 							</p>
-							<p className="text-red-400 text-xs font-mono">
+							<p className="text-red-400 text-xs">
 								Error Code: 0x80004005
 								<br />
 								Timestamp: {new Date().toISOString()}
@@ -44,14 +47,8 @@ export function ErrorPopup({ onClose, onRetry }: ErrorPopupProps) {
 					{/* Action buttons */}
 					<div className="flex gap-3 justify-end pt-4 border-t border-gray-700">
 						<button
-							onClick={onClose}
-							className="px-4 py-2 bg-gray-700 text-white text-sm hover:bg-gray-600 transition-colors"
-						>
-							Ignore
-						</button>
-						<button
 							onClick={onRetry}
-							className="px-4 py-2 bg-red-600 text-white text-sm hover:bg-red-700 transition-colors"
+							className="px-4 py-2 bg-gray-800 text-white text-sm hover:bg-gray-700 transition-colors border border-gray-600 rounded"
 						>
 							Retry Connection
 						</button>

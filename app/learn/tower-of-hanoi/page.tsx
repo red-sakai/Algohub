@@ -9,15 +9,16 @@ import { DesktopScreen } from "./components/DesktopScreen";
 import { HanoiGame } from "./components/HanoiGame";
 import { TerminalScreen } from "./components/TerminalScreen";
 import { ErrorPopup } from "./components/ErrorPopup";
+import { PlayCanvasGame } from "./components/PlayCanvasGame";
 
 export default function TowerOfHanoiPage() {
 	const { screen, setScreen, isFading } = useScreenTransition();
 	const gameState = useTowerOfHanoi();
 	const { loading, currentLine, showError, setShowError, terminalLines, resetTerminal } = useTerminal(screen);
 
-	// Check if user made 10 moves
+	// Check if user made 5 moves
 	useEffect(() => {
-		if (gameState.moves >= 10 && screen === "game") {
+		if (gameState.moves >= 5 && screen === "game") {
 			setTimeout(() => {
 				setScreen("terminal");
 			}, 500);
@@ -54,10 +55,14 @@ export default function TowerOfHanoiPage() {
 						terminalLines={terminalLines}
 					/>
 				)}
+				{screen === "playcanvas" && <PlayCanvasGame />}
 				{showError && (
 					<ErrorPopup
 						onClose={() => setShowError(false)}
-						onRetry={resetTerminal}
+						onRetry={() => {
+							setShowError(false);
+							setScreen("playcanvas");
+						}}
 					/>
 				)}
 			</main>

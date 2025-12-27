@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 interface DesktopScreenProps {
 	onLaunchGame: () => void;
 }
@@ -11,8 +13,14 @@ export function DesktopScreen({ onLaunchGame }: DesktopScreenProps) {
 					onDoubleClick={onLaunchGame}
 					className="flex flex-col items-center gap-2 group cursor-pointer"
 				>
-					<div className="w-20 h-20 bg-white/90 rounded-lg shadow-lg flex items-center justify-center group-hover:bg-white transition-colors">
-						<span className="text-4xl">🗼</span>
+					<div className="w-20 h-20 bg-white/90 rounded-lg shadow-lg flex items-center justify-center group-hover:bg-white transition-colors overflow-hidden">
+						<Image
+							src="/images/game-covers/toh-logo.png"
+							alt="Tower of Hanoi"
+							width={120}
+							height={120}
+							className="object-cover scale-125"
+						/>
 					</div>
 					<span className="text-white text-sm font-medium drop-shadow-lg">Tower of Hanoi</span>
 				</button>

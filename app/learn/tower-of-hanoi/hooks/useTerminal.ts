@@ -19,7 +19,13 @@ export function useTerminal(screen: ScreenType) {
 	const [showError, setShowError] = useState(false);
 
 	useEffect(() => {
-		if (screen !== "terminal") return;
+		if (screen !== "terminal") {
+			// Reset state when leaving terminal screen
+			setCurrentLine(0);
+			setLoading(true);
+			setShowError(false);
+			return;
+		}
 
 		const interval = setInterval(() => {
 			setCurrentLine((prev) => {
@@ -28,7 +34,10 @@ export function useTerminal(screen: ScreenType) {
 				} else {
 					clearInterval(interval);
 					setLoading(false);
-					setTimeout(() => setShowError(true), 1000);
+					// Show error popup after a short delay when all lines are shown
+					setTimeout(() => {
+						setShowError(true);
+					}, 1000);
 					return prev;
 				}
 			});
