@@ -6,15 +6,20 @@ interface LogoScreenProps {
 
 export function LogoScreen({ isFading }: LogoScreenProps) {
 	useEffect(() => {
-		const audio = new Audio("/toh-audios/startpc.ogg");
-		audio.play().catch((error) => {
-			console.error("Failed to play audio:", error);
-		});
+		try {
+			const audio = new Audio("/toh-audios/startpc.ogg");
+			audio.preload = "auto";
+			audio.play().catch(() => {
+				// Silently fail if audio can't play
+			});
 
-		return () => {
-			audio.pause();
-			audio.currentTime = 0;
-		};
+			return () => {
+				audio.pause();
+				audio.currentTime = 0;
+			};
+		} catch {
+			// Silently fail if audio creation fails
+		}
 	}, []);
 
 	return (

@@ -7,15 +7,20 @@ interface ErrorPopupProps {
 
 export function ErrorPopup({ onClose, onRetry }: ErrorPopupProps) {
 	useEffect(() => {
-		const audio = new Audio("/toh-audios/error.mp3");
-		audio.play().catch((error) => {
-			console.error("Failed to play error sound:", error);
-		});
+		try {
+			const audio = new Audio("/toh-audios/error.mp3");
+			audio.preload = "auto";
+			audio.play().catch(() => {
+				// Silently fail if audio can't play
+			});
 
-		return () => {
-			audio.pause();
-			audio.currentTime = 0;
-		};
+			return () => {
+				audio.pause();
+				audio.currentTime = 0;
+			};
+		} catch {
+			// Silently fail if audio creation fails
+		}
 	}, []);
 
 	return (
@@ -44,11 +49,11 @@ export function ErrorPopup({ onClose, onRetry }: ErrorPopupProps) {
 						<div className="text-red-400 text-4xl">⚠</div>
 						<div className="flex-1 space-y-2">
 							<h2 className="text-red-400 font-bold text-base">
-								DATA CORRUPTION ERROR
-							</h2>
-							<p className="text-gray-300 text-sm leading-relaxed">
-								Critical system error detected. Memory address 0x7F4A39B2
-								has been compromised.
+							NEURAL PATHWAY DISRUPTION
+						</h2>
+						<p className="text-gray-300 text-sm leading-relaxed">
+							Critical data lines were rerouted incorrectly during the reboot.
+							Quantum relay node 0x7F4A39B2 requires immediate recalibration.
 							</p>
 							<p className="text-red-400 text-xs">
 								Error Code: 0x80004005

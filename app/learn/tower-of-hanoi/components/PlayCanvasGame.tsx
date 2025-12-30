@@ -5,6 +5,7 @@ import { useEffect } from "@/hooks/useEffect";
 import { useRef } from "@/hooks/useRef";
 import { usePlayCanvasMessaging } from "../hooks/usePlayCanvasMessaging";
 import { DialogueOverlay } from "./DialogueOverlay";
+import { InstructionsModal } from "./InstructionsModal";
 import { playSfx } from "@/lib/audio/sfx";
 
 interface DialogueState {
@@ -20,6 +21,11 @@ export function PlayCanvasGame() {
 	const [gameState, setGameState] = useState<string>("playing");
 	const [booksFound, setBooksFound] = useState<number>(0);
 	const [isLoaded, setIsLoaded] = useState<boolean>(false);
+	const [showInstructions, setShowInstructions] = useState<boolean>(false);
+	const [isOnCooldown, setIsOnCooldown] = useState<boolean>(false);
+	const [currentTask, setCurrentTask] = useState<number>(1); // 1 = read instructions, 2 = exit door
+	const [doorExited, setDoorExited] = useState<boolean>(false);
+	const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 	const { triggerEvent, pauseGame, resumeGame } = usePlayCanvasMessaging({
 		iframeRef,
@@ -59,12 +65,35 @@ export function PlayCanvasGame() {
 		const handleMessage = (event: MessageEvent) => {
 			if (event.data.type === "OBJECT_CLICKED" && event.data.data?.objectType === "book") {
 				setBooksFound(1);
+				// Only show modal if not on cooldown
+				if (!isOnCooldown) {
+					setShowInstructions(true);
+				}
+			}
+			// Listen for door click when task 2 is active
+			if (event.data.type === "OBJECT_CLICKED" && event.data.data?.objectType === "door") {
+				if (currentTask === 2) {
+					setDoorExited(true);
+					console.log("Door clicked - Task 2 complete!");
+				}
 			}
 		};
 
 		window.addEventListener("message", handleMessage);
 		return () => window.removeEventListener("message", handleMessage);
-	}, []);
+	}, [isOnCooldown, currentTask]);
+
+	// Transition to next task after book is found
+	useEffect(() => {
+		if (booksFound === 1 && currentTask === 1) {
+			// Wait 2 seconds before showing next task
+			const taskTimer = setTimeout(() => {
+				setCurrentTask(2);
+			}, 2000);
+
+			return () => clearTimeout(taskTimer);
+		}
+	}, [booksFound, currentTask]);
 
 	useEffect(() => {
 		document.body.style.overflow = "hidden";
@@ -77,6 +106,10 @@ export function PlayCanvasGame() {
 		return () => {
 			document.body.style.overflow = "auto";
 			clearTimeout(loadTimer);
+			// Cleanup cooldown timer on unmount
+			if (cooldownTimerRef.current) {
+				clearTimeout(cooldownTimerRef.current);
+			}
 		};
 	}, []);
 
@@ -181,6 +214,24 @@ export function PlayCanvasGame() {
 					/>
 				)}
 
+				{/* Instructions Modal */}
+				{showInstructions && (
+				<InstructionsModal onClose={() => {
+					setShowInstructions(false);
+					// Start cooldown
+					setIsOnCooldown(true);
+					// Clear any existing timer
+					if (cooldownTimerRef.current) {
+						clearTimeout(cooldownTimerRef.current);
+					}
+					// Set 5 second cooldown
+					cooldownTimerRef.current = setTimeout(() => {
+						setIsOnCooldown(false);
+						cooldownTimerRef.current = null;
+					}, 5000);
+				}} />
+			)}
+
 				{/* Quest Tracker - Top Right - Mimic Style */}
 				{isLoaded && (
 					<div className="absolute top-8 right-8 z-[70] pointer-events-none">
@@ -193,20 +244,39 @@ export function PlayCanvasGame() {
 							</div>
 							
 							{/* Objective with checkbox */}
-							<div className="flex items-center justify-between gap-4">
-								<p className="text-gray-300 text-base font-light">
-									Read the instructions (Find {booksFound}/1 book)
-								</p>
-								<div className={`w-10 h-10 border-2 flex items-center justify-center transition-all ${
-									booksFound === 1 
-										? 'border-white bg-white/10' 
-										: 'border-white/50 bg-transparent'
-								}`}>
-									{booksFound === 1 && (
-										<span className="text-white text-2xl">✓</span>
-									)}
+							{currentTask === 1 && (
+								<div className="flex items-center justify-between gap-4">
+									<p className="text-gray-300 text-base font-light">
+										Read the instructions (Find {booksFound}/1 book)
+									</p>
+									<div className={`w-10 h-10 border-2 flex items-center justify-center transition-all ${
+										booksFound === 1 
+											? 'border-white bg-white/10' 
+											: 'border-white/50 bg-transparent'
+									}`}>
+										{booksFound === 1 && (
+											<span className="text-white text-2xl">✓</span>
+										)}
+									</div>
 								</div>
-							</div>
+							)}
+							
+							{currentTask === 2 && (
+								<div className="flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+									<p className="text-gray-300 text-base font-light">
+										Exit through the door
+									</p>
+									<div className={`w-10 h-10 border-2 flex items-center justify-center transition-all ${
+										doorExited
+											? 'border-white bg-white/10'
+											: 'border-white/50 bg-transparent'
+									}`}>
+										{doorExited && (
+											<span className="text-white text-2xl">✓</span>
+										)}
+									</div>
+								</div>
+							)}
 						</div>
 					</div>
 				)}

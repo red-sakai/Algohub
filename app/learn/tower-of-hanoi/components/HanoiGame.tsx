@@ -24,16 +24,21 @@ export function HanoiGame({
 	onDrop,
 }: HanoiGameProps) {
 	useEffect(() => {
-		const audio = new Audio("/toh-audios/game-music.mp3");
-		audio.loop = true;
-		audio.play().catch((error) => {
-			console.error("Failed to play game music:", error);
-		});
+		try {
+			const audio = new Audio("/toh-audios/game-music.mp3");
+			audio.preload = "auto";
+			audio.loop = true;
+			audio.play().catch(() => {
+				// Silently fail if audio can't play
+			});
 
-		return () => {
-			audio.pause();
-			audio.currentTime = 0;
-		};
+			return () => {
+				audio.pause();
+				audio.currentTime = 0;
+			};
+		} catch {
+			// Silently fail if audio creation fails
+		}
 	}, []);
 
 	return (

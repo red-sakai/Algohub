@@ -20,10 +20,15 @@ export default function TowerOfHanoiPage() {
 	useEffect(() => {
 		if (gameState.moves >= 5 && screen === "game") {
 			// Play error sound
-			const audio = new Audio("/toh-audios/error.mp3");
-			audio.play().catch((error) => {
-				console.error("Failed to play error sound:", error);
-			});
+			try {
+				const audio = new Audio("/toh-audios/error.mp3");
+				audio.preload = "auto";
+				audio.play().catch(() => {
+					// Silently fail if audio can't play
+				});
+			} catch {
+				// Silently fail if audio creation fails
+			}
 
 			setTimeout(() => {
 				setScreen("terminal");

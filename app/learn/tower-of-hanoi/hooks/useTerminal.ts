@@ -3,14 +3,14 @@ import { useEffect } from "@/hooks/useEffect";
 import type { ScreenType } from "./useScreenTransition";
 
 const terminalLines = [
-	"> Connecting to secure network...",
-	"> Establishing connection...",
-	"> Loading data stream...",
-	"> Accessing encrypted files...",
-	"> Decrypting packets...",
-	"> WARNING: Unusual activity detected",
-	"> Attempting to stabilize connection...",
-	"> ERROR: Data corruption detected",
+	"> Initializing neural pathway connections...",
+	"> Synchronizing quantum relay nodes...",
+	"> Streaming encrypted data packets...",
+	"> Bypassing firewall authentication protocols...",
+	"> Decrypting multi-layer security barriers...",
+	"> WARNING: Anomalous signal interference detected",
+	"> Attempting emergency system stabilization...",
+	"> ERROR: Critical data lines were rerouted incorrectly during the reboot",
 ];
 
 export function useTerminal(screen: ScreenType) {
