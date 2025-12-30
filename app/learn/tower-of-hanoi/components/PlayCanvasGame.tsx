@@ -18,6 +18,8 @@ export function PlayCanvasGame() {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [dialogue, setDialogue] = useState<DialogueState | null>(null);
 	const [gameState, setGameState] = useState<string>("playing");
+	const [booksFound, setBooksFound] = useState<number>(0);
+	const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
 	const { triggerEvent, pauseGame, resumeGame } = usePlayCanvasMessaging({
 		iframeRef,
@@ -52,11 +54,29 @@ export function PlayCanvasGame() {
 		},
 	});
 
+	// Listen for book found messages from PlayCanvas
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent) => {
+			if (event.data.type === "OBJECT_CLICKED" && event.data.data?.objectType === "book") {
+				setBooksFound(1);
+			}
+		};
+
+		window.addEventListener("message", handleMessage);
+		return () => window.removeEventListener("message", handleMessage);
+	}, []);
+
 	useEffect(() => {
 		document.body.style.overflow = "hidden";
 
+		// Show task modal after loading is complete (simulate loading time)
+		const loadTimer = setTimeout(() => {
+			setIsLoaded(true);
+		}, 3000); // 3 seconds to match typical loading screen duration
+
 		return () => {
 			document.body.style.overflow = "auto";
+			clearTimeout(loadTimer);
 		};
 	}, []);
 
@@ -159,6 +179,36 @@ export function PlayCanvasGame() {
 						onChoiceSelected={handleDialogueChoice}
 						onClose={handleDialogueClose}
 					/>
+				)}
+
+				{/* Quest Tracker - Top Right - Mimic Style */}
+				{isLoaded && (
+					<div className="absolute top-8 right-8 z-[70] pointer-events-none">
+						<div className="bg-gradient-to-b from-black/60 to-black/40 backdrop-blur-md pointer-events-auto min-w-[400px] px-6 py-4">
+							{/* Title */}
+							<div className="pb-3 mb-3 border-b border-white/20">
+								<h3 className="text-white font-light text-3xl tracking-wide">
+									Task
+								</h3>
+							</div>
+							
+							{/* Objective with checkbox */}
+							<div className="flex items-center justify-between gap-4">
+								<p className="text-gray-300 text-base font-light">
+									Read the instructions (Find {booksFound}/1 book)
+								</p>
+								<div className={`w-10 h-10 border-2 flex items-center justify-center transition-all ${
+									booksFound === 1 
+										? 'border-white bg-white/10' 
+										: 'border-white/50 bg-transparent'
+								}`}>
+									{booksFound === 1 && (
+										<span className="text-white text-2xl">✓</span>
+									)}
+								</div>
+							</div>
+						</div>
+					</div>
 				)}
 
 				{/* You can add more overlays here */}
