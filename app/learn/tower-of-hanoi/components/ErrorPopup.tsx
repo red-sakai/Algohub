@@ -61,7 +61,17 @@ export function ErrorPopup({ onClose, onRetry }: ErrorPopupProps) {
 					{/* Action buttons */}
 					<div className="flex gap-3 justify-end pt-4 border-t border-gray-700">
 						<button
-							onClick={onRetry}
+							onClick={() => {
+								// Random chance to play jumpscare (50% chance)
+								if (Math.random() < 0.5) {
+									const jumpscareAudio = new Audio("/toh-audios/jumpscare.ogg");
+									jumpscareAudio.volume = 0.7;
+									jumpscareAudio.play().catch((error) => {
+										console.error("Failed to play jumpscare:", error);
+									});
+								}
+								onRetry();
+							}}
 							className="px-4 py-2 bg-gray-800 text-white text-sm hover:bg-gray-700 transition-colors border border-gray-600 rounded"
 						>
 							Retry Connection
