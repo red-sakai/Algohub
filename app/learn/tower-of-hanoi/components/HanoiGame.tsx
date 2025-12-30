@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useEffect } from "@/hooks/useEffect";
 import type { DraggedDisk } from "../hooks/useTowerOfHanoi";
 
 interface HanoiGameProps {
@@ -22,6 +23,19 @@ export function HanoiGame({
 	onDragLeave,
 	onDrop,
 }: HanoiGameProps) {
+	useEffect(() => {
+		const audio = new Audio("/toh-audios/game-music.mp3");
+		audio.loop = true;
+		audio.play().catch((error) => {
+			console.error("Failed to play game music:", error);
+		});
+
+		return () => {
+			audio.pause();
+			audio.currentTime = 0;
+		};
+	}, []);
+
 	return (
 		<div className="absolute inset-0 z-50 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 animate-in fade-in duration-300">
 			{/* Window frame */}

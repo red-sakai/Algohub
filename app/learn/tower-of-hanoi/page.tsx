@@ -19,6 +19,12 @@ export default function TowerOfHanoiPage() {
 	// Check if user made 5 moves
 	useEffect(() => {
 		if (gameState.moves >= 5 && screen === "game") {
+			// Play error sound
+			const audio = new Audio("/toh-audios/error.mp3");
+			audio.play().catch((error) => {
+				console.error("Failed to play error sound:", error);
+			});
+
 			setTimeout(() => {
 				setScreen("terminal");
 			}, 500);

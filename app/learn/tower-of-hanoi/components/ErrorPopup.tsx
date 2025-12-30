@@ -1,9 +1,23 @@
+import { useEffect } from "@/hooks/useEffect";
+
 interface ErrorPopupProps {
 	onClose: () => void;
 	onRetry: () => void;
 }
 
 export function ErrorPopup({ onClose, onRetry }: ErrorPopupProps) {
+	useEffect(() => {
+		const audio = new Audio("/toh-audios/error.mp3");
+		audio.play().catch((error) => {
+			console.error("Failed to play error sound:", error);
+		});
+
+		return () => {
+			audio.pause();
+			audio.currentTime = 0;
+		};
+	}, []);
+
 	return (
 		<div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/80 animate-in fade-in duration-200">
 			<div className="bg-[#0c0c0c] rounded-lg shadow-2xl w-[500px] animate-in zoom-in duration-300 border border-gray-700">

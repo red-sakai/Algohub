@@ -1,8 +1,22 @@
+import { useEffect } from "@/hooks/useEffect";
+
 interface LogoScreenProps {
 	isFading: boolean;
 }
 
 export function LogoScreen({ isFading }: LogoScreenProps) {
+	useEffect(() => {
+		const audio = new Audio("/toh-audios/startpc.ogg");
+		audio.play().catch((error) => {
+			console.error("Failed to play audio:", error);
+		});
+
+		return () => {
+			audio.pause();
+			audio.currentTime = 0;
+		};
+	}, []);
+
 	return (
 		<div className={`absolute inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-700 ${isFading ? "opacity-0" : "opacity-100"}`}>
 			<div className="flex flex-col items-center gap-12 animate-in fade-in duration-500">
