@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { useRouter } from "next/navigation";
 import { useState } from "@/hooks/useState";
 import { useEffect } from "@/hooks/useEffect";
 import { useRef } from "@/hooks/useRef";
@@ -15,6 +16,7 @@ interface DialogueState {
 }
 
 export function PlayCanvasGame() {
+	const router = useRouter();
 	const containerRef = useRef<HTMLDivElement>(null);
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [dialogue, setDialogue] = useState<DialogueState | null>(null);
@@ -75,25 +77,29 @@ export function PlayCanvasGame() {
 				if (currentTask === 2) {
 					setDoorExited(true);
 					console.log("Door clicked - Task 2 complete!");
-				}
+				// Navigate to toh-center after a short delay
+				setTimeout(() => {
+					router.push("/learn/tower-of-hanoi/toh-center");
+				}, 500);
 			}
-		};
-
-		window.addEventListener("message", handleMessage);
-		return () => window.removeEventListener("message", handleMessage);
-	}, [isOnCooldown, currentTask]);
-
-	// Transition to next task after book is found
-	useEffect(() => {
-		if (booksFound === 1 && currentTask === 1) {
-			// Wait 2 seconds before showing next task
-			const taskTimer = setTimeout(() => {
-				setCurrentTask(2);
-			}, 2000);
-
-			return () => clearTimeout(taskTimer);
 		}
-	}, [booksFound, currentTask]);
+	};
+
+	window.addEventListener("message", handleMessage);
+	return () => window.removeEventListener("message", handleMessage);
+}, [isOnCooldown, currentTask, router]);
+
+// Transition to next task after book is found
+useEffect(() => {
+	if (booksFound === 1 && currentTask === 1) {
+		// Wait 2 seconds before showing next task
+		const taskTimer = setTimeout(() => {
+			setCurrentTask(2);
+		}, 2000);
+
+		return () => clearTimeout(taskTimer);
+	}
+}, [booksFound, currentTask]);
 
 	useEffect(() => {
 		document.body.style.overflow = "hidden";
