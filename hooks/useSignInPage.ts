@@ -13,6 +13,7 @@ import { persistSupabaseSession } from '@/actions/auth/persist-session';
 import { playSfx } from '@/lib/audio/sfx';
 import { encodeStateParam } from '@/lib/utils';
 import { showGlobalLoader, GLOBAL_LOADER_MIN_MS } from '@/lib/transition/globalLoaderBus';
+import { safeParseRegisterInput, safeParseSignInInput } from '@/lib/validation/auth';
 import type { AuthMode } from '@/types/auth';
 import type { UseSignInPageResult } from '@/types/sign-in';
 import type { IrisHandle } from '@/app/components/ui/IrisTransition';
@@ -108,26 +109,37 @@ export function useSignInPage(): UseSignInPageResult {
 
       const formElement = event.currentTarget;
       const formData = new FormData(formElement);
-      const email = ((formData.get('email') as string | null) ?? '').trim();
+      const email = (formData.get('email') as string | null) ?? '';
       const password = (formData.get('password') as string | null) ?? '';
-      const displayName = ((formData.get('display-name') as string | null) ?? '').trim();
+      const displayName = (formData.get('display-name') as string | null) ?? '';
 
-      if (!email || !password) {
-        setStatusMessage('Please provide both an email and password to continue.');
-        return;
-      }
+      let cleanedEmail = '';
+      let cleanedPassword = '';
+      let cleanedDisplayName = '';
 
       if (authMode === 'register') {
-        if (!displayName) {
-          setStatusMessage('Add a display name so we can personalize your profile.');
+        const parsed = safeParseRegisterInput({ email, password, displayName });
+        if (!parsed.success) {
+          setStatusMessage(parsed.message);
           return;
         }
+        cleanedEmail = parsed.data.email;
+        cleanedPassword = parsed.data.password;
+        cleanedDisplayName = parsed.data.displayName;
 
         const confirmPassword = (formData.get('confirm-password') as string | null) ?? '';
-        if (password !== confirmPassword) {
+        if (cleanedPassword !== confirmPassword) {
           setStatusMessage("Those passwords don't match yet. Double-check and try again.");
           return;
         }
+      } else {
+        const parsed = safeParseSignInInput({ email, password });
+        if (!parsed.success) {
+          setStatusMessage(parsed.message);
+          return;
+        }
+        cleanedEmail = parsed.data.email;
+        cleanedPassword = parsed.data.password;
       }
 
       setIsSubmitting(true);
@@ -135,7 +147,11 @@ export function useSignInPage(): UseSignInPageResult {
 
       try {
         if (authMode === 'register') {
-          const result = await registerUserAction({ email, password, displayName });
+          const result = await registerUserAction({
+            email: cleanedEmail,
+            password: cleanedPassword,
+            displayName: cleanedDisplayName,
+          });
           setStatusMessage(result.message);
           if (result.success) {
             setRegisterModalMessage(result.message || 'Check your inbox to confirm your account.');
@@ -143,7 +159,10 @@ export function useSignInPage(): UseSignInPageResult {
             formElement.reset();
           }
         } else {
-          const result = await signInUserAction({ email, password });
+          const result = await signInUserAction({
+            email: cleanedEmail,
+            password: cleanedPassword,
+          });
           setStatusMessage(result.message);
           if (result.success) {
             if (result.session?.access_token && result.session.refresh_token) {
@@ -158,7 +177,7 @@ export function useSignInPage(): UseSignInPageResult {
               console.warn('Missing Supabase session tokens in sign-in result');
             }
 
-            const profileName = result.profile?.displayName ?? result.email ?? maskEmail(email);
+            const profileName = result.profile?.displayName ?? result.email ?? maskEmail(cleanedEmail);
 
             const profilePayload = result.profile ?? null;
             const authPayload = result.authUser ?? null;

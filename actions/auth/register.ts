@@ -2,6 +2,7 @@
 
 import type { RegisterPayload, RegisterResult, RegisterStatus } from "@/types/auth";
 import { getServiceSupabase } from "@/lib/supabase/serviceClient";
+import { safeParseRegisterInput } from "@/lib/validation/auth";
 
 function maskEmail(email: string): string {
   return email.replace(/(.{2}).+(@.+)/, "$1•••$2");
@@ -9,9 +10,18 @@ function maskEmail(email: string): string {
 
 export async function registerUserAction(payload: RegisterPayload): Promise<RegisterResult> {
   const supabase = getServiceSupabase();
-  const email = payload.email.trim().toLowerCase();
-  const password = payload.password;
-  const desiredDisplayName = payload.displayName.trim();
+  const parsed = safeParseRegisterInput(payload);
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.message,
+      status: "pending",
+    } satisfies RegisterResult;
+  }
+
+  const email = parsed.data.email;
+  const password = parsed.data.password;
+  const desiredDisplayName = parsed.data.displayName;
 
   const redirectTo = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? undefined;
 
