@@ -27,6 +27,7 @@ import IrisOpenOnMount from '@/app/components/ui/IrisOpenOnMount';
 import IrisTransition, { IrisHandle } from '@/app/components/ui/IrisTransition';
 import { setIrisPoint } from '@/lib/transition/transitionBus';
 import { showGlobalLoader, hideGlobalLoader } from '@/lib/transition/globalLoaderBus';
+import type { Socket } from 'socket.io-client';
 
 type DashboardMetric = {
   id: string;
@@ -139,6 +140,75 @@ function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHand
 
   useEffect(() => {
     setSidebarOpen(false);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let socket: Socket | null = null;
+
+    const connect = async () => {
+      try {
+        // Ensure the Socket.IO server is initialized.
+        await fetch('/api/socketio', { cache: 'no-store' });
+        if (cancelled) return;
+
+        const { io } = await import('socket.io-client');
+        socket = io({
+          path: '/api/socketio',
+        });
+
+        socket.on('server:hello', () => {
+          // Keep silent in UI; useful for debugging.
+        });
+
+        socket.on('admin:stats', (payload: unknown) => {
+          if (cancelled) return;
+
+          const typed = payload as {
+            studentGrowth?: StudentGrowthResponse;
+            achievementsGained?: AchievementGainResponse;
+            aiInsight?: AiInsightResponse;
+          };
+
+          if (typed.studentGrowth) {
+            const points = Array.isArray(typed.studentGrowth.data) ? typed.studentGrowth.data : [];
+            setStudentGrowth(points);
+            setStudentGrowthError(typed.studentGrowth.error ?? null);
+            setStudentGrowthLoading(false);
+          }
+
+          if (typed.achievementsGained) {
+            const points = Array.isArray(typed.achievementsGained.data) ? typed.achievementsGained.data : [];
+            setAchievementGain(points);
+            setAchievementGainError(typed.achievementsGained.error ?? null);
+            setAchievementGainLoading(false);
+          }
+
+          if (typed.aiInsight) {
+            const insightText = typed.aiInsight.data?.insight ?? '';
+            setAiInsight(insightText.length > 0 ? insightText : null);
+            setAiInsightGeneratedAt(typed.aiInsight.generatedAt ?? null);
+            setAiInsightError(typed.aiInsight.error ?? null);
+            setAiInsightLoading(false);
+          }
+        });
+
+        socket.on('admin:stats:error', (err: unknown) => {
+          if (cancelled) return;
+          console.error('[AdminDashboard] Socket.IO stats update failed', err);
+        });
+      } catch (error) {
+        console.error('[AdminDashboard] Socket.IO connection failed', error);
+      }
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      socket?.disconnect();
+      socket = null;
+    };
   }, []);
 
   useEffect(() => {
