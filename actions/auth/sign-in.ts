@@ -28,7 +28,6 @@ function mapProfile(row: {
 }
 
 export async function signInUserAction(payload: SignInPayload): Promise<SignInResult> {
-  const supabase = getServiceSupabase();
   const parsed = safeParseSignInInput(payload);
   if (!parsed.success) {
     return {
@@ -37,6 +36,7 @@ export async function signInUserAction(payload: SignInPayload): Promise<SignInRe
     } satisfies SignInResult;
   }
 
+  const supabase = getServiceSupabase();
   const { email, password } = parsed.data;
 
   const { data, error } = await supabase.auth.signInWithPassword({

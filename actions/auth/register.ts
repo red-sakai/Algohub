@@ -9,7 +9,6 @@ function maskEmail(email: string): string {
 }
 
 export async function registerUserAction(payload: RegisterPayload): Promise<RegisterResult> {
-  const supabase = getServiceSupabase();
   const parsed = safeParseRegisterInput(payload);
   if (!parsed.success) {
     return {
@@ -19,6 +18,7 @@ export async function registerUserAction(payload: RegisterPayload): Promise<Regi
     } satisfies RegisterResult;
   }
 
+  const supabase = getServiceSupabase();
   const email = parsed.data.email;
   const password = parsed.data.password;
   const desiredDisplayName = parsed.data.displayName;
