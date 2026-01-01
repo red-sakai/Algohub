@@ -143,18 +143,6 @@ export const VictoryScreen = ({
 						↻ PLAY AGAIN
 					</button>
 					<button
-						onClick={() => {
-							// TODO: Navigate to leaderboards
-						}}
-						className="bg-blue-600/80 hover:bg-blue-500/90 border-2 border-blue-400 hover:border-blue-300 text-white px-10 py-4 text-xl font-bold tracking-wider transition-all transform hover:scale-105"
-						style={{ 
-							textShadow: '0 0 10px rgba(0, 0, 0, 0.5)',
-							boxShadow: '0 0 20px rgba(0, 100, 255, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.1)'
-						}}
-					>
-						🏆 VIEW LEADERBOARDS
-					</button>
-					<button
 						onClick={onSelectOtherGame}
 						className="bg-gray-700/80 hover:bg-gray-600/90 border-2 border-gray-400 hover:border-gray-300 text-white px-10 py-4 text-xl font-bold tracking-wider transition-all transform hover:scale-105"
 						style={{ 
