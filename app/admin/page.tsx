@@ -111,8 +111,8 @@ function AdminDashboardFallback(): ReactElement {
 function AdminDashboardContent({ irisRef }: { irisRef: MutableRefObject<IrisHandle | null> }): ReactElement {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const profileParam = searchParams.get('profile');
-  const authParam = searchParams.get('auth');
+  const profileParam = searchParams?.get('profile') ?? null;
+  const authParam = searchParams?.get('auth') ?? null;
 
   const profile = useMemo(() => (profileParam ? decodeStateParam<UserProfile>(profileParam) : null), [profileParam]);
   const authSummary = useMemo(() => (authParam ? decodeStateParam<AuthUserSummary>(authParam) : null), [authParam]);

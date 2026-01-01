@@ -50,8 +50,8 @@ function formatDate(value: string | null): string {
 export default function MembersClient({ initialMembers }: MembersClientProps): ReactElement {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const profileParam = searchParams.get('profile');
-  const authParam = searchParams.get('auth');
+  const profileParam = searchParams?.get('profile') ?? null;
+  const authParam = searchParams?.get('auth') ?? null;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const activeNav: MembersNavTarget = 'members';
