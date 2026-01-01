@@ -303,7 +303,7 @@ class DungeonScene extends Phaser.Scene {
       frameHeight: this.FRAME_HEIGHT,
     });
 
-    this.load.spritesheet("enemy-run", "/sprite/characters/ferd/walk.png", {
+    this.load.spritesheet("enemy-run", "/sprite/characters/ferd/run.png", {
       frameWidth: this.FRAME_WIDTH,
       frameHeight: this.FRAME_HEIGHT,
     });
@@ -316,6 +316,11 @@ class DungeonScene extends Phaser.Scene {
         frameHeight: this.SLASH_FRAME_HEIGHT,
       }
     );
+
+    this.load.spritesheet("enemy-hurt", "/sprite/characters/ferd/hurt.png", {
+      frameWidth: this.FRAME_WIDTH,
+      frameHeight: this.FRAME_HEIGHT,
+    });
 
     // Create a simple torch texture if it doesn't exist
     if (!this.textures.exists("torch")) {
@@ -1106,6 +1111,17 @@ class DungeonScene extends Phaser.Scene {
       repeat: 0,
     });
 
+    // Enemy hurt animation
+    this.anims.create({
+      key: "enemy-hurt",
+      frames: this.anims.generateFrameNumbers("enemy-hurt", {
+        start: 0,
+        end: 5,
+      }),
+      frameRate: 12,
+      repeat: 0,
+    });
+
     this.player.play("idle-down");
   }
 
@@ -1699,6 +1715,8 @@ class DungeonScene extends Phaser.Scene {
         sprite.once("animationcomplete", () => {
           enemyUnit.attacking = false;
           enemyUnit.attackCooldownRemaining = enemyUnit.attackCooldownMs;
+          // Return to idle animation after attack
+          sprite.play(`enemy-idle-${enemyUnit.lastDirection}`, true);
         });
       } else if (!enemyUnit.attacking && distanceToPlayer <= aggroRange) {
         // Chase player
@@ -1726,28 +1744,14 @@ class DungeonScene extends Phaser.Scene {
           }
         }
       } else if (!enemyUnit.attacking) {
-        // Idle roam near home
-        const jitter = 12;
-        const vx = Phaser.Math.Between(-jitter, jitter);
-        const vy = Phaser.Math.Between(-jitter, jitter);
-        sprite.setVelocity(vx, vy);
-
-        if (Math.abs(vx) > Math.abs(vy)) {
-          if (vx < 0) {
-            enemyUnit.lastDirection = "left";
-            sprite.play("enemy-run-left", true);
-          } else {
-            enemyUnit.lastDirection = "right";
-            sprite.play("enemy-run-right", true);
-          }
-        } else {
-          if (vy < 0) {
-            enemyUnit.lastDirection = "up";
-            sprite.play("enemy-run-up", true);
-          } else {
-            enemyUnit.lastDirection = "down";
-            sprite.play("enemy-run-down", true);
-          }
+        // Idle - stop movement and play idle animation
+        sprite.setVelocity(0, 0);
+        const idleAnim = `enemy-idle-${enemyUnit.lastDirection}`;
+        if (
+          !sprite.anims.isPlaying ||
+          !sprite.anims.currentAnim?.key.startsWith("enemy-idle")
+        ) {
+          sprite.play(idleAnim, true);
         }
       }
 
@@ -1885,26 +1889,32 @@ class DungeonScene extends Phaser.Scene {
     if (enemy.defeated) return;
     enemy.defeated = true;
     enemy.sprite.setVelocity(0, 0);
-    enemy.sprite.setTint(0x666666);
     enemy.levelText.setVisible(false);
 
-    this.tweens.add({
-      targets: [
-        enemy.sprite,
-        enemy.shadow,
-        enemy.healthBar,
-        enemy.healthBarBg,
-        enemy.levelText,
-      ],
-      alpha: 0,
-      duration: 800,
-      onComplete: () => {
-        enemy.sprite.destroy();
-        enemy.shadow.destroy();
-        enemy.healthBar.destroy();
-        enemy.healthBarBg.destroy();
-        enemy.levelText.destroy();
-      },
+    // Play hurt animation when defeated
+    enemy.sprite.play("enemy-hurt");
+
+    // After hurt animation completes, fade out and destroy
+    enemy.sprite.once("animationcomplete", () => {
+      enemy.sprite.setTint(0x666666);
+      this.tweens.add({
+        targets: [
+          enemy.sprite,
+          enemy.shadow,
+          enemy.healthBar,
+          enemy.healthBarBg,
+          enemy.levelText,
+        ],
+        alpha: 0,
+        duration: 800,
+        onComplete: () => {
+          enemy.sprite.destroy();
+          enemy.shadow.destroy();
+          enemy.healthBar.destroy();
+          enemy.healthBarBg.destroy();
+          enemy.levelText.destroy();
+        },
+      });
     });
 
     // Level up the player when defeating an enemy of the same level (max 10)
@@ -1932,7 +1942,7 @@ class DungeonScene extends Phaser.Scene {
 
     // Redraw the darkness overlay to cover the entire viewport
     this.darknessOverlay.clear();
-    this.darknessOverlay.fillStyle(0x000000, 1); // Dark overlay
+    this.darknessOverlay.fillStyle(0x000000, 0.1); // Dark overlay
     this.darknessOverlay.fillRect(0, 0, width, height);
 
     // Get player position relative to camera
@@ -2053,10 +2063,18 @@ export default function DungeonGame() {
     if (!parentRef.current || !selectedCharacter || enemyLevels.length === 0)
       return;
 
+    // Get window dimensions
+    const getWindowSize = () => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+
+    const initialSize = getWindowSize();
+
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
-      width: 800,
-      height: 600,
+      width: initialSize.width,
+      height: initialSize.height,
       parent: parentRef.current,
       backgroundColor: "#1a1a2e",
       scene: [DungeonScene, UltScene],
@@ -2069,8 +2087,8 @@ export default function DungeonGame() {
         },
       },
       scale: {
-        mode: Phaser.Scale.NONE,
-        autoCenter: Phaser.Scale.NO_CENTER,
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
       },
       render: {
         antialias: false,
@@ -2079,6 +2097,16 @@ export default function DungeonGame() {
     };
 
     gameRef.current = new Phaser.Game(config);
+
+    // Handle window resize
+    const handleResize = () => {
+      if (gameRef.current) {
+        const newSize = getWindowSize();
+        gameRef.current.scale.resize(newSize.width, newSize.height);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
 
     // Determine map name based on number of levels
     const mapName = enemyLevels.length === 10 ? "map10.json" : "map11.json";
@@ -2091,95 +2119,112 @@ export default function DungeonGame() {
     });
 
     return () => {
+      window.removeEventListener("resize", handleResize);
       gameRef.current?.destroy(true);
     };
   }, [selectedCharacter, enemyLevels]);
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-linear-to-b from-green-900 via-green-800 to-emerald-900 p-4">
-      <div className="mb-4 text-center">
-        <h1 className="text-4xl font-bold text-white mb-2">
-          Sprite Character Demo
-          {selectedCharacter && ` - ${selectedCharacter.toUpperCase()}`}
-        </h1>
-        <p className="text-white/80">
-          Move with WASD/Arrow Keys | Press E to{" "}
-          {selectedCharacter === "goku" ? "Cast Spell" : "Slash"} | Press Space
-          to Jump
-          {selectedCharacter === "goku" ? " | Press Q for Ult" : ""} | Defeat
-          Ferdinand the Enemy! | Collect 🔥 Torches to increase vision | Press F
-          for Debug
-        </p>
-      </div>
+  const isGameActive = selectedCharacter && enemyLevels.length > 0;
 
-      {showPicker ? (
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-white text-center mb-4">
-            Choose Your Character
-          </h2>
-          <CharacterPicker
-            onSelect={handleCharacterSelect}
-            currentCharacter={selectedCharacter}
-          />
-        </div>
-      ) : showLevelInput ? (
-        <div className="mb-6 w-full max-w-md">
-          <h2 className="text-2xl font-bold text-white text-center mb-4">
-            Enter Enemy Levels
-          </h2>
-          <p className="text-white/80 text-center mb-4">
-            Enter 10 or 11 integers (1-100) separated by commas or spaces.
-            <br />
-            Your character will start at the lowest level entered.
-          </p>
-          <div className="flex flex-col gap-4">
-            <input
-              type="text"
-              value={levelInput}
-              onChange={(e) => setLevelInput(e.target.value)}
-              placeholder="e.g., 1, 6, 5, 2, 7, 4, 3, 8, 9, 10"
-              className="px-4 py-3 rounded-lg bg-white/10 border-2 border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-white/60 text-center text-lg"
-              onKeyPress={(e) => {
-                if (e.key === "Enter") {
-                  handleLevelInputSubmit();
-                }
-              }}
-            />
-            <button
-              onClick={handleLevelInputSubmit}
-              className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 hover:scale-105"
-            >
-              Start Game
-            </button>
+  return (
+    <div
+      className={`${
+        isGameActive
+          ? "fixed inset-0 bg-black"
+          : "flex flex-col items-center justify-center min-h-screen bg-linear-to-b from-green-900 via-green-800 to-emerald-900 p-4"
+      }`}
+    >
+      {!isGameActive && (
+        <>
+          <div className="mb-4 text-center">
+            <h1 className="text-4xl font-bold text-white mb-2">
+              Sprite Character Demo
+              {selectedCharacter && ` - ${selectedCharacter.toUpperCase()}`}
+            </h1>
+            <p className="text-white/80">
+              Move with WASD/Arrow Keys | Press E to{" "}
+              {selectedCharacter === "goku" ? "Cast Spell" : "Slash"} | Press
+              Space to Jump
+              {selectedCharacter === "goku" ? " | Press Q for Ult" : ""} |
+              Defeat Ferdinand the Enemy! | Collect 🔥 Torches to increase
+              vision | Press F for Debug
+            </p>
+          </div>
+
+          {showPicker ? (
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-white text-center mb-4">
+                Choose Your Character
+              </h2>
+              <CharacterPicker
+                onSelect={handleCharacterSelect}
+                currentCharacter={selectedCharacter}
+              />
+            </div>
+          ) : showLevelInput ? (
+            <div className="mb-6 w-full max-w-md">
+              <h2 className="text-2xl font-bold text-white text-center mb-4">
+                Enter Enemy Levels
+              </h2>
+              <p className="text-white/80 text-center mb-4">
+                Enter 10 or 11 integers (1-100) separated by commas or spaces.
+                <br />
+                Your character will start at the lowest level entered.
+              </p>
+              <div className="flex flex-col gap-4">
+                <input
+                  type="text"
+                  value={levelInput}
+                  onChange={(e) => setLevelInput(e.target.value)}
+                  placeholder="e.g., 1, 6, 5, 2, 7, 4, 3, 8, 9, 10"
+                  className="px-4 py-3 rounded-lg bg-white/10 border-2 border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-white/60 text-center text-lg"
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleLevelInputSubmit();
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleLevelInputSubmit}
+                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 hover:scale-105"
+                >
+                  Start Game
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLevelInput(false);
+                    setShowPicker(true);
+                  }}
+                  className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300"
+                >
+                  Back to Character Selection
+                </button>
+              </div>
+            </div>
+          ) : (
             <button
               onClick={() => {
-                setShowLevelInput(false);
                 setShowPicker(true);
+                setEnemyLevels([]);
+                setLevelInput("");
+                setShowLevelInput(false);
               }}
-              className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300"
+              className="mb-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 hover:scale-105"
             >
-              Back to Character Selection
+              Change Character
             </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => {
-            setShowPicker(true);
-            setEnemyLevels([]);
-            setLevelInput("");
-            setShowLevelInput(false);
-          }}
-          className="mb-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 hover:scale-105"
-        >
-          Change Character
-        </button>
+          )}
+        </>
       )}
 
       {selectedCharacter && (
         <div
           ref={parentRef}
-          className="rounded-lg shadow-2xl overflow-hidden border-4 border-green-500"
+          className={
+            isGameActive
+              ? "w-full h-full"
+              : "rounded-lg shadow-2xl overflow-hidden border-4 border-green-500"
+          }
         />
       )}
     </div>
