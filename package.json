@@ -25,6 +25,8 @@
     "phaser": "^3.90.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.3.1",
     "three": "^0.181.0",
     "zod": "^4.3.4"
