@@ -6,47 +6,39 @@ interface TerminalScreenProps {
 
 export function TerminalScreen({ loading, currentLine, terminalLines }: TerminalScreenProps) {
 	return (
-		<div className="absolute inset-0 z-50 bg-black flex flex-col">
-			{/* Scanline effect */}
-			<div className="absolute inset-0 pointer-events-none z-10 opacity-10">
-				<div className="absolute inset-0 bg-gradient-to-b from-transparent via-green-500 to-transparent animate-pulse" />
-			</div>
-
-			{/* Terminal header */}
-			<div className="border-b border-green-500/30 p-4 flex items-center gap-2">
-				<div className="flex gap-2">
-					<div className="w-3 h-3 rounded-full bg-red-500" />
-					<div className="w-3 h-3 rounded-full bg-yellow-500" />
-					<div className="w-3 h-3 rounded-full bg-green-500" />
-				</div>
-				<span className="ml-4 text-sm">DATAMINER v1.0.3 - SECURE TERMINAL</span>
-			</div>
-
-			{/* Terminal content */}
-			<div className="flex-1 p-6 space-y-2">
-				{terminalLines.slice(0, currentLine + 1).map((line, i) => (
-					<div
-						key={i}
-						className={`text-sm ${
-							line.includes("WARNING") || line.includes("ERROR")
-								? "text-red-500 font-bold animate-pulse"
-								: ""
-						}`}
-					>
-						{line}
-						{i === currentLine && loading && (
-							<span className="inline-block w-2 h-4 bg-green-500 ml-1 animate-pulse" />
-						)}
+		<div className="absolute inset-0 z-50 bg-gray-900 flex flex-col">
+			{/* Window frame */}
+			<div className="m-6 h-[calc(100%-3rem)] bg-[#0c0c0c] rounded-lg shadow-2xl flex flex-col border border-gray-700">
+				{/* Title bar */}
+				<div className="bg-gradient-to-b from-gray-800 to-gray-900 text-white px-4 py-2 flex items-center justify-between rounded-t-lg border-b border-gray-700">
+					<div className="flex items-center gap-3">
+						<span className="font-semibold text-sm">Command Prompt</span>
 					</div>
-				))}
-			</div>
+					<div className="flex gap-2">
+						<button className="w-6 h-6 hover:bg-white/10 flex items-center justify-center text-xs rounded">_</button>
+						<button className="w-6 h-6 hover:bg-white/10 flex items-center justify-center text-xs rounded">□</button>
+						<button className="w-6 h-6 hover:bg-red-500 flex items-center justify-center text-xs rounded">✕</button>
+					</div>
+				</div>
 
-			{/* Bottom status bar */}
-			<div className="border-t border-green-500/30 p-2 text-xs flex justify-between">
-				<span>Status: {loading ? "LOADING..." : "CONNECTION UNSTABLE"}</span>
-				<span className="animate-pulse">
-					{loading ? "●" : "⚠"} {new Date().toLocaleTimeString()}
-				</span>
+				{/* Terminal content */}
+				<div className="flex-1 p-4 overflow-y-auto font-mono text-sm">
+					{terminalLines.slice(0, currentLine + 1).map((line, i) => (
+						<div
+							key={i}
+							className={`leading-relaxed ${
+								line.includes("WARNING") || line.includes("ERROR")
+									? "text-red-400 font-semibold"
+									: "text-gray-200"
+							}`}
+						>
+							{line}
+							{i === currentLine && loading && (
+								<span className="inline-block w-2 h-4 bg-white ml-1 animate-pulse" />
+							)}
+						</div>
+					))}
+				</div>
 			</div>
 		</div>
 	);
