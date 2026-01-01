@@ -3,6 +3,7 @@
 import type { AuthUserSummary, SignInPayload, SignInResult, UserProfile } from "@/types/auth";
 import { getServiceSupabase } from "@/lib/supabase/serviceClient";
 import { grantAchievementBySlug } from "@/lib/supabase/achievements";
+import { safeParseSignInInput } from "@/lib/validation/auth";
 
 function mapProfile(row: {
   id: string;
@@ -28,8 +29,15 @@ function mapProfile(row: {
 
 export async function signInUserAction(payload: SignInPayload): Promise<SignInResult> {
   const supabase = getServiceSupabase();
-  const email = payload.email.trim().toLowerCase();
-  const password = payload.password;
+  const parsed = safeParseSignInInput(payload);
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.message,
+    } satisfies SignInResult;
+  }
+
+  const { email, password } = parsed.data;
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
