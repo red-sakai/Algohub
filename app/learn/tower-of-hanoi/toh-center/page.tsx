@@ -1,10 +1,30 @@
 "use client";
 import { useEffect } from "@/hooks/useEffect";
 import { useState } from "@/hooks/useState";
+import { useRef } from "@/hooks/useRef";
+import { Tower, Difficulty } from "./utils/types";
+import { getDiskCount, getTimeLimit, shuffleArray } from "./utils/gameHelpers";
+import { AnimationStyles } from "./styles/animations";
+import { TaskTracker } from "./components/TaskTracker";
+import { DifficultyModal } from "./components/DifficultyModal";
+import { GameBoard } from "./components/GameBoard";
+import { GameOverScreen } from "./components/GameOverScreen";
+import { VictoryScreen } from "./components/VictoryScreen";
 
 export default function TohCenterPage() {
 	const [isLoaded, setIsLoaded] = useState<boolean>(false);
 	const [rackFound, setRackFound] = useState<boolean>(false);
+	const [showDifficultyModal, setShowDifficultyModal] = useState<boolean>(false);
+	const [gameStarted, setGameStarted] = useState<boolean>(false);
+	const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+	const [towers, setTowers] = useState<[Tower, Tower, Tower]>([[], [], []]);
+	const [selectedTower, setSelectedTower] = useState<number | null>(null);
+	const [moves, setMoves] = useState<number>(0);
+	const [timer, setTimer] = useState<number>(0);
+	const [gameOver, setGameOver] = useState<boolean>(false);
+	const [gameWon, setGameWon] = useState<boolean>(false);
+	
+	const gameEndedRef = useRef<boolean>(false);
 
 	useEffect(() => {
 		document.body.style.overflow = "hidden";
@@ -25,6 +45,7 @@ export default function TohCenterPage() {
 		const handleMessage = (event: MessageEvent) => {
 			if (event.data.type === "OBJECT_CLICKED" && event.data.data?.objectType === "rack") {
 				setRackFound(true);
+				setShowDifficultyModal(true);
 			}
 		};
 
@@ -32,8 +53,94 @@ export default function TohCenterPage() {
 		return () => window.removeEventListener("message", handleMessage);
 	}, []);
 
+	// Timer for non-free-time difficulties
+	useEffect(() => {
+		if (gameStarted && difficulty !== "free-time" && timer > 0 && !gameEndedRef.current) {
+			const interval = setInterval(() => {
+				if (gameEndedRef.current) {
+					clearInterval(interval);
+					return;
+				}
+				setTimer(prev => {
+					if (prev <= 1) {
+						gameEndedRef.current = true;
+						setGameOver(true);
+						return 0;
+					}
+					return prev - 1;
+				});
+			}, 1000);
+
+			return () => clearInterval(interval);
+		}
+	}, [gameStarted, difficulty, timer]);
+
+	const handleDifficultySelect = (selectedDifficulty: Difficulty) => {
+		setDifficulty(selectedDifficulty);
+		setShowDifficultyModal(false);
+		setGameStarted(true);
+		gameEndedRef.current = false;
+		
+		// Initialize game with randomized first tower
+		const diskCount = getDiskCount(selectedDifficulty);
+		const disks = Array.from({ length: diskCount }, (_, i) => i + 1);
+		const randomizedDisks = shuffleArray(disks);
+		
+		setTowers([randomizedDisks, [], []]);
+		setMoves(0);
+		setTimer(getTimeLimit(selectedDifficulty));
+		setSelectedTower(null);
+		setGameOver(false);
+		setGameWon(false);
+	};
+
+	const handleTowerClick = (towerIndex: number) => {
+		// Prevent moves if time is up
+		if (difficulty !== "free-time" && timer === 0) return;
+		
+		if (selectedTower === null) {
+			// Select a tower to pick from
+			if (towers[towerIndex].length > 0) {
+				setSelectedTower(towerIndex);
+			}
+		} else {
+			// Try to place disk on this tower
+			if (selectedTower === towerIndex) {
+				// Deselect if clicking same tower
+				setSelectedTower(null);
+			} else {
+				const fromTower = towers[selectedTower];
+				const toTower = towers[towerIndex];
+				const disk = fromTower[fromTower.length - 1];
+				
+				// Check if move is valid (smaller on top of larger, or empty tower)
+				if (toTower.length === 0 || disk < toTower[toTower.length - 1]) {
+					const newTowers: [Tower, Tower, Tower] = [...towers] as [Tower, Tower, Tower];
+					newTowers[selectedTower] = fromTower.slice(0, -1);
+					newTowers[towerIndex] = [...toTower, disk];
+					
+					setTowers(newTowers);
+					setMoves(moves + 1);
+					setSelectedTower(null);
+					
+					// Check win condition: all disks on the last tower in correct order (descending from bottom to top)
+					const diskCount = getDiskCount(difficulty!);
+					if (newTowers[2].length === diskCount && 
+						newTowers[2].every((disk, idx) => disk === diskCount - idx)) {
+						gameEndedRef.current = true;
+						setGameWon(true);
+					}
+				} else {
+					// Invalid move
+					setSelectedTower(null);
+				}
+			}
+		}
+	};
+
 	return (
 		<>
+			<AnimationStyles />
 			<style jsx global>{`
 				#algohub-musicplayer-root {
 					display: none !important;
@@ -99,32 +206,6 @@ export default function TohCenterPage() {
 					z-index: 61;
 				}
 				
-				@keyframes cameraShake {
-				0% { transform: translateX(0); }
-				10% { transform: translateX(-6px); }
-				20% { transform: translateX(6px); }
-				30% { transform: translateX(-5px); }
-				40% { transform: translateX(5px); }
-				50% { transform: translateX(-6px); }
-				60% { transform: translateX(6px); }
-				70% { transform: translateX(-5px); }
-				80% { transform: translateX(5px); }
-				90% { transform: translateX(-6px); }
-				100% { transform: translateX(0); }
-				}
-				
-				@keyframes flicker {
-					0%, 5%, 10%, 15%, 25%, 30%, 40%, 50%, 60%, 70%, 80%, 85%, 95%, 100% {
-						opacity: 1;
-					}
-					6%, 11%, 16%, 41%, 71%, 86% {
-						opacity: 0.3;
-					}
-					7%, 12%, 42%, 72% {
-						opacity: 0;
-					}
-				}
-				
 				.flicker-overlay {
 					position: absolute;
 					inset: 0;
@@ -134,53 +215,81 @@ export default function TohCenterPage() {
 					animation: flicker 8s infinite;
 				}
 			`}</style>
-		<div className="fixed inset-0 w-full h-full">
-			<div className="absolute inset-0 w-full h-full bg-black retro-container" style={{ animation: 'cameraShake 0.1s infinite' }}>
-				<iframe
-					src="/toh-center/index.html"
-					className="w-full h-full border-0 retro-pixelated"
-					title="Tower of Hanoi - Center"
-					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-					allowFullScreen
-					style={{ 
-						imageRendering: 'pixelated',
-						transform: 'translateZ(0)',
-						willChange: 'auto'
-					}}
-				/>
-				<div className="flicker-overlay" />
-			</div>
-
-			{/* Quest Tracker - Top Right */}
-			{isLoaded && (
-				<div className="absolute top-8 right-8 z-[70] pointer-events-none">
-					<div className="bg-gradient-to-b from-black/60 to-black/40 backdrop-blur-md pointer-events-auto min-w-[400px] px-6 py-4">
-						{/* Title */}
-						<div className="pb-3 mb-3 border-b border-white/20">
-							<h3 className="text-white font-light text-3xl tracking-wide">
-								Task
-							</h3>
-						</div>
-						
-						{/* Objective with checkbox */}
-						<div className="flex items-center justify-between gap-4">
-							<p className="text-gray-300 text-base font-light">
-								Find the broken data center rack
-							</p>
-							<div className={`w-10 h-10 border-2 flex items-center justify-center transition-all ${
-								rackFound 
-									? 'border-white bg-white/10' 
-									: 'border-white/50 bg-transparent'
-							}`}>
-								{rackFound && (
-									<span className="text-white text-2xl">✓</span>
-								)}
-							</div>
-						</div>
-					</div>
+			<div className="fixed inset-0 w-full h-full">
+				<div className="absolute inset-0 w-full h-full bg-black retro-container" style={{ animation: timer > 0 && timer <= 60 && difficulty !== "free-time" ? 'cameraShake 0.05s infinite' : 'cameraShake 0.1s infinite' }}>
+					<iframe
+						src="/toh-center/index.html"
+						className="w-full h-full border-0 retro-pixelated"
+						title="Tower of Hanoi - Center"
+						allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+						allowFullScreen
+						style={{ 
+							imageRendering: 'pixelated',
+							transform: 'translateZ(0)',
+							willChange: 'auto'
+						}}
+					/>
+					<div className="flicker-overlay" />
+					{timer > 0 && timer <= 60 && difficulty !== "free-time" && (
+						<div className="absolute inset-0 bg-red-900/20 pointer-events-none z-[65] animate-pulse" />
+					)}
 				</div>
-			)}
-		</div>
+
+				{/* Quest Tracker - Top Right */}
+				{isLoaded && !gameOver && !gameWon && (
+					<TaskTracker rackFound={rackFound} />
+				)}
+
+				{/* Tower of Hanoi Game */}
+				{gameStarted && !gameOver && !gameWon && (
+					<GameBoard
+						towers={towers}
+						selectedTower={selectedTower}
+						moves={moves}
+						difficulty={difficulty!}
+						timer={timer}
+						onTowerClick={handleTowerClick}
+					/>
+				)}
+
+				{/* Game Over Screen */}
+				{gameOver && (
+					<GameOverScreen
+						onTryAgain={() => {
+							setGameOver(false);
+							setGameWon(false);
+							setGameStarted(false);
+							setShowDifficultyModal(true);
+						}}
+						onSelectOtherGame={() => {
+							window.location.href = '/learn';
+						}}
+					/>
+				)}
+
+				{/* Victory Screen */}
+				{gameWon && (
+					<VictoryScreen
+						moves={moves}
+						difficulty={difficulty!}
+						timer={timer}
+						onPlayAgain={() => {
+							setGameWon(false);
+							setGameOver(false);
+							setGameStarted(false);
+							setShowDifficultyModal(true);
+						}}
+						onSelectOtherGame={() => {
+							window.location.href = '/learn';
+						}}
+					/>
+				)}
+
+				{/* Difficulty Modal */}
+				{showDifficultyModal && (
+					<DifficultyModal onSelect={handleDifficultySelect} />
+				)}
+			</div>
 		</>
 	);
 }
