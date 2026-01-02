@@ -101,17 +101,59 @@ function SceneContent({
   });
 
   useEffect(() => {
-    // Set initial camera position (used when not in intro)
-    if (!showCabinetIntro) {
-      camera.position.set(0, 8, 42);
+    // Responsive camera positioning based on viewport
+    const updateCamera = () => {
+      if (showCabinetIntro) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const aspect = width / height;
+      
+      // Adjust camera distance based on screen size
+      let z = 50;
+      let y = 5;
+      let fov = 60;
+      
+      // Mobile portrait
+      if (aspect < 0.75) {
+        z = 65;
+        y = 3;
+        fov = 70;
+      }
+      // Mobile landscape / tablet portrait
+      else if (aspect < 1.2) {
+        z = 55;
+        y = 4;
+        fov = 65;
+      }
+      // Narrow desktop
+      else if (aspect < 1.5) {
+        z = 50;
+        y = 5;
+        fov = 60;
+      }
+      // Wide desktop
+      else {
+        z = 48;
+        y = 5;
+        fov = 58;
+      }
+      
+      camera.position.set(0, y, z);
       camera.lookAt(0, 0, 0);
-    }
+      
+      if ('fov' in camera && 'updateProjectionMatrix' in camera) {
+        (camera as THREE.PerspectiveCamera).fov = fov;
+        (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+      }
+    };
     
-    // Add subtle FOV for arcade depth perception
-    if ('fov' in camera && 'updateProjectionMatrix' in camera) {
-      (camera as THREE.PerspectiveCamera).fov = 55;
-      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
-    }
+    updateCamera();
+    window.addEventListener('resize', updateCamera);
+    
+    return () => {
+      window.removeEventListener('resize', updateCamera);
+    };
   }, [camera, tree, showCabinetIntro]);
 
   return (
@@ -382,7 +424,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       {/* VALUE LABEL - Arcade style */}
       <Html center distanceFactor={8}>
         <div
-          className="px-4 py-2 rounded-xl text-white font-black text-2xl shadow-2xl border-3 pointer-events-none relative"
+          className="px-3 py-1.5 rounded-lg text-white font-black text-lg shadow-2xl border-2 pointer-events-none relative"
           style={{
             background: isActive 
               ? 'linear-gradient(135deg, rgba(251, 191, 36, 0.98), rgba(245, 158, 11, 0.98))' 
@@ -575,18 +617,52 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
   const [startMouseY, setStartMouseY] = useState(0);
   const config = TRAVERSAL_CONFIGS[traversalType];
 
-  // Add window-level event listeners for drag tracking
+  // Add window-level event listeners for drag tracking (mouse and touch)
   useEffect(() => {
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
       e.preventDefault();
       e.stopPropagation();
       
-      // Pass raw Y coordinate to controller
-      onDragChange?.(e.clientY);
+      // Normalize Y coordinate relative to viewport height (zoom-independent)
+      const normalizedY = (e.clientY / window.innerHeight) * 1000;
+      onDragChange?.(normalizedY);
+    };
+
+    const handleWindowTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Get first touch point
+      const touch = e.touches[0];
+      if (touch) {
+        const normalizedY = (touch.clientY / window.innerHeight) * 1000;
+        onDragChange?.(normalizedY);
+      }
     };
 
     const handleWindowMouseUp = (e: MouseEvent) => {
+      if (isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        
+        // Re-enable orbit controls
+        if (orbitControlsRef?.current) {
+          orbitControlsRef.current.enabled = true;
+          orbitControlsRef.current.enableRotate = true;
+        }
+        
+        // Re-enable text selection
+        document.body.style.userSelect = '';
+        document.body.style.cursor = 'default';
+        
+        onDragEnd?.();
+      }
+    };
+
+    const handleWindowTouchEnd = (e: TouchEvent) => {
       if (isDragging) {
         e.preventDefault();
         e.stopPropagation();
@@ -615,12 +691,16 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
     if (isDragging) {
       window.addEventListener('mousemove', handleWindowMouseMove, { capture: true });
       window.addEventListener('mouseup', handleWindowMouseUp, { capture: true });
+      window.addEventListener('touchmove', handleWindowTouchMove, { capture: true, passive: false });
+      window.addEventListener('touchend', handleWindowTouchEnd, { capture: true });
       window.addEventListener('selectstart', handleSelectStart, { capture: true });
     }
 
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove, { capture: true });
       window.removeEventListener('mouseup', handleWindowMouseUp, { capture: true });
+      window.removeEventListener('touchmove', handleWindowTouchMove, { capture: true });
+      window.removeEventListener('touchend', handleWindowTouchEnd, { capture: true });
       window.removeEventListener('selectstart', handleSelectStart, { capture: true });
     };
   }, [isDragging, startMouseY, onDragChange, onDragEnd, orbitControlsRef]);
@@ -638,9 +718,17 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
       orbitControlsRef.current.enabled = false;
     }
     
+    // Get Y position from either mouse or touch event
+    let clientY = e.clientY;
+    if (e.touches && e.touches[0]) {
+      clientY = e.touches[0].clientY;
+    }
+    
+    // Normalize start position (zoom-independent)
+    const normalizedStartY = (clientY / window.innerHeight) * 1000;
     setIsDragging(true);
-    setStartMouseY(e.clientY);
-    onDragStart?.(e.clientY); // Pass start Y to controller
+    setStartMouseY(normalizedStartY);
+    onDragStart?.(normalizedStartY);
   };
 
   useFrame(() => {
@@ -701,6 +789,37 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
           console.log('👆 Pointer down on plunger mesh');
           e.stopPropagation();
           handlePointerDown(e);
+        }}
+        onPointerMove={(e) => {
+          if (isDragging) {
+            e.stopPropagation();
+            // Get Y position from pointer event
+            let clientY = e.clientY;
+            if (e.nativeEvent && (e.nativeEvent as any).touches && (e.nativeEvent as any).touches[0]) {
+              clientY = (e.nativeEvent as any).touches[0].clientY;
+            }
+            const normalizedY = (clientY / window.innerHeight) * 1000;
+            onDragChange?.(normalizedY);
+          }
+        }}
+        onPointerUp={(e) => {
+          if (isDragging) {
+            console.log('🚀 Pointer up - releasing plunger');
+            e.stopPropagation();
+            setIsDragging(false);
+            
+            // Re-enable orbit controls
+            if (orbitControlsRef?.current) {
+              orbitControlsRef.current.enabled = true;
+              orbitControlsRef.current.enableRotate = true;
+            }
+            
+            // Re-enable text selection
+            document.body.style.userSelect = '';
+            document.body.style.cursor = 'default';
+            
+            onDragEnd?.();
+          }
         }}
         onPointerEnter={(e) => {
           console.log('🖱️ Pointer entered plunger');
