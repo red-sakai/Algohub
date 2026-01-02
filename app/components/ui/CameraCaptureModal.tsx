@@ -328,6 +328,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
                   width={layout.width}
                   height={Math.round(layout.width * 0.66)}
                   priority
+                  draggable={false}
                   className="select-none drop-shadow-[0_10px_24px_rgba(0,0,0,0.5)] w-full h-auto"
                 />
               </div>
@@ -489,6 +490,7 @@ export default function CameraCaptureModal({ active, onClose, onCaptured, debugR
                   width={layout.width}
                   height={Math.round(layout.width * 0.66)}
                   priority
+                  draggable={false}
                   className="select-none drop-shadow-[0_10px_24px_rgba(0,0,0,0.5)] w-full h-auto"
                 />
               </div>
