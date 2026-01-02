@@ -149,8 +149,6 @@ export default function PinballGamePage() {
   const startAnimationLoop = () => {
     lastTimeRef.current = performance.now();
     
-    console.log('🎬 Animation loop started');
-    
     const animate = (currentTime: number) => {
       const deltaTime = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
@@ -168,13 +166,10 @@ export default function PinballGamePage() {
       }));
 
       const currentState = animatorRef.current.getState();
-      console.log('🔄 Frame update - isMoving:', currentState.isMoving, 'pos:', pinballPosition);
 
       // Continue loop if still moving
       if (currentState.isMoving) {
         animationFrameRef.current = requestAnimationFrame(animate);
-      } else {
-        console.log('⏹️ Animation loop stopped - ball not moving');
       }
     };
 
@@ -205,8 +200,6 @@ export default function PinballGamePage() {
 
   const handleLaunchEnd = () => {
     if (gameState.phase === 'ready' && gameState.pinball && !gameState.pinball.isLaunched) {
-      console.log('🚀 Launching ball');
-      
       // Cancel any existing animation loop
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -218,7 +211,6 @@ export default function PinballGamePage() {
       setGameState(prev => ({ ...prev, phase: 'traversing' }));
       
       // Restart animation loop for launch
-      console.log('⚡ Restarting animation loop for launch');
       startAnimationLoop();
     }
   };
