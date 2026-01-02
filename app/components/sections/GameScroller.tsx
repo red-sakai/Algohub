@@ -45,6 +45,18 @@ const GAMES: Game[] = [
     cover: "/images/game-covers/stack-em-queue.png",
   },
   {
+    id: "pinball",
+    title: "Binary Tree Traversal Pinball",
+    desc: "Launch the pinball through your binary tree! Learn preorder, inorder, and postorder traversals in this 3D arcade experience.",
+    colorFrom: "from-purple-500",
+    colorTo: "to-pink-500",
+    track: {
+      title: "Arcade Vibes",
+      src: "/game-selector-audio/Pokemon FireRed - Route 1.mp3",
+    },
+    cover: "/images/game-covers/pinball.png",
+  },
+  {
     id: "dungeon-explorer",
     title: "Dungeon Explorer",
     desc: "Fight through a dark dungeon with customizable enemy levels! Choose your character, set enemy levels (10-11), and battle your way through. Level up by defeating enemies of your level.",
@@ -214,6 +226,37 @@ export default function GameScroller() {
     // For the first game, trigger camera -> license flow instead of immediate redirect
     if (g.id === "sorting-sprint" && !fromNav) {
       setShowCam(true);
+      return;
+    }
+    // For pinball game, navigate directly with iris transition
+    if (g.id === "pinball") {
+      ensureGlobalPlayerPaused();
+      try {
+        setIrisPoint(window.innerWidth / 2, window.innerHeight / 2);
+      } catch {}
+      const beginPinballTransfer = () => {
+        const a = getGameAudio();
+        a.loop = true;
+        a.volume = gameVolume;
+        a.src = g.track.src;
+        a.currentTime = 0;
+        a.play().catch(() => {});
+        setLastPlayed(idx);
+        try {
+          router.push("/learn/pinball");
+        } catch {}
+      };
+      const controller = irisRef.current;
+      if (controller) {
+        controller.start({
+          durationMs: 650,
+          mode: "close",
+          showLoaderOnClose: false,
+          onDone: () => beginPinballTransfer(),
+        });
+      } else {
+        beginPinballTransfer();
+      }
       return;
     }
     // For dungeon explorer, navigate directly to the game
