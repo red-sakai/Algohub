@@ -289,20 +289,20 @@ export default function PinballGamePage() {
       }} />
       
       {/* Top Bar - Arcade Marquee Style */}
-      <div className="p-4 text-center bg-gradient-to-r from-purple-900/80 via-pink-900/80 to-purple-900/80 backdrop-blur-sm border-b-4 border-purple-500/60 shadow-[0_0_40px_rgba(139,92,246,0.5)] relative overflow-hidden">
+      <div className="p-2 sm:p-4 text-center bg-gradient-to-r from-purple-900/80 via-pink-900/80 to-purple-900/80 backdrop-blur-sm border-b-2 sm:border-b-4 border-purple-500/60 shadow-[0_0_40px_rgba(139,92,246,0.5)] relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-cyan-600/20 animate-pulse pointer-events-none" />
-        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 drop-shadow-[0_0_20px_rgba(139,92,246,1)] uppercase tracking-wider relative z-10">
-          🎯 Binary Tree Traversal Pinball 🕹️
+        <h1 className="text-xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 drop-shadow-[0_0_20px_rgba(139,92,246,1)] uppercase tracking-wider relative z-10">
+          🎯 Binary Tree Pinball 🕹️
         </h1>
-        <div className="text-xs text-purple-300 mt-1 font-bold uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] relative z-10">
+        <div className="text-[0.5rem] sm:text-xs text-purple-300 mt-0.5 sm:mt-1 font-bold uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] relative z-10">
           ⚡ Arcade Edition ⚡
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 3D Scene - Main Area */}
-        <div className="flex-1 relative">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 3D Scene - Main Area (full screen on mobile) */}
+        <div className="absolute inset-0">
           <PinballScene3D
             tree={gameState.tree}
             pinballState={gameState.pinball}
@@ -407,9 +407,9 @@ export default function PinballGamePage() {
           </div>
         )}
 
-        {/* Game Controls - Bottom Left */}
+        {/* Game Controls - Bottom (compact on mobile) */}
         {(gameState.phase === 'select' || gameState.phase === 'ready' || gameState.phase === 'traversing' || gameState.phase === 'paused' || gameState.phase === 'complete') && (
-          <div className="p-4 pointer-events-auto select-none">
+          <div className="p-2 sm:p-4 pointer-events-auto select-none w-full sm:w-auto">
             <GameControls
               phase={gameState.phase}
               onStartTraversal={handleStartTraversal}
