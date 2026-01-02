@@ -5,7 +5,7 @@
  * Full pinball machine with cabinet, spline rails, and thick bumpers
  */
 
-import React, { useRef, useEffect, Suspense, useState } from 'react';
+import React, { useRef, useEffect, Suspense, useState, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -170,8 +170,8 @@ function SceneContent({
         position={[0, 30, 25]} 
         intensity={2.5} 
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-far={60}
         shadow-camera-left={-25}
         shadow-camera-right={25}
@@ -353,7 +353,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
 
       {/* INNER CORE (glowing center) */}
       <mesh ref={coreRef} castShadow receiveShadow>
-        <sphereGeometry args={[0.75, 32, 32]} />
+        <sphereGeometry args={[0.75, 24, 24]} />
         <meshStandardMaterial
           color={isActive ? '#ffff00' : (wasVisited ? '#88ff88' : '#ff6666')}
           metalness={0.85}
@@ -365,7 +365,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
 
       {/* INNER ROTATING RING */}
       <mesh ref={innerRingRef}>
-        <torusGeometry args={[0.65, 0.08, 16, 32]} />
+        <torusGeometry args={[0.65, 0.08, 12, 24]} />
         <meshStandardMaterial
           color={isActive ? '#ffff00' : (wasVisited ? '#88ff88' : '#ff8888')}
           metalness={0.9}
@@ -377,11 +377,11 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
 
       {/* TOP/BOTTOM POSTS */}
       <mesh position={[0, 0, 0.7]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.25, 16]} />
+        <cylinderGeometry args={[0.2, 0.2, 0.25, 12]} />
         <meshStandardMaterial color="#555555" metalness={0.9} roughness={0.3} />
       </mesh>
       <mesh position={[0, 0, -0.7]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.25, 16]} />
+        <cylinderGeometry args={[0.2, 0.2, 0.25, 12]} />
         <meshStandardMaterial color="#555555" metalness={0.9} roughness={0.3} />
       </mesh>
 
@@ -464,10 +464,12 @@ interface SplineRailsProps {
 function SplineRails({ animationController }: SplineRailsProps) {
   const railRef = useRef<THREE.Mesh>(null);
   const spline = animationController?.getSpline();
+  const lastUpdate = useRef(0);
 
-  // Enhanced pulse animation with color shift
+  // Enhanced pulse animation with color shift (throttled for performance)
   useFrame((state) => {
-    if (railRef.current) {
+    if (railRef.current && state.clock.elapsedTime - lastUpdate.current > 0.016) { // ~60fps
+      lastUpdate.current = state.clock.elapsedTime;
       const time = state.clock.elapsedTime;
       const material = railRef.current.material as THREE.MeshStandardMaterial;
       
@@ -488,9 +490,9 @@ function SplineRails({ animationController }: SplineRailsProps) {
   // Generate tube geometry from spline with larger radius
   const tubeGeometry = new THREE.TubeGeometry(
     spline.curve,
-    250, // more segments for smoother look
+    150, // balanced segments for performance
     0.18, // slightly thicker radius
-    12,   // more radial segments
+    8,   // reduced radial segments for performance
     false // closed
   );
 
@@ -520,8 +522,13 @@ function Pinball({ position, traversalType }: {
   const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.PointLight>(null);
   const config = TRAVERSAL_CONFIGS[traversalType];
+  const lastUpdate = useRef(0);
 
   useFrame((state) => {
+    // Throttle updates to every other frame for performance
+    if (state.clock.elapsedTime - lastUpdate.current < 0.032) return; // ~30fps
+    lastUpdate.current = state.clock.elapsedTime;
+    
     // Rotate pinball for reflective effect
     if (meshRef.current) {
       meshRef.current.rotation.x += 0.2;
@@ -538,7 +545,7 @@ function Pinball({ position, traversalType }: {
     <group position={[position.x, position.y, position.z]}>
       {/* Main Pinball Sphere - Chrome-like */}
       <mesh ref={meshRef} castShadow>
-        <sphereGeometry args={[1, 32, 32]} />
+        <sphereGeometry args={[1, 24, 24]} />
         <meshStandardMaterial
           color={config.accentColor}
           metalness={0.95}
@@ -706,7 +713,6 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
   }, [isDragging, startMouseY, onDragChange, onDragEnd, orbitControlsRef]);
 
   const handlePointerDown = (e: any) => {
-    console.log('🎯 Plunger clicked!', e);
     e.stopPropagation();
     
     // Prevent text selection during drag
@@ -804,7 +810,6 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
         }}
         onPointerUp={(e) => {
           if (isDragging) {
-            console.log('🚀 Pointer up - releasing plunger');
             e.stopPropagation();
             setIsDragging(false);
             
@@ -822,7 +827,6 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
           }
         }}
         onPointerEnter={(e) => {
-          console.log('🖱️ Pointer entered plunger');
           e.stopPropagation();
           if (!isDragging) {
             document.body.style.cursor = 'grab';
@@ -833,7 +837,6 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
           }
         }}
         onPointerLeave={(e) => {
-          console.log('🚪 Pointer left plunger');
           e.stopPropagation();
           if (!isDragging) {
             document.body.style.cursor = 'default';
@@ -844,7 +847,7 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
           }
         }}
       >
-        <cylinderGeometry args={[1.2, 1.2, 2.5, 32]} />
+        <cylinderGeometry args={[1.2, 1.2, 2.5, 24]} />
         <meshStandardMaterial
           color={isDragging ? '#ffff00' : config.accentColor}
           metalness={0.9}
@@ -858,7 +861,7 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
       <group ref={springRef} position={[0, -3.5, 0]}>
         {[0, 0.4, 0.8, 1.2, 1.6].map((offset, i) => (
           <mesh key={i} position={[0, offset, 0]}>
-            <torusGeometry args={[0.6, 0.12, 16, 32]} />
+            <torusGeometry args={[0.6, 0.12, 12, 24]} />
             <meshStandardMaterial
               color="#ffaa00"
               emissive="#ffaa00"
@@ -872,7 +875,7 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
 
       {/* Base plate */}
       <mesh position={[0, -5.5, 0]} castShadow>
-        <cylinderGeometry args={[1.5, 1.5, 0.5, 32]} />
+        <cylinderGeometry args={[1.5, 1.5, 0.5, 24]} />
         <meshStandardMaterial
           color="#333333"
           metalness={0.8}
