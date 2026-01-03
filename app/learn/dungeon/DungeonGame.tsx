@@ -2,6 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
+import { Pixelify_Sans } from "next/font/google";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  type CarouselApi,
+} from "@/app/components/ui/Carousel";
+
+const pixelFont = Pixelify_Sans({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+});
 
 class UltScene extends Phaser.Scene {
   private ultSprite!: Phaser.GameObjects.Sprite;
@@ -168,6 +182,13 @@ class DungeonScene extends Phaser.Scene {
   // Leveling
   private playerLevel: number = 1;
 
+  // Player health system
+  private playerHealth: number = 100;
+  private playerMaxHealth: number = 100;
+  private playerHealthBar!: Phaser.GameObjects.Graphics;
+  private playerHealthBarBg!: Phaser.GameObjects.Graphics;
+  private playerHealthText!: Phaser.GameObjects.Text;
+
   private player!: Phaser.Physics.Arcade.Sprite;
   private playerShadow!: Phaser.GameObjects.Ellipse;
   private mapContainer!: Phaser.GameObjects.Container;
@@ -195,6 +216,11 @@ class DungeonScene extends Phaser.Scene {
   private debugMode: boolean = false;
   private enemyLevels: number[] = [];
   private mapName: string = "map.json";
+  private initData: {
+    character: string;
+    enemyLevels?: number[];
+    mapName?: string;
+  } = { character: "gojo" };
 
   // Lighting system
   private darknessOverlay!: Phaser.GameObjects.Graphics;
@@ -216,11 +242,21 @@ class DungeonScene extends Phaser.Scene {
   private enemyVsEnemyColliders: Phaser.Physics.Arcade.Collider[] = [];
   private enemyVsPlayerColliders: Phaser.Physics.Arcade.Collider[] = [];
 
+  // Collectibles system
+  private collectibles!: Phaser.Physics.Arcade.Group;
+  private attackSpeedMultiplier: number = 1;
+  private attackSpeedBuffTimer: number = 0;
+  private speedBoostMultiplier: number = 1;
+  private speedBoostTimer: number = 0;
+
   constructor() {
     super({ key: "DungeonScene" });
   }
 
   init(data: { character: string; enemyLevels?: number[]; mapName?: string }) {
+    // Store init data for restart
+    this.initData = data;
+
     if (data.character) {
       this.selectedCharacter = data.character;
     }
@@ -228,6 +264,9 @@ class DungeonScene extends Phaser.Scene {
       this.enemyLevels = data.enemyLevels;
       // Set player level to minimum of entered levels
       this.playerLevel = Math.min(...data.enemyLevels);
+      // Set player health based on starting level
+      this.playerMaxHealth = 100 + (this.playerLevel - 1) * 10;
+      this.playerHealth = this.playerMaxHealth;
     }
     this.mapName = data.mapName || "map.json";
   }
@@ -433,6 +472,9 @@ class DungeonScene extends Phaser.Scene {
     let totalColliders = 0;
     const DEPTH_PER_LAYER = 10; // Reserve 10 depth levels per layer
 
+    // First, render layers in the predefined order
+    const renderedLayers = new Set<string>();
+
     layerRenderOrder.forEach((layerName: string, renderIndex: number) => {
       const layer = layerMap.get(layerName);
       if (!layer) {
@@ -440,6 +482,7 @@ class DungeonScene extends Phaser.Scene {
         return;
       }
 
+      renderedLayers.add(layerName);
       console.log(
         `Rendering layer ${renderIndex}: ${layer.name}, tiles: ${layer.tiles.length}, collider: ${layer.collider}`
       );
@@ -486,6 +529,75 @@ class DungeonScene extends Phaser.Scene {
         }
       });
     });
+
+    // Render any remaining layers that weren't in the predefined order
+    mapData.layers.forEach(
+      (layer: {
+        name: string;
+        tiles: Array<{ x: number; y: number; id: string }>;
+        collider?: boolean;
+      }) => {
+        // Skip if already rendered
+        if (renderedLayers.has(layer.name)) {
+          return;
+        }
+
+        // Skip empty layers
+        if (!layer.tiles || layer.tiles.length === 0) {
+          return;
+        }
+
+        console.log(
+          `Rendering additional layer: ${layer.name}, tiles: ${layer.tiles.length}, collider: ${layer.collider}`
+        );
+
+        // Use a default depth for unknown layers (after all predefined layers)
+        const defaultDepth = layerRenderOrder.length * DEPTH_PER_LAYER;
+
+        layer.tiles.forEach((tile: { x: number; y: number; id: string }) => {
+          const x = tile.x * tileSize * this.MAP_SCALE;
+          const y = tile.y * tileSize * this.MAP_SCALE;
+          const tileId = parseInt(tile.id, 10);
+
+          // Skip if tile ID is invalid
+          if (isNaN(tileId)) {
+            console.warn(
+              `Invalid tile ID: ${tile.id} at (${tile.x}, ${tile.y})`
+            );
+            return;
+          }
+
+          const tileSprite = this.add.sprite(x, y, "tiles", tileId);
+          tileSprite.setOrigin(0, 0);
+          tileSprite.setScale(this.MAP_SCALE);
+          tileSprite.setDepth(defaultDepth);
+          totalTiles++;
+
+          // Add collision based on the layer's collider flag from JSON
+          // Exclude "nodes" layer even if it has collider flag
+          if (layer.collider === true && layer.name !== "nodes") {
+            // Create a static physics body for collision
+            const collider = this.add.rectangle(
+              x + (tileSize * this.MAP_SCALE) / 2,
+              y + (tileSize * this.MAP_SCALE) / 2,
+              tileSize * this.MAP_SCALE,
+              tileSize * this.MAP_SCALE,
+              0xff0000,
+              0
+            );
+
+            // Add physics to the rectangle and make it static
+            this.physics.add.existing(collider, true);
+            const body = collider.body as Phaser.Physics.Arcade.StaticBody;
+            body.updateFromGameObject();
+
+            collider.setVisible(false);
+            this.wallColliders.add(collider);
+            totalColliders++;
+          }
+        });
+      }
+    );
 
     console.log(`Total tiles rendered: ${totalTiles}`);
     console.log(`Total wall colliders created: ${totalColliders}`);
@@ -614,6 +726,19 @@ class DungeonScene extends Phaser.Scene {
       this
     );
 
+    // Create collectibles scattered around the map
+    this.collectibles = this.physics.add.group();
+    this.createCollectibles();
+
+    // Add collision between player and collectibles
+    this.physics.add.overlap(
+      this.player,
+      this.collectibles,
+      this.collectItem,
+      undefined,
+      this
+    );
+
     // Create lighting system
     this.setupLighting();
 
@@ -682,9 +807,9 @@ class DungeonScene extends Phaser.Scene {
           this.FRAME_OFFSET_BOTTOM
         } L:${this.FRAME_OFFSET_LEFT} R:${this.FRAME_OFFSET_RIGHT}`,
         {
-          fontSize: "12px",
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: "10px",
           color: "#ffffff",
-          fontStyle: "bold",
           backgroundColor: "#000000",
           padding: { x: 8, y: 4 },
         }
@@ -694,10 +819,10 @@ class DungeonScene extends Phaser.Scene {
 
     // Debug: Legend (fixed to camera)
     this.add
-      .text(16, 16, "🔴 Red = Visual Frame\n🟢 Green = Collision/Hitbox", {
-        fontSize: "14px",
+      .text(16, 16, "Red = Visual Frame\nGreen = Collision/Hitbox", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "12px",
         color: "#ffffff",
-        fontStyle: "bold",
         backgroundColor: "#000000",
         padding: { x: 8, y: 4 },
       })
@@ -709,10 +834,10 @@ class DungeonScene extends Phaser.Scene {
 
     // Torch UI - positioned at top center
     this.torchText = this.add
-      .text(width / 2, 20, "🔥 Torches: 0", {
-        fontSize: "20px",
+      .text(width / 2, 20, "Torches: 0", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "18px",
         color: "#ffaa00",
-        fontStyle: "bold",
         backgroundColor: "#000000",
         padding: { x: 12, y: 6 },
       })
@@ -721,10 +846,10 @@ class DungeonScene extends Phaser.Scene {
       .setDepth(10000);
 
     this.torchTimerText = this.add
-      .text(width / 2, 50, "", {
-        fontSize: "16px",
+      .text(width / 2, 55, "", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "14px",
         color: "#ffff00",
-        fontStyle: "bold",
         backgroundColor: "#000000",
         padding: { x: 10, y: 4 },
       })
@@ -734,15 +859,38 @@ class DungeonScene extends Phaser.Scene {
 
     // Player level UI - top-left
     this.playerLevelText = this.add
-      .text(16, 90, `🛡️ Level: ${this.playerLevel}`, {
-        fontSize: "18px",
+      .text(16, 90, `Level: ${this.playerLevel}`, {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "16px",
         color: "#00ffcc",
-        fontStyle: "bold",
         backgroundColor: "#000000",
         padding: { x: 10, y: 6 },
       })
       .setScrollFactor(0)
       .setDepth(10000);
+
+    // Player health bar - top-left below level
+    this.playerHealthBarBg = this.add
+      .graphics()
+      .setDepth(10000)
+      .setScrollFactor(0);
+    this.playerHealthBar = this.add
+      .graphics()
+      .setDepth(10001)
+      .setScrollFactor(0);
+
+    this.playerHealthText = this.add
+      .text(16, 130, `HP: ${this.playerHealth}/${this.playerMaxHealth}`, {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "14px",
+        color: "#ff5555",
+        backgroundColor: "#000000",
+        padding: { x: 8, y: 4 },
+      })
+      .setScrollFactor(0)
+      .setDepth(10000);
+
+    this.updatePlayerHealthBar();
 
     // Initialize torch count and vision
     this.currentVisionRadius = this.BASE_VISION_RADIUS;
@@ -1128,6 +1276,9 @@ class DungeonScene extends Phaser.Scene {
   update(time: number, delta: number) {
     if (!this.player || !this.mapContainer) return;
 
+    // If player is dead, don't update gameplay
+    if (this.playerHealth <= 0) return;
+
     // Update enemies AI/health bars
     this.updateEnemies(delta);
 
@@ -1140,7 +1291,7 @@ class DungeonScene extends Phaser.Scene {
 
       // Update torch timer UI
       const secondsRemaining = Math.ceil(this.torchTimeRemaining / 1000);
-      this.torchTimerText.setText(`⏱ Light Time: ${secondsRemaining}s`);
+      this.torchTimerText.setText(`Light Time: ${secondsRemaining}s`);
 
       // Change color based on remaining time
       if (secondsRemaining <= 3) {
@@ -1152,6 +1303,71 @@ class DungeonScene extends Phaser.Scene {
       }
     } else {
       this.torchTimerText.setText("");
+    }
+
+    // Update buff timers
+    if (this.attackSpeedBuffTimer > 0) {
+      this.attackSpeedBuffTimer -= delta;
+      if (this.attackSpeedBuffTimer <= 0) {
+        this.attackSpeedBuffTimer = 0;
+        this.attackSpeedMultiplier = 1;
+
+        // Show buff ended notification
+        const buffEndText = this.add
+          .text(
+            this.cameras.main.scrollX + this.cameras.main.width / 2,
+            this.cameras.main.scrollY + 100,
+            "Attack Speed Buff Ended",
+            {
+              fontFamily: "'Pixelify Sans', monospace",
+              fontSize: "14px",
+              color: "#ff0000",
+              backgroundColor: "#000000",
+              padding: { x: 8, y: 4 },
+            }
+          )
+          .setOrigin(0.5)
+          .setDepth(10002);
+
+        this.tweens.add({
+          targets: buffEndText,
+          alpha: 0,
+          duration: 1000,
+          onComplete: () => buffEndText.destroy(),
+        });
+      }
+    }
+
+    if (this.speedBoostTimer > 0) {
+      this.speedBoostTimer -= delta;
+      if (this.speedBoostTimer <= 0) {
+        this.speedBoostTimer = 0;
+        this.speedBoostMultiplier = 1;
+
+        // Show buff ended notification
+        const buffEndText = this.add
+          .text(
+            this.cameras.main.scrollX + this.cameras.main.width / 2,
+            this.cameras.main.scrollY + 100,
+            "Speed Boost Ended",
+            {
+              fontFamily: "'Pixelify Sans', monospace",
+              fontSize: "14px",
+              color: "#00aaff",
+              backgroundColor: "#000000",
+              padding: { x: 8, y: 4 },
+            }
+          )
+          .setOrigin(0.5)
+          .setDepth(10002);
+
+        this.tweens.add({
+          targets: buffEndText,
+          alpha: 0,
+          duration: 1000,
+          onComplete: () => buffEndText.destroy(),
+        });
+      }
     }
 
     // Update the lighting effect every frame
@@ -1255,9 +1471,9 @@ class DungeonScene extends Phaser.Scene {
       moveY *= 0.707;
     }
 
-    // Set velocity directly for responsive movement
-    const velocityX = moveX * this.playerSpeed;
-    const velocityY = moveY * this.playerSpeed;
+    // Set velocity directly for responsive movement (with speed boost if active)
+    const velocityX = moveX * this.playerSpeed * this.speedBoostMultiplier;
+    const velocityY = moveY * this.playerSpeed * this.speedBoostMultiplier;
     this.player.setVelocity(velocityX, velocityY);
 
     // Keep player within map boundaries
@@ -1363,16 +1579,24 @@ class DungeonScene extends Phaser.Scene {
     // Stop movement during slash
     this.player.setVelocity(0, 0);
     this.player.setAcceleration(0, 0);
-    this.player.play(skillAnim);
 
-    // Check if attack hits enemy
-    this.time.delayedCall(150, () => {
+    // Play animation with attack speed multiplier
+    this.player.play(skillAnim);
+    if (this.attackSpeedMultiplier > 1) {
+      this.player.anims.timeScale = this.attackSpeedMultiplier;
+    }
+
+    // Check if attack hits enemy (faster with attack speed buff)
+    const attackDelay = 150 / this.attackSpeedMultiplier;
+    this.time.delayedCall(attackDelay, () => {
       this.checkPlayerAttackHitsEnemy();
     });
 
     // Listen for animation complete event
     this.player.once("animationcomplete", () => {
       this.isSlashing = false;
+      // Reset animation speed
+      this.player.anims.timeScale = 1;
       // Return to idle animation after skill
       this.player.play(`idle-${this.lastDirection}`);
     });
@@ -1507,9 +1731,9 @@ class DungeonScene extends Phaser.Scene {
       this.player.y - 50,
       "+Torch!",
       {
-        fontSize: "20px",
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "16px",
         color: "#ffaa00",
-        fontStyle: "bold",
       }
     );
     collectText.setDepth(10001);
@@ -1523,17 +1747,195 @@ class DungeonScene extends Phaser.Scene {
     });
   }
 
+  createCollectibles() {
+    if (!this.nodes.length) return;
+
+    // Create collectibles near walkable nodes (guaranteed to be in walkable areas)
+    const collectibleTypes = [
+      { type: "health", color: 0x00ff00, label: "HP" },
+      { type: "attack_speed", color: 0xff0000, label: "ATK" },
+      { type: "speed_boost", color: 0x00aaff, label: "SPD" },
+    ];
+
+    // Number of collectibles: roughly 1 per 2-3 nodes (skip first node where player spawns)
+    const collectibleCount = Math.floor((this.nodes.length - 1) / 2.5);
+
+    // Keep track of used texture keys to avoid conflicts
+    const usedTextureKeys = new Set<string>();
+
+    // Spawn collectibles near nodes (skip the first node where player spawns)
+    for (
+      let i = 1;
+      i < this.nodes.length && usedTextureKeys.size < collectibleCount;
+      i++
+    ) {
+      // Randomly decide if we place a collectible at this node (50% chance)
+      if (Math.random() > 0.5) continue;
+
+      const node = this.nodes[i];
+
+      // Add random offset from node position (but keep it close to ensure it's walkable)
+      const offsetRange = 40; // Smaller range to stay in walkable area
+      const offsetX = Phaser.Math.Between(-offsetRange, offsetRange);
+      const offsetY = Phaser.Math.Between(-offsetRange, offsetRange);
+
+      const collectibleX = node.x + offsetX;
+      const collectibleY = node.y + offsetY;
+
+      // Random collectible type
+      const collectibleType =
+        collectibleTypes[Phaser.Math.Between(0, collectibleTypes.length - 1)];
+
+      // Generate unique texture key
+      const textureIndex = usedTextureKeys.size;
+      let textureKey = `collectible-${collectibleType.type}-${textureIndex}`;
+      let counter = 0;
+      while (usedTextureKeys.has(textureKey)) {
+        textureKey = `collectible-${collectibleType.type}-${textureIndex}-${counter}`;
+        counter++;
+      }
+      usedTextureKeys.add(textureKey);
+
+      // Create the collectible as a circle
+      const graphics = this.add.graphics();
+      graphics.fillStyle(collectibleType.color, 1);
+      graphics.fillCircle(10, 10, 10);
+      graphics.generateTexture(textureKey, 20, 20);
+      graphics.destroy();
+
+      const collectible = this.collectibles.create(
+        collectibleX,
+        collectibleY,
+        textureKey
+      ) as Phaser.Physics.Arcade.Sprite;
+      collectible.setScale(1.5);
+      collectible.setDepth(500);
+      collectible.setData("type", collectibleType.type);
+      collectible.setData("label", collectibleType.label);
+      collectible.setData("color", collectibleType.color);
+
+      // Add floating animation
+      this.tweens.add({
+        targets: collectible,
+        y: collectible.y - 10,
+        duration: 1000,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+
+      // Add rotation animation
+      this.tweens.add({
+        targets: collectible,
+        angle: 360,
+        duration: 3000,
+        repeat: -1,
+        ease: "Linear",
+      });
+    }
+  }
+
+  collectItem(
+    player:
+      | Phaser.Physics.Arcade.Body
+      | Phaser.Physics.Arcade.StaticBody
+      | Phaser.Types.Physics.Arcade.GameObjectWithBody
+      | Phaser.Tilemaps.Tile,
+    item:
+      | Phaser.Physics.Arcade.Body
+      | Phaser.Physics.Arcade.StaticBody
+      | Phaser.Types.Physics.Arcade.GameObjectWithBody
+      | Phaser.Tilemaps.Tile
+  ) {
+    const itemSprite = item as Phaser.Physics.Arcade.Sprite;
+    const type = itemSprite.getData("type");
+    const color = itemSprite.getData("color");
+
+    // Apply effect based on type
+    let effectText = "";
+    let textColor = "#ffffff";
+
+    switch (type) {
+      case "health":
+        const healAmount = 30;
+        this.playerHealth = Math.min(
+          this.playerMaxHealth,
+          this.playerHealth + healAmount
+        );
+        this.updatePlayerHealthBar();
+        effectText = `+${healAmount} HP`;
+        textColor = "#00ff00";
+        break;
+
+      case "attack_speed":
+        this.attackSpeedMultiplier = 1.5;
+        this.attackSpeedBuffTimer = 10000; // 10 seconds
+        effectText = "+50% Attack Speed (10s)";
+        textColor = "#ff0000";
+        break;
+
+      case "speed_boost":
+        this.speedBoostMultiplier = 1.5;
+        this.speedBoostTimer = 10000; // 10 seconds
+        effectText = "+50% Movement Speed (10s)";
+        textColor = "#00aaff";
+        break;
+    }
+
+    // Remove the collectible
+    itemSprite.destroy();
+
+    // Show collection text
+    const collectText = this.add.text(
+      this.player.x,
+      this.player.y - 60,
+      effectText,
+      {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "16px",
+        color: textColor,
+      }
+    );
+    collectText.setDepth(10001);
+
+    this.tweens.add({
+      targets: collectText,
+      y: collectText.y - 40,
+      alpha: 0,
+      duration: 1500,
+      onComplete: () => collectText.destroy(),
+    });
+
+    // Play sparkle effect
+    const sparkle = this.add.circle(
+      this.player.x,
+      this.player.y,
+      20,
+      color,
+      0.6
+    );
+    sparkle.setDepth(999);
+
+    this.tweens.add({
+      targets: sparkle,
+      scale: 3,
+      alpha: 0,
+      duration: 500,
+      onComplete: () => sparkle.destroy(),
+    });
+  }
+
   createEnemiesAtNodes() {
     if (!this.nodes.length) return;
 
     const shadowOffset = (this.FRAME_HEIGHT * this.SPRITE_SCALE) / 2 - 10;
 
     // Use provided enemy levels, or fallback to default order
-    // Fallback array has 10 elements to support both map10 (9 enemies) and map11 (10 enemies)
+    // Fallback array has 12 elements to support map10 (9 enemies), map11 (10 enemies), and map12 (11 enemies)
     const enemyLevelsByOrder =
       this.enemyLevels.length > 0
         ? this.enemyLevels
-        : [1, 6, 5, 2, 7, 4, 3, 8, 9, 10];
+        : [1, 6, 5, 2, 7, 4, 3, 8, 9, 10, 11, 12];
     let enemyIndex = 0;
     this.nodes.forEach((node: { x: number; y: number }, index: number) => {
       // Skip the first node (player spawn)
@@ -1586,9 +1988,9 @@ class DungeonScene extends Phaser.Scene {
       // Level label above enemy
       const levelText = this.add
         .text(node.x, node.y - 70, `Lv ${enemyLevel}`, {
-          fontSize: "14px",
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: "12px",
           color: "#ffffff",
-          fontStyle: "bold",
           backgroundColor: "#000000",
           padding: { x: 6, y: 3 },
         })
@@ -1650,12 +2052,22 @@ class DungeonScene extends Phaser.Scene {
   updateEnemies(delta: number) {
     if (!this.enemies.length) return;
 
+    // Filter out destroyed enemies
+    this.enemies = this.enemies.filter((enemyUnit) => {
+      return enemyUnit.sprite && enemyUnit.sprite.active;
+    });
+
     this.enemies.forEach((enemyUnit) => {
       const { sprite, shadow, defeated } = enemyUnit;
       if (defeated) return;
 
+      // Check if sprite still exists and is active
+      if (!sprite || !sprite.active || !sprite.body) return;
+
       // Ensure collider stays active even during attack animations
       const body = sprite.body as Phaser.Physics.Arcade.Body;
+      if (!body) return;
+
       body.enable = true;
       body.checkCollision.none = false;
       body.immovable = false;
@@ -1669,11 +2081,15 @@ class DungeonScene extends Phaser.Scene {
       }
 
       // Keep shadow and level label aligned
-      const shadowOffset = (this.FRAME_HEIGHT * this.SPRITE_SCALE) / 2 - 10;
-      shadow.x = sprite.x;
-      shadow.y = sprite.y + shadowOffset;
-      enemyUnit.levelText.x = sprite.x;
-      enemyUnit.levelText.y = sprite.y - 70;
+      if (shadow && shadow.active) {
+        const shadowOffset = (this.FRAME_HEIGHT * this.SPRITE_SCALE) / 2 - 10;
+        shadow.x = sprite.x;
+        shadow.y = sprite.y + shadowOffset;
+      }
+      if (enemyUnit.levelText && enemyUnit.levelText.active) {
+        enemyUnit.levelText.x = sprite.x;
+        enemyUnit.levelText.y = sprite.y - 70;
+      }
 
       // Distance to player
       const dx = this.player.x - sprite.x;
@@ -1703,8 +2119,18 @@ class DungeonScene extends Phaser.Scene {
         enemyUnit.lastDirection = dir;
         sprite.play(`enemy-attack-${dir}`);
 
-        // Apply knockback to player mid-attack without health system
+        // Apply damage and knockback to player mid-attack
         this.time.delayedCall(220, () => {
+          // Calculate damage based on enemy level
+          const baseDamage = 10;
+          const damage = this.getDamageAfterLevels(
+            baseDamage,
+            enemyUnit.level,
+            this.playerLevel
+          );
+          this.damagePlayer(damage, enemyUnit.level);
+
+          // Apply knockback
           const kbForce = 250;
           const norm = Math.max(1, Math.sqrt(dx * dx + dy * dy));
           const kbX = (dx / norm) * kbForce;
@@ -1760,29 +2186,166 @@ class DungeonScene extends Phaser.Scene {
   }
 
   updateEnemyHealthBar(enemy: EnemyUnit) {
+    if (!enemy.sprite || !enemy.sprite.active) return;
+
     const barWidth = 40;
     const barHeight = 6;
     const barX = enemy.sprite.x - barWidth / 2;
     const barY = enemy.sprite.y - 50;
 
-    enemy.healthBarBg.clear();
-    enemy.healthBar.clear();
+    if (enemy.healthBarBg && enemy.healthBarBg.active) {
+      enemy.healthBarBg.clear();
+    }
+    if (enemy.healthBar && enemy.healthBar.active) {
+      enemy.healthBar.clear();
+    }
 
     if (enemy.defeated) return;
 
-    enemy.healthBarBg.fillStyle(0x000000, 0.8);
-    enemy.healthBarBg.fillRect(barX - 2, barY - 2, barWidth + 4, barHeight + 4);
+    if (enemy.healthBarBg && enemy.healthBarBg.active) {
+      enemy.healthBarBg.fillStyle(0x000000, 0.8);
+      enemy.healthBarBg.fillRect(
+        barX - 2,
+        barY - 2,
+        barWidth + 4,
+        barHeight + 4
+      );
 
-    enemy.healthBarBg.fillStyle(0x550000, 1);
-    enemy.healthBarBg.fillRect(barX, barY, barWidth, barHeight);
+      enemy.healthBarBg.fillStyle(0x550000, 1);
+      enemy.healthBarBg.fillRect(barX, barY, barWidth, barHeight);
+    }
 
     const pct = Phaser.Math.Clamp(enemy.health / enemy.maxHealth, 0, 1);
     let color = 0x00ff00;
     if (pct < 0.3) color = 0xff0000;
     else if (pct < 0.6) color = 0xffaa00;
 
-    enemy.healthBar.fillStyle(color, 1);
-    enemy.healthBar.fillRect(barX, barY, barWidth * pct, barHeight);
+    if (enemy.healthBar && enemy.healthBar.active) {
+      enemy.healthBar.fillStyle(color, 1);
+      enemy.healthBar.fillRect(barX, barY, barWidth * pct, barHeight);
+    }
+  }
+
+  updatePlayerHealthBar() {
+    const barWidth = 150;
+    const barHeight = 20;
+    const barX = 16;
+    const barY = 160;
+
+    this.playerHealthBarBg.clear();
+    this.playerHealthBar.clear();
+
+    // Background
+    this.playerHealthBarBg.fillStyle(0x000000, 0.8);
+    this.playerHealthBarBg.fillRect(
+      barX - 2,
+      barY - 2,
+      barWidth + 4,
+      barHeight + 4
+    );
+
+    // Red background for missing health
+    this.playerHealthBarBg.fillStyle(0x550000, 1);
+    this.playerHealthBarBg.fillRect(barX, barY, barWidth, barHeight);
+
+    // Green health bar
+    const pct = Phaser.Math.Clamp(
+      this.playerHealth / this.playerMaxHealth,
+      0,
+      1
+    );
+    let color = 0x00ff00;
+    if (pct < 0.3) color = 0xff0000;
+    else if (pct < 0.6) color = 0xffaa00;
+
+    this.playerHealthBar.fillStyle(color, 1);
+    this.playerHealthBar.fillRect(barX, barY, barWidth * pct, barHeight);
+
+    // Update text
+    this.playerHealthText.setText(
+      `HP: ${Math.max(0, Math.floor(this.playerHealth))}/${
+        this.playerMaxHealth
+      }`
+    );
+  }
+
+  damagePlayer(damage: number, enemyLevel: number) {
+    this.playerHealth -= damage;
+    this.updatePlayerHealthBar();
+
+    // Shake the camera only if enemy is 2+ levels higher
+    const levelDiff = enemyLevel - this.playerLevel;
+    if (levelDiff >= 2) {
+      this.cameras.main.shake(150, 0.005);
+    }
+
+    // Check for game over
+    if (this.playerHealth <= 0) {
+      this.playerHealth = 0;
+      this.updatePlayerHealthBar();
+      this.gameOver();
+    }
+
+    // Show damage text
+    const damageText = this.add.text(
+      this.player.x,
+      this.player.y - 50,
+      `-${Math.floor(damage)}`,
+      {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "20px",
+        color: "#ff0000",
+      }
+    );
+    damageText.setDepth(1300);
+
+    this.tweens.add({
+      targets: damageText,
+      y: damageText.y - 40,
+      alpha: 0,
+      duration: 1000,
+      onComplete: () => damageText.destroy(),
+    });
+  }
+
+  gameOver() {
+    // Stop all movement
+    this.player.setVelocity(0, 0);
+    this.isSlashing = false;
+    this.isJumping = false;
+
+    // Display game over text
+    const { width, height } = this.cameras.main;
+    this.add
+      .text(width / 2, height / 2, "GAME OVER", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "64px",
+        color: "#ff0000",
+        stroke: "#000000",
+        strokeThickness: 8,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20000);
+
+    this.add
+      .text(width / 2, height / 2 + 80, "Press R to Restart", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "24px",
+        color: "#ffffff",
+        backgroundColor: "#000000",
+        padding: { x: 12, y: 6 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20000);
+
+    // Add R key to restart
+    const rKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    rKey.once("down", () => {
+      // Restart with the same initialization data
+      this.scene.restart(this.initData);
+    });
   }
 
   checkPlayerAttackHitsEnemy() {
@@ -1792,6 +2355,9 @@ class DungeonScene extends Phaser.Scene {
 
     this.enemies.forEach((enemyUnit) => {
       if (enemyUnit.defeated) return;
+
+      // Check if sprite still exists and is active
+      if (!enemyUnit.sprite || !enemyUnit.sprite.active) return;
 
       const dx = enemyUnit.sprite.x - this.player.x;
       const dy = enemyUnit.sprite.y - this.player.y;
@@ -1857,9 +2423,9 @@ class DungeonScene extends Phaser.Scene {
       enemy.sprite.y - 50,
       `-${adjustedDamage}`,
       {
-        fontSize: "18px",
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "16px",
         color: "#ff0000",
-        fontStyle: "bold",
       }
     );
     damageText.setDepth(1300);
@@ -1921,8 +2487,40 @@ class DungeonScene extends Phaser.Scene {
     if (enemy.level === this.playerLevel && this.playerLevel < 10) {
       this.playerLevel += 1;
       if (this.playerLevelText) {
-        this.playerLevelText.setText(`🛡️ Level: ${this.playerLevel}`);
+        this.playerLevelText.setText(`Level: ${this.playerLevel}`);
       }
+
+      // Increase max health by 10 per level
+      this.playerMaxHealth += 10;
+
+      // Heal 50% of max health on level up
+      const healAmount = Math.floor(this.playerMaxHealth * 0.5);
+      this.playerHealth = Math.min(
+        this.playerMaxHealth,
+        this.playerHealth + healAmount
+      );
+      this.updatePlayerHealthBar();
+
+      // Show level up text
+      const levelUpText = this.add.text(
+        this.player.x,
+        this.player.y - 70,
+        `LEVEL UP! +${healAmount} HP`,
+        {
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: "20px",
+          color: "#00ffcc",
+        }
+      );
+      levelUpText.setDepth(1300);
+
+      this.tweens.add({
+        targets: levelUpText,
+        y: levelUpText.y - 40,
+        alpha: 0,
+        duration: 1500,
+        onComplete: () => levelUpText.destroy(),
+      });
     }
   }
 
@@ -1971,6 +2569,115 @@ class DungeonScene extends Phaser.Scene {
   }
 }
 
+interface AnimatedSpriteProps {
+  characterId: string;
+  direction: "up" | "down" | "left" | "right";
+  frameWidth: number;
+  frameHeight: number;
+  frameCount: number;
+  frameRate?: number;
+  scale?: number;
+}
+
+function AnimatedSprite({
+  characterId,
+  direction,
+  frameWidth,
+  frameHeight,
+  frameCount,
+  frameRate = 4,
+  scale = 2,
+}: AnimatedSpriteProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const animationRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.src = `/sprite/characters/${characterId}/idle.png`;
+    imgRef.current = img;
+
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const drawFrame = (frameIndex: number) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Calculate sprite sheet position based on direction
+        // Idle animations: up (0-1), left (2-3), down (4-5), right (6-7)
+        let spriteX = 0;
+        let spriteY = 0;
+
+        if (direction === "up") spriteY = 0;
+        else if (direction === "left") spriteY = frameHeight;
+        else if (direction === "down") spriteY = frameHeight * 2;
+        else if (direction === "right") spriteY = frameHeight * 3;
+
+        spriteX = frameIndex * frameWidth;
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(
+          img,
+          spriteX,
+          spriteY,
+          frameWidth,
+          frameHeight,
+          0,
+          0,
+          frameWidth * scale,
+          frameHeight * scale
+        );
+      };
+
+      let frameIndex = 0;
+      const animate = () => {
+        drawFrame(frameIndex);
+        frameIndex = (frameIndex + 1) % frameCount;
+        animationRef.current = setTimeout(
+          () => requestAnimationFrame(animate),
+          1000 / frameRate
+        );
+      };
+
+      drawFrame(0);
+      animate();
+    };
+
+    return () => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+      }
+    };
+  }, [
+    characterId,
+    direction,
+    frameWidth,
+    frameHeight,
+    frameCount,
+    frameRate,
+    scale,
+  ]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={frameWidth * scale}
+      height={frameHeight * scale}
+      style={{
+        imageRendering: "pixelated",
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+      }}
+      className="pixelated"
+    />
+  );
+}
+
 interface CharacterPickerProps {
   onSelect: (character: string) => void;
   currentCharacter?: string | null;
@@ -1978,63 +2685,257 @@ interface CharacterPickerProps {
 
 function CharacterPicker({ onSelect, currentCharacter }: CharacterPickerProps) {
   const characters = [
-    { id: "gojo", name: "Gojo", color: "from-blue-600 to-purple-600" },
-    { id: "goku", name: "Goku", color: "from-orange-500 to-yellow-500" },
-    { id: "gladiator", name: "Gladiator", color: "from-red-600 to-amber-600" },
+    {
+      id: "gojo",
+      name: "Gojo",
+      direction: "down" as const,
+      description: "Master of space manipulation with infinite potential",
+      attack: 95,
+      defense: 85,
+      life: 100,
+      cardBackground: "/sprite/card/special_card.png",
+    },
+    {
+      id: "goku",
+      name: "Goku",
+      direction: "down" as const,
+      description: "Legendary Saiyan warrior with boundless energy",
+      attack: 100,
+      defense: 80,
+      life: 95,
+      cardBackground: "/sprite/card/hero_card.png",
+    },
+    {
+      id: "gladiator",
+      name: "Gladiator",
+      direction: "down" as const,
+      description: "Battle-hardened warrior with exceptional combat skills",
+      attack: 85,
+      defense: 95,
+      life: 90,
+      cardBackground: "/sprite/card/steam_card.png",
+    },
   ];
 
+  const [api, setApi] = useState<CarouselApi>();
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    if (!api) {
+      return;
+    }
+
+    setCurrent(api.selectedScrollSnap());
+
+    api.on("select", () => {
+      setCurrent(api.selectedScrollSnap());
+    });
+  }, [api]);
+
   return (
-    <div className="grid grid-cols-3 gap-4 w-full max-w-6xl">
-      {characters.map((char) => (
-        <button
-          key={char.id}
-          onClick={() => onSelect(char.id)}
-          disabled={currentCharacter === char.id}
-          className={`group relative overflow-hidden rounded-xl shadow-xl transform transition-all duration-300 hover:scale-105 border-4 ${
-            currentCharacter === char.id
-              ? "border-yellow-400 scale-105"
-              : "border-white/20 hover:border-white/60"
-          } ${
-            currentCharacter === char.id
-              ? "opacity-100"
-              : "opacity-90 hover:opacity-100"
-          }`}
-        >
-          <div
-            className={`absolute inset-0 bg-linear-to-br ${char.color} transition-opacity`}
-          />
-          <div className="relative p-6 flex flex-col items-center">
-            <div className="w-32 h-32 mb-3 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm overflow-hidden">
-              <img
-                src={`/sprite/characters/${char.id}/idle.png`}
-                alt={char.name}
-                className="w-full h-full object-contain pixelated"
-                style={{ imageRendering: "pixelated" }}
+    <div className={`w-full ${pixelFont.className} relative z-10`}>
+      {/* Header */}
+      <div className="flex justify-center mb-8">
+        <h1 className="text-5xl font-normal text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]">
+          Pick a Character
+        </h1>
+      </div>
+
+      <Carousel
+        setApi={setApi}
+        opts={{
+          align: "center",
+          loop: true,
+        }}
+        className="w-full"
+      >
+        <div className="flex items-center justify-center gap-8 w-full">
+          {/* Left Arrow Button */}
+          <CarouselPrevious
+            className="group static relative flex-shrink-0 flex items-center justify-center w-16 h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            aria-label="Previous character"
+            style={{
+              backgroundImage: "url('/sprite/btn_circle.png')",
+              backgroundSize: "100% 100%",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              imageRendering: "pixelated",
+            }}
+          >
+            <svg
+              className="w-8 h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M15 19l-7-7 7-7"
               />
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-1">{char.name}</h2>
-            {currentCharacter === char.id && (
-              <span className="text-yellow-300 text-sm font-semibold">
-                ✓ Selected
-              </span>
-            )}
+            </svg>
+          </CarouselPrevious>
+
+          {/* Carousel Content */}
+          <div className="flex-1 max-w-[500px]">
+            <CarouselContent>
+              {characters.map((char) => (
+                <CarouselItem key={char.id}>
+                  <div className="flex items-center justify-center p-4">
+                    <div
+                      className="relative w-[450px] h-[600px] transition-all duration-300"
+                      style={{
+                        backgroundImage: `url('${char.cardBackground}')`,
+                        backgroundSize: "100% 100%",
+                        backgroundPosition: "center",
+                        backgroundRepeat: "no-repeat",
+                        imageRendering: "pixelated",
+                      }}
+                    >
+                      {/* Character Name on Top Scroll */}
+                      <div className="absolute top-[6%] left-0 right-0 flex items-center justify-center">
+                        <h2 className="text-4xl font-bold text-amber-900 tracking-wider text-center w-full">
+                          {char.name}
+                        </h2>
+                      </div>
+
+                      {/* Character Sprite in Center */}
+                      <div className="absolute top-[22%] left-0 right-0 bottom-[45%] flex items-center justify-center">
+                        <div className="w-[70%] h-[70%] flex items-center justify-center">
+                          <AnimatedSprite
+                            key={char.id}
+                            characterId={char.id}
+                            direction={char.direction}
+                            frameWidth={64}
+                            frameHeight={64}
+                            frameCount={2}
+                            frameRate={4}
+                            scale={5}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Description on Bottom Scroll */}
+                      <div className="absolute bottom-[28%] left-[12%] right-[12%] flex items-center justify-center">
+                        <p className="text-base font-medium text-amber-900 text-center leading-snug px-2">
+                          {char.description}
+                        </p>
+                      </div>
+
+                      {/* Stats Bar at Bottom */}
+                      <div className="absolute bottom-[5%] left-[15%] right-[7%] flex items-center justify-around">
+                        {/* Attack */}
+                        <div className="flex items-center justify-center">
+                          <span className="text-xl font-bold text-amber-900">
+                            {char.attack}
+                          </span>
+                        </div>
+
+                        {/* Defense */}
+                        <div className="flex items-center justify-center">
+                          <span className="text-xl font-bold text-amber-900">
+                            {char.defense}
+                          </span>
+                        </div>
+
+                        {/* Life */}
+                        <div className="flex items-center justify-center">
+                          <span className="text-xl font-bold text-amber-900">
+                            {char.life}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
           </div>
+
+          {/* Right Arrow Button */}
+          <CarouselNext
+            className="group static relative flex-shrink-0 flex items-center justify-center w-16 h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            aria-label="Next character"
+            style={{
+              backgroundImage: "url('/sprite/btn_circle.png')",
+              backgroundSize: "100% 100%",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              imageRendering: "pixelated",
+            }}
+          >
+            <svg
+              className="w-8 h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </CarouselNext>
+        </div>
+      </Carousel>
+
+      {/* Select Button - Outside the carousel */}
+      <div className="flex justify-center mt-6">
+        <button
+          onClick={() => onSelect(characters[current].id)}
+          disabled={currentCharacter === characters[current].id}
+          className={`font-bold text-xl transition-all duration-300 px-8 ${
+            currentCharacter === characters[current].id
+              ? "opacity-60 cursor-not-allowed"
+              : "hover:scale-105 active:scale-95 cursor-pointer"
+          }`}
+          style={{
+            backgroundImage: "url('/sprite/btn_small.png')",
+            backgroundSize: "auto 100%",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            imageRendering: "pixelated",
+            color:
+              currentCharacter === characters[current].id
+                ? "#10b981"
+                : "#fbbf24",
+            textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
+            height: "48px",
+            minWidth: "200px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {currentCharacter === characters[current].id
+            ? "✓ Selected"
+            : "Select"}
         </button>
-      ))}
+      </div>
     </div>
   );
 }
 
 export default function DungeonGame() {
+  const [showTitleScreen, setShowTitleScreen] = useState(true);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(
     null
   );
-  const [showPicker, setShowPicker] = useState(true);
+  const [showPicker, setShowPicker] = useState(false);
   const [showLevelInput, setShowLevelInput] = useState(false);
   const [levelInput, setLevelInput] = useState("");
   const [enemyLevels, setEnemyLevels] = useState<number[]>([]);
+  const [showTutorial, setShowTutorial] = useState(false);
   const gameRef = useRef<Phaser.Game | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  const handleTitleClick = () => {
+    setShowTitleScreen(false);
+    setShowPicker(true);
+  };
 
   const handleCharacterSelect = (character: string) => {
     setSelectedCharacter(character);
@@ -2049,14 +2950,25 @@ export default function DungeonGame() {
       .map((s) => parseInt(s.trim(), 10))
       .filter((n) => !isNaN(n) && n >= 1 && n <= 100);
 
-    if (parsed.length >= 10 && parsed.length <= 11) {
+    if (parsed.length >= 10 && parsed.length <= 12) {
       setEnemyLevels(parsed);
       setShowLevelInput(false);
     } else {
       alert(
-        "Please enter 10 or 11 integers between 1 and 100 (comma or space separated)"
+        "Please enter 10-12 integers between 1 and 100 (comma or space separated)"
       );
     }
+  };
+
+  const generateRandomLevels = () => {
+    // Randomly choose between 10, 11, or 12 enemies
+    const count = Math.floor(Math.random() * 3) + 10; // Generates 10, 11, or 12
+    // Generate random levels between 1 and 10
+    const randomLevels = Array.from(
+      { length: count },
+      () => Math.floor(Math.random() * 10) + 1
+    );
+    setLevelInput(randomLevels.join(", "));
   };
 
   useEffect(() => {
@@ -2109,7 +3021,12 @@ export default function DungeonGame() {
     window.addEventListener("resize", handleResize);
 
     // Determine map name based on number of levels
-    const mapName = enemyLevels.length === 10 ? "map10.json" : "map11.json";
+    let mapName = "map10.json";
+    if (enemyLevels.length === 11) {
+      mapName = "map11.json";
+    } else if (enemyLevels.length === 12) {
+      mapName = "map12.json";
+    }
 
     // Pass character data, enemy levels, and map name to scene
     gameRef.current.scene.start("DungeonScene", {
@@ -2128,91 +3045,361 @@ export default function DungeonGame() {
 
   return (
     <div
-      className={`${
+      className={`${pixelFont.className} ${
         isGameActive
           ? "fixed inset-0 bg-black"
-          : "flex flex-col items-center justify-center min-h-screen bg-linear-to-b from-green-900 via-green-800 to-emerald-900 p-4"
+          : "flex flex-col items-center justify-center min-h-screen p-4"
       }`}
+      style={
+        !isGameActive
+          ? {
+              backgroundImage: "url('/sprite/screen.png')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+            }
+          : undefined
+      }
     >
       {!isGameActive && (
         <>
-          <div className="mb-4 text-center">
-            <h1 className="text-4xl font-bold text-white mb-2">
-              Sprite Character Demo
-              {selectedCharacter && ` - ${selectedCharacter.toUpperCase()}`}
-            </h1>
-            <p className="text-white/80">
-              Move with WASD/Arrow Keys | Press E to{" "}
-              {selectedCharacter === "goku" ? "Cast Spell" : "Slash"} | Press
-              Space to Jump
-              {selectedCharacter === "goku" ? " | Press Q for Ult" : ""} |
-              Defeat Ferdinand the Enemy! | Collect 🔥 Torches to increase
-              vision | Press F for Debug
-            </p>
-          </div>
+          {/* Dark overlay for better text readability */}
+          <div
+            className={`fixed inset-0 -z-10 ${
+              showTitleScreen ? "bg-black/70" : "bg-black/60 backdrop-blur-sm"
+            }`}
+          />
 
-          {showPicker ? (
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-white text-center mb-4">
-                Choose Your Character
-              </h2>
-              <CharacterPicker
-                onSelect={handleCharacterSelect}
-                currentCharacter={selectedCharacter}
+          {showTitleScreen && (
+            <>
+              {/* Vignette effect */}
+              <div className="fixed inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none -z-5" />
+              <div
+                className="fixed inset-0 pointer-events-none -z-5"
+                style={{
+                  background:
+                    "radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.5) 100%)",
+                }}
               />
-            </div>
-          ) : showLevelInput ? (
-            <div className="mb-6 w-full max-w-md">
-              <h2 className="text-2xl font-bold text-white text-center mb-4">
-                Enter Enemy Levels
-              </h2>
-              <p className="text-white/80 text-center mb-4">
-                Enter 10 or 11 integers (1-100) separated by commas or spaces.
-                <br />
-                Your character will start at the lowest level entered.
-              </p>
-              <div className="flex flex-col gap-4">
-                <input
-                  type="text"
-                  value={levelInput}
-                  onChange={(e) => setLevelInput(e.target.value)}
-                  placeholder="e.g., 1, 6, 5, 2, 7, 4, 3, 8, 9, 10"
-                  className="px-4 py-3 rounded-lg bg-white/10 border-2 border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-white/60 text-center text-lg"
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      handleLevelInputSubmit();
-                    }
-                  }}
+
+              {/* Animated glow orbs */}
+              <div
+                className="fixed top-20 left-20 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl animate-pulse pointer-events-none -z-5"
+                style={{ animationDuration: "4s" }}
+              />
+              <div
+                className="fixed bottom-20 right-20 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl animate-pulse pointer-events-none -z-5"
+                style={{ animationDuration: "5s", animationDelay: "1s" }}
+              />
+            </>
+          )}
+
+          {showTitleScreen ? (
+            // Title Screen
+            <div
+              className="flex flex-col items-center justify-center min-h-screen cursor-pointer relative z-10"
+              onClick={handleTitleClick}
+            >
+              <div className="flex flex-col items-center gap-8">
+                <img
+                  src="/sprite/title.png"
+                  alt="Node Quest"
+                  className="w-full max-w-3xl h-auto drop-shadow-[0_0_40px_rgba(255,180,0,0.6)] transition-all duration-300 hover:drop-shadow-[0_0_60px_rgba(255,180,0,0.8)] hover:scale-105"
+                  style={{ imageRendering: "pixelated" }}
                 />
-                <button
-                  onClick={handleLevelInputSubmit}
-                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 hover:scale-105"
-                >
-                  Start Game
-                </button>
-                <button
-                  onClick={() => {
-                    setShowLevelInput(false);
-                    setShowPicker(true);
-                  }}
-                  className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300"
-                >
-                  Back to Character Selection
-                </button>
+                <p className="text-white text-2xl font-bold drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] bg-black/40 backdrop-blur-md px-8 py-4 rounded-lg border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(255,180,0,0.3)] animate-pulse">
+                  Click anywhere to start
+                </p>
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => {
-                setShowPicker(true);
-                setEnemyLevels([]);
-                setLevelInput("");
-                setShowLevelInput(false);
-              }}
-              className="mb-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 hover:scale-105"
-            >
-              Change Character
-            </button>
+            <>
+              {showPicker ? (
+                <div
+                  className="fixed inset-0 flex items-center justify-center"
+                  style={{
+                    backgroundImage: "url('/sprite/screen.png')",
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                  }}
+                >
+                  {/* Dark overlay to dim the background */}
+                  <div className="fixed inset-0 bg-black/60 -z-0" />
+                  <div className="relative z-10 flex items-center justify-center w-full h-full">
+                    <CharacterPicker
+                      onSelect={handleCharacterSelect}
+                      currentCharacter={selectedCharacter}
+                    />
+                  </div>
+                </div>
+              ) : showLevelInput ? (
+                <>
+                  {/* Dark overlay to dim the background */}
+                  <div className="fixed inset-0 bg-black/60 -z-0" />
+                  <div className="w-full max-w-2xl relative z-10 px-4 flex flex-col gap-6">
+                    <div
+                      className="flex flex-col gap-8 bg-black/60 backdrop-blur-xl p-10 border-4 shadow-[0_0_60px_rgba(120,53,15,0.25),0_0_30px_rgba(120,53,15,0.15)_inset]"
+                      style={{
+                        borderImage:
+                          "linear-gradient(135deg, #92400e 0%, #78350f 25%, #92400e 50%, #78350f 75%, #92400e 100%) 4",
+                        clipPath:
+                          "polygon(0 8px, 8px 8px, 8px 0, calc(100% - 8px) 0, calc(100% - 8px) 8px, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 8px calc(100% - 8px), 0 calc(100% - 8px))",
+                        imageRendering: "pixelated",
+                      }}
+                    >
+                      {/* Header */}
+                      <div className="text-center">
+                        <h2 className="text-5xl font-bold text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
+                          Level Selection
+                        </h2>
+                      </div>
+
+                      {/* Level Input Section */}
+                      <div
+                        className="flex flex-col gap-4 bg-black/40 p-6 border-4 shadow-[0_0_20px_rgba(120,53,15,0.1)_inset]"
+                        style={{
+                          borderImage:
+                            "linear-gradient(135deg, #78350f 0%, #92400e 50%, #78350f 100%) 4",
+                          clipPath:
+                            "polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px))",
+                          imageRendering: "pixelated",
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <label className="text-amber-100 font-bold text-lg">
+                            Enemy Levels
+                          </label>
+                          <span
+                            className="text-amber-200/70 text-sm font-medium bg-amber-900/50 px-3 py-1 border-2 shadow-[0_0_10px_rgba(120,53,15,0.2)]"
+                            style={{
+                              borderImage:
+                                "linear-gradient(90deg, #78350f 0%, #92400e 100%) 2",
+                              clipPath:
+                                "polygon(0 2px, 2px 2px, 2px 0, calc(100% - 2px) 0, calc(100% - 2px) 2px, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 2px calc(100% - 2px), 0 calc(100% - 2px))",
+                              imageRendering: "pixelated",
+                            }}
+                          >
+                            10-12 enemies
+                          </span>
+                        </div>
+
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={levelInput}
+                            onChange={(e) => setLevelInput(e.target.value)}
+                            placeholder="e.g., 1, 6, 5, 2, 7, 4, 3, 8, 9, 10"
+                            className="w-full pl-5 pr-20 py-4 bg-black/70 backdrop-blur-md border-2 text-white placeholder-white/40 focus:outline-none focus:shadow-[0_0_20px_rgba(120,53,15,0.3)] text-center text-lg font-medium shadow-xl transition-all hover:shadow-[0_0_15px_rgba(120,53,15,0.2)]"
+                            style={{
+                              borderImage:
+                                "linear-gradient(90deg, #78350f 0%, #92400e 50%, #78350f 100%) 2",
+                              clipPath:
+                                "polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px))",
+                              imageRendering: "pixelated",
+                            }}
+                            onKeyPress={(e) => {
+                              if (e.key === "Enter") {
+                                handleLevelInputSubmit();
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={generateRandomLevels}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 transition-all duration-300 hover:scale-110 active:scale-95 hover:drop-shadow-[0_0_15px_rgba(146,64,14,0.6)]"
+                            style={{
+                              backgroundImage: "url('/sprite/random.png')",
+                              backgroundSize: "100% 100%",
+                              backgroundPosition: "center",
+                              backgroundRepeat: "no-repeat",
+                              imageRendering: "pixelated",
+                              width: "35px",
+                              height: "35px",
+                              border: "none",
+                              padding: 0,
+                            }}
+                            title="Generate Random Levels"
+                            aria-label="Generate Random Levels"
+                          />
+                        </div>
+
+                        <div className="text-amber-200/70 text-sm text-center bg-black/30 p-3">
+                          Levels range from 1-100. Lower values make enemies
+                          easier to defeat.
+                        </div>
+                      </div>
+
+                      {/* Start Button */}
+                      <button
+                        onClick={handleLevelInputSubmit}
+                        className="w-full px-8 font-bold text-2xl transition-all duration-300 hover:scale-105 hover:drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                        style={{
+                          backgroundImage: "url('/sprite/btn_small.png')",
+                          backgroundSize: "auto 100%",
+                          backgroundPosition: "center",
+                          backgroundRepeat: "no-repeat",
+                          imageRendering: "pixelated",
+                          color: "#10b981",
+                          textShadow: "0 3px 6px rgba(0, 0, 0, 0.9)",
+                          height: "60px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        Start
+                      </button>
+                    </div>
+
+                    {/* Navigation Buttons - Outside Card */}
+                    <div className="flex gap-4 items-center justify-center">
+                      <button
+                        onClick={() => {
+                          setShowLevelInput(false);
+                          setShowPicker(true);
+                        }}
+                        className="font-semibold text-base transition-all duration-300 hover:scale-105"
+                        style={{
+                          backgroundImage: "url('/sprite/btn_small.png')",
+                          backgroundSize: "auto 100%",
+                          backgroundPosition: "center",
+                          backgroundRepeat: "no-repeat",
+                          imageRendering: "pixelated",
+                          color: "#fbbf24",
+                          textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
+                          height: "48px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          minWidth: "160px",
+                          padding: "0 24px",
+                        }}
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={() => setShowTutorial(true)}
+                        className="font-semibold text-base transition-all duration-300 hover:scale-105"
+                        style={{
+                          backgroundImage: "url('/sprite/btn_small.png')",
+                          backgroundSize: "auto 100%",
+                          backgroundPosition: "center",
+                          backgroundRepeat: "no-repeat",
+                          imageRendering: "pixelated",
+                          color: "#60a5fa",
+                          textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
+                          height: "48px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          minWidth: "160px",
+                          padding: "0 24px",
+                        }}
+                      >
+                        Tutorial
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tutorial Modal */}
+                  {showTutorial && (
+                    <div className="fixed inset-0 flex items-center justify-center z-50">
+                      {/* Backdrop */}
+                      <div
+                        className="fixed inset-0 bg-black/80"
+                        onClick={() => setShowTutorial(false)}
+                      />
+                      {/* Tutorial Content */}
+                      <div
+                        className="relative w-full max-w-lg mx-4"
+                        style={{
+                          backgroundImage: "url('/sprite/infosheet.png')",
+                          backgroundSize: "contain",
+                          backgroundPosition: "center",
+                          backgroundRepeat: "no-repeat",
+                          imageRendering: "pixelated",
+                          aspectRatio: "3/4",
+                          padding: "3rem 2rem",
+                        }}
+                      >
+                        {/* Close Button */}
+                        <button
+                          onClick={() => setShowTutorial(false)}
+                          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-amber-900 hover:text-amber-700 transition-colors font-bold text-2xl"
+                        >
+                          ×
+                        </button>
+
+                        {/* Tutorial Text Content */}
+                        <div className="px-8 py-6 text-amber-900">
+                          <h2 className="text-3xl font-bold mb-4 text-center">
+                            How to Play
+                          </h2>
+                          <div className="space-y-4 text-lg leading-relaxed">
+                            <div>
+                              <h3 className="font-bold text-xl mb-2">
+                                Level Selection
+                              </h3>
+                              <p>
+                                Enter enemy levels separated by commas (e.g., 1,
+                                6, 5, 2, 7, 4, 3, 8, 9, 10). You can select
+                                10-12 levels. Use "Generate Random Levels" for a
+                                quick start.
+                              </p>
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-xl mb-2">
+                                Gameplay
+                              </h3>
+                              <p>
+                                Navigate through the dungeon, defeat enemies,
+                                and reach the end. Each enemy has a level that
+                                determines their strength. Plan your strategy
+                                carefully!
+                              </p>
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-xl mb-2">
+                                Controls
+                              </h3>
+                              <p>
+                                Use arrow keys or WASD to move. Space to jump.
+                                Attack enemies to progress through levels.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowPicker(true);
+                    setEnemyLevels([]);
+                    setLevelInput("");
+                    setShowLevelInput(false);
+                  }}
+                  className="mb-4 px-6 font-semibold text-base relative z-10 transition-all duration-300 hover:scale-105"
+                  style={{
+                    backgroundImage: "url('/sprite/btn_small.png')",
+                    backgroundSize: "auto 100%",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                    imageRendering: "pixelated",
+                    color: "#60a5fa",
+                    textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
+                    height: "48px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  Change Character
+                </button>
+              )}
+            </>
           )}
         </>
       )}
