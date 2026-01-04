@@ -29,44 +29,27 @@ export default function IntroOverlay({ isActive, onComplete }: IntroOverlayProps
     
     let rafId: number;
     let phaseStartTime = performance.now();
-    const frameTimes: number[] = [];
-    let lastFrameTime = performance.now();
 
-    const BLUR_DURATION = 2000; // Title reveal + warm-up
-    const FADEOUT_DURATION = 500; // Blur reduction
-
-    function measureFPS() {
-      const now = performance.now();
-      const delta = now - lastFrameTime;
-      lastFrameTime = now;
-      
-      frameTimes.push(delta);
-      if (frameTimes.length > 10) frameTimes.shift();
-      
-      // Calculate average FPS
-      const avgDelta = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
-      return 1000 / avgDelta;
-    }
+    const BLUR_DURATION = 2500; // Title display time
+    const FADEOUT_DURATION = 500; // Fade out time
 
     function animate() {
       const now = performance.now();
       const elapsed = now - phaseStartTime;
-      const fps = measureFPS();
 
       if (phase === 'blur') {
-        // PHASE 1: Blur intro with warm-up
-        if (elapsed >= BLUR_DURATION && fps > 50) {
-          // Only transition if FPS is stable
+        // PHASE 1: Display title
+        if (elapsed >= BLUR_DURATION) {
           setPhase('fadeout');
           phaseStartTime = now;
         }
       } else if (phase === 'fadeout') {
-        // PHASE 2: Gradually reduce blur
+        // PHASE 2: Fade out
         const progress = Math.min(elapsed / FADEOUT_DURATION, 1);
         const eased = 1 - Math.pow(1 - progress, 3); // Ease out cubic
         
         setBlurAmount(20 * (1 - eased));
-        setOpacity(1 - (eased * 0.05)); // Subtle opacity fade
+        setOpacity(1 - eased);
         
         if (progress >= 1) {
           setPhase('complete');
