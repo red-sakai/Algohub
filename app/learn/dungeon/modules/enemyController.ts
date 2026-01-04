@@ -101,8 +101,10 @@ export class EnemyController {
 
     if (mapData && mapData.layers) {
       const nodesLayer = mapData.layers.find(
-        (layer: { name: string; tiles?: Array<{ x: number; y: number; id: string }> }) =>
-          layer.name === "nodes"
+        (layer: {
+          name: string;
+          tiles?: Array<{ x: number; y: number; id: string }>;
+        }) => layer.name === "nodes"
       );
 
       if (nodesLayer?.tiles) {
@@ -175,12 +177,17 @@ export class EnemyController {
     const nodeToLevelMap = new Map<number, number>();
     preOrderNodes.forEach((node, index) => {
       // Use the uniqueLevels array in pre-order traversal order
-      const assignedLevel = uniqueLevels[index] || (index + 1);
+      const assignedLevel = uniqueLevels[index] || index + 1;
       nodeToLevelMap.set(node.index, assignedLevel);
     });
 
     // Create enemies in pre-order order
-    const traversalData: Array<{ x: number; y: number; level: number; index: number }> = [];
+    const traversalData: Array<{
+      x: number;
+      y: number;
+      level: number;
+      index: number;
+    }> = [];
     preOrderNodes.forEach((preOrderNode) => {
       const nodeIndex = preOrderNode.index;
       const enemyLevel = nodeToLevelMap.get(nodeIndex) || 1;
@@ -250,8 +257,7 @@ export class EnemyController {
     body.setOffset(
       (GAME_CONSTANTS.FRAME_WIDTH - bodyWidth / GAME_CONSTANTS.SPRITE_SCALE) /
         2,
-      (GAME_CONSTANTS.FRAME_HEIGHT -
-        bodyHeight / GAME_CONSTANTS.SPRITE_SCALE) /
+      (GAME_CONSTANTS.FRAME_HEIGHT - bodyHeight / GAME_CONSTANTS.SPRITE_SCALE) /
         2 +
         bodyOffsetY
     );
@@ -323,7 +329,8 @@ export class EnemyController {
           const enemyGameObject = enemySprite as Phaser.Physics.Arcade.Sprite;
           const playerGameObject = playerSprite as Phaser.Physics.Arcade.Sprite;
           const enemyBody = enemyGameObject.body as Phaser.Physics.Arcade.Body;
-          const playerBody = playerGameObject.body as Phaser.Physics.Arcade.Body;
+          const playerBody =
+            playerGameObject.body as Phaser.Physics.Arcade.Body;
           if (!enemyBody || !playerBody) return;
 
           const dx = enemyGameObject.x - playerGameObject.x;
@@ -357,7 +364,10 @@ export class EnemyController {
     }
   }
 
-  update(delta: number, onEnemyAttack: (enemy: EnemyUnit, damage: number) => void) {
+  update(
+    delta: number,
+    onEnemyAttack: (enemy: EnemyUnit, damage: number) => void
+  ) {
     if (!this.enemies.length) return;
 
     this.enemies = this.enemies.filter((enemyUnit) => {
@@ -557,7 +567,12 @@ export class EnemyController {
 
     if (enemy.healthBarBg && enemy.healthBarBg.active) {
       enemy.healthBarBg.fillStyle(0x000000, 0.8);
-      enemy.healthBarBg.fillRect(barX - 2, barY - 2, barWidth + 4, barHeight + 4);
+      enemy.healthBarBg.fillRect(
+        barX - 2,
+        barY - 2,
+        barWidth + 4,
+        barHeight + 4
+      );
       enemy.healthBarBg.fillStyle(0x550000, 1);
       enemy.healthBarBg.fillRect(barX, barY, barWidth, barHeight);
     }

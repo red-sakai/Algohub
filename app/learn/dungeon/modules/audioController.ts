@@ -75,8 +75,12 @@ export class AudioController {
 
     // Duck the music
     this.isDucked = true;
-    if ('setVolume' in this.bgMusic) {
-      (this.bgMusic as Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound).setVolume(this.duckedVolume);
+    if ("setVolume" in this.bgMusic) {
+      (
+        this.bgMusic as
+          | Phaser.Sound.HTML5AudioSound
+          | Phaser.Sound.WebAudioSound
+      ).setVolume(this.duckedVolume);
     }
 
     // Reset duck timer
@@ -89,8 +93,16 @@ export class AudioController {
     }
 
     this.duckTimer = this.scene.time.delayedCall(this.duckDuration, () => {
-      if (this.bgMusic && this.bgMusic.isPlaying && 'setVolume' in this.bgMusic) {
-        (this.bgMusic as Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound).setVolume(this.bgMusicVolume);
+      if (
+        this.bgMusic &&
+        this.bgMusic.isPlaying &&
+        "setVolume" in this.bgMusic
+      ) {
+        (
+          this.bgMusic as
+            | Phaser.Sound.HTML5AudioSound
+            | Phaser.Sound.WebAudioSound
+        ).setVolume(this.bgMusicVolume);
         this.isDucked = false;
       }
       this.duckTimer = null;
@@ -108,14 +120,26 @@ export class AudioController {
 
     // Duck the music
     this.isDucked = true;
-    if ('setVolume' in this.bgMusic) {
-      (this.bgMusic as Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound).setVolume(this.duckedVolume);
+    if ("setVolume" in this.bgMusic) {
+      (
+        this.bgMusic as
+          | Phaser.Sound.HTML5AudioSound
+          | Phaser.Sound.WebAudioSound
+      ).setVolume(this.duckedVolume);
     }
 
     // Reset after duration
     this.duckTimer = this.scene.time.delayedCall(duration, () => {
-      if (this.bgMusic && this.bgMusic.isPlaying && 'setVolume' in this.bgMusic) {
-        (this.bgMusic as Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound).setVolume(this.bgMusicVolume);
+      if (
+        this.bgMusic &&
+        this.bgMusic.isPlaying &&
+        "setVolume" in this.bgMusic
+      ) {
+        (
+          this.bgMusic as
+            | Phaser.Sound.HTML5AudioSound
+            | Phaser.Sound.WebAudioSound
+        ).setVolume(this.bgMusicVolume);
         this.isDucked = false;
       }
       this.duckTimer = null;
@@ -124,8 +148,12 @@ export class AudioController {
 
   setBackgroundVolume(volume: number) {
     this.bgMusicVolume = Math.max(0, Math.min(1, volume));
-    if (this.bgMusic && !this.isDucked && 'setVolume' in this.bgMusic) {
-      (this.bgMusic as Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound).setVolume(this.bgMusicVolume);
+    if (this.bgMusic && !this.isDucked && "setVolume" in this.bgMusic) {
+      (
+        this.bgMusic as
+          | Phaser.Sound.HTML5AudioSound
+          | Phaser.Sound.WebAudioSound
+      ).setVolume(this.bgMusicVolume);
     }
   }
 
