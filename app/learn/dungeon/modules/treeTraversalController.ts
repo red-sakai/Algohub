@@ -332,13 +332,18 @@ export class TreeTraversalController {
       // Draw traversal order number (top-left) - full size
       const orderOffset = isMobile ? 15 : 20;
       const orderText = this.scene.add
-        .text(pos.x - orderOffset, pos.y - orderOffset, (node.traversalOrder || 0).toString(), {
-          fontFamily: "'Pixelify Sans', monospace",
-          fontSize: "14px",
-          color: "#ffffff",
-          backgroundColor: "#000000",
-          padding: { x: 4, y: 2 },
-        })
+        .text(
+          pos.x - orderOffset,
+          pos.y - orderOffset,
+          (node.traversalOrder || 0).toString(),
+          {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: "14px",
+            color: "#ffffff",
+            backgroundColor: "#000000",
+            padding: { x: 4, y: 2 },
+          }
+        )
         .setOrigin(0.5)
         .setScrollFactor(0) // Screen space
         .setDepth(20003);
