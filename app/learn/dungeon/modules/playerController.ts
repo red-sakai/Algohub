@@ -35,7 +35,7 @@ export class PlayerController {
   // Map bounds
   private mapWidth: number;
   private mapHeight: number;
-  
+
   // Audio
   private audioController?: AudioController;
 
@@ -68,15 +68,11 @@ export class PlayerController {
       S: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       D: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
-    this.eKey = scene.input.keyboard!.addKey(
-      Phaser.Input.Keyboard.KeyCodes.E
-    );
+    this.eKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.spaceKey = scene.input.keyboard!.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
-    this.qKey = scene.input.keyboard!.addKey(
-      Phaser.Input.Keyboard.KeyCodes.Q
-    );
+    this.qKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
   }
 
   getPlayer(): Phaser.Physics.Arcade.Sprite {
@@ -118,13 +114,24 @@ export class PlayerController {
     }
   }
 
-  update(delta: number, enemies: EnemyUnit[], virtualInput?: VirtualInput): void {
+  update(
+    delta: number,
+    enemies: EnemyUnit[],
+    virtualInput?: VirtualInput
+  ): void {
     if (this.health <= 0) return;
 
     // Handle input - check virtual input first, then keyboard
-    const attackPressed = virtualInput?.attackJustPressed || Phaser.Input.Keyboard.JustDown(this.eKey);
-    const jumpPressed = virtualInput?.jumpJustPressed || Phaser.Input.Keyboard.JustDown(this.spaceKey);
-    const ultPressed = virtualInput?.ultJustPressed || (this.selectedCharacter === "goku" && Phaser.Input.Keyboard.JustDown(this.qKey));
+    const attackPressed =
+      virtualInput?.attackJustPressed ||
+      Phaser.Input.Keyboard.JustDown(this.eKey);
+    const jumpPressed =
+      virtualInput?.jumpJustPressed ||
+      Phaser.Input.Keyboard.JustDown(this.spaceKey);
+    const ultPressed =
+      virtualInput?.ultJustPressed ||
+      (this.selectedCharacter === "goku" &&
+        Phaser.Input.Keyboard.JustDown(this.qKey));
 
     if (attackPressed && !this.isSlashing && !this.isJumping) {
       this.performSlash(enemies);
@@ -174,7 +181,10 @@ export class PlayerController {
     let moveY = 0;
 
     // Check virtual input first (mobile), but fall back to keyboard if virtual input is zero
-    if (virtualInput && (virtualInput.moveX !== 0 || virtualInput.moveY !== 0)) {
+    if (
+      virtualInput &&
+      (virtualInput.moveX !== 0 || virtualInput.moveY !== 0)
+    ) {
       moveX = virtualInput.moveX;
       moveY = virtualInput.moveY;
     } else {

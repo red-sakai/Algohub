@@ -5,7 +5,7 @@ export class AudioController {
   private bgMusic!: Phaser.Sound.BaseSound;
   private buttonClickSound!: Phaser.Sound.BaseSound;
   private swordSound!: Phaser.Sound.BaseSound;
-  
+
   private bgMusicVolume: number = 0.2; // Base volume for background music
   private duckedVolume: number = 0.08; // Volume when ducked
   private duckDuration: number = 300; // How long to duck in ms
