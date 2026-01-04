@@ -320,12 +320,14 @@ export class EnemyController {
         this.player,
         (enemySprite, playerSprite) => {
           // Push enemy away from player if they overlap
-          const enemyBody = enemySprite.body as Phaser.Physics.Arcade.Body;
-          const playerBody = playerSprite.body as Phaser.Physics.Arcade.Body;
+          const enemyGameObject = enemySprite as Phaser.Physics.Arcade.Sprite;
+          const playerGameObject = playerSprite as Phaser.Physics.Arcade.Sprite;
+          const enemyBody = enemyGameObject.body as Phaser.Physics.Arcade.Body;
+          const playerBody = playerGameObject.body as Phaser.Physics.Arcade.Body;
           if (!enemyBody || !playerBody) return;
 
-          const dx = enemySprite.x - playerSprite.x;
-          const dy = enemySprite.y - playerSprite.y;
+          const dx = enemyGameObject.x - playerGameObject.x;
+          const dy = enemyGameObject.y - playerGameObject.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           const minDistance = 80;
 
@@ -334,8 +336,8 @@ export class EnemyController {
             const norm = Math.max(1, distance);
             const pushX = (dx / norm) * pushDistance;
             const pushY = (dy / norm) * pushDistance;
-            enemySprite.x += pushX;
-            enemySprite.y += pushY;
+            enemyGameObject.x += pushX;
+            enemyGameObject.y += pushY;
           }
         }
       );
