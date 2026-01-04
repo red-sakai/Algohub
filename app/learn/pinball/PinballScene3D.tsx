@@ -19,6 +19,7 @@ import {
   CornerPosts
 } from '@/lib/pinball/playfieldRenderer';
 import { CabinetIntro, ArcadeCabinetShell } from './CabinetIntro';
+import PlungerOverlay from './PlungerOverlay';
 
 interface Props {
   tree: TreeNode3D | null;
@@ -32,6 +33,7 @@ interface Props {
   showCabinetIntro?: boolean;
   skipIntro?: boolean;
   onIntroComplete?: () => void;
+  gamePhase?: string;
 }
 
 export default function PinballScene3D({ 
@@ -45,12 +47,15 @@ export default function PinballScene3D({
   onLaunchEnd,
   showCabinetIntro = false,
   skipIntro = false,
-  onIntroComplete
+  onIntroComplete,
+  gamePhase
 }: Props) {
   return (
-    <Canvas 
-      shadows
-      onPointerMissed={() => {
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Canvas 
+        shadows
+        dpr={[1, 2]}
+        onPointerMissed={() => {
         // Reset cursor when clicking outside objects
         document.body.style.cursor = 'default';
       }}
@@ -72,6 +77,18 @@ export default function PinballScene3D({
         />
       </Suspense>
     </Canvas>
+    
+    {/* 2D Overlay for Plunger Drag (bypasses R3F raycasting zoom issues) */}
+    {!showCabinetIntro && tree && (
+      <PlungerOverlay
+        onDragStart={onLaunchStart}
+        onDragChange={onLaunchChange}
+        onDragEnd={onLaunchEnd}
+        isLaunched={pinballState?.isLaunched}
+        traversalSelected={gamePhase === 'ready' || gamePhase === 'playing' || gamePhase === 'finished'}
+      />
+    )}
+    </div>
   );
 }
 
@@ -786,74 +803,19 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
         />
       </mesh>
 
-      {/* PLUNGER TIP (visible part) - DRAGGABLE */}
+      {/* PLUNGER TIP (visible part) - Visual only, drag handled by 2D overlay */}
       <mesh
         ref={plungerRef}
         castShadow
         position={[0, -2, 0]}
-        onPointerDown={(e) => {
-          console.log('👆 Pointer down on plunger mesh');
-          e.stopPropagation();
-          handlePointerDown(e);
-        }}
-        onPointerMove={(e) => {
-          if (isDragging) {
-            e.stopPropagation();
-            // Get Y position from pointer event
-            let clientY = e.clientY;
-            if (e.nativeEvent && (e.nativeEvent as any).touches && (e.nativeEvent as any).touches[0]) {
-              clientY = (e.nativeEvent as any).touches[0].clientY;
-            }
-            const normalizedY = (clientY / window.innerHeight) * 1000;
-            onDragChange?.(normalizedY);
-          }
-        }}
-        onPointerUp={(e) => {
-          if (isDragging) {
-            e.stopPropagation();
-            setIsDragging(false);
-            
-            // Re-enable orbit controls
-            if (orbitControlsRef?.current) {
-              orbitControlsRef.current.enabled = true;
-              orbitControlsRef.current.enableRotate = true;
-            }
-            
-            // Re-enable text selection
-            document.body.style.userSelect = '';
-            document.body.style.cursor = 'default';
-            
-            onDragEnd?.();
-          }
-        }}
-        onPointerEnter={(e) => {
-          e.stopPropagation();
-          if (!isDragging) {
-            document.body.style.cursor = 'grab';
-            // Pre-disable orbit controls on hover for smoother drag start
-            if (orbitControlsRef?.current) {
-              orbitControlsRef.current.enableRotate = false;
-            }
-          }
-        }}
-        onPointerLeave={(e) => {
-          e.stopPropagation();
-          if (!isDragging) {
-            document.body.style.cursor = 'default';
-            // Re-enable orbit rotate when not hovering
-            if (orbitControlsRef?.current) {
-              orbitControlsRef.current.enableRotate = true;
-            }
-          }
-        }}
       >
         <cylinderGeometry args={[1.2, 1.2, 2.5, 24]} />
         <meshStandardMaterial
-          color={isDragging ? '#ffff00' : config.accentColor}
+          color={config.accentColor}
           metalness={0.9}
           roughness={0.1}
-          emissive={isDragging ? '#ffff00' : config.accentColor}
-          emissiveIntensity={isDragging ? 2 : (charge * 1.5)}
+          emissive={config.accentColor}
+          emissiveIntensity={charge * 1.5}
         />
       </mesh>
 

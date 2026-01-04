@@ -3,6 +3,13 @@
 
 /* Custom variant removed to keep PostCSS toolchain happy; rely on .dark ancestor selectors in components. */
 
+/* Canvas interaction safety - prevents browser zoom hijacking on drag */
+canvas {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* Prevent text selection during pinball drag */
 .no-select {
   -webkit-user-select: none;
