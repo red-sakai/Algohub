@@ -36,6 +36,12 @@ const achievementIconFallbacks: Record<string, string> = {
   'gday-sir': '[gday]',
 };
 
+const achievementIconDefaultImages: Record<string, string> = {
+  'coffee-break': '/achievements/critical-migration/coffee-break.png',
+  'maintenance-window-master': '/achievements/critical-migration/maintenance-window-master.png',
+  'plenty-of-headroom': '/achievements/critical-migration/plenty-of-headroom.png',
+};
+
 function AchievementIcon({
   entry,
   size = 'large',
@@ -43,7 +49,7 @@ function AchievementIcon({
   entry: UserAchievement;
   size?: 'small' | 'large';
 }) {
-  const icon = entry.achievement.icon;
+  const icon = entry.achievement.icon ?? achievementIconDefaultImages[entry.achievement.slug] ?? null;
   const fallback = achievementIconFallbacks[entry.achievement.slug] ?? achievementIconFallbacks.default;
   const isRemote = typeof icon === 'string' && /^https?:\/\//i.test(icon);
   const dimension = size === 'small' ? 72 : 128;

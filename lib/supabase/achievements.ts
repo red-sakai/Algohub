@@ -20,8 +20,11 @@ export async function grantAchievementBySlug(
 
   const { data: achievementRow, error: achievementError } = await supabase
     .from('achievements')
-    .select('id')
+    .select('id, created_at')
     .eq('slug', slug)
+    // Defensive: if the table accidentally contains duplicate slugs, `.maybeSingle()` can fail.
+    // Limiting avoids multi-row errors and still lets us grant a consistent achievement.
+    .limit(1)
     .maybeSingle();
 
   if (achievementError) {
@@ -40,6 +43,8 @@ export async function grantAchievementBySlug(
     .select('achievement_id')
     .eq('user_id', userId)
     .eq('achievement_id', achievementId)
+    // Same defensive approach as above: avoid multi-row errors if the table contains duplicates.
+    .limit(1)
     .maybeSingle();
 
   const existingErrorCode = (existingError as { code?: string } | null)?.code;
