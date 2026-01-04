@@ -45,22 +45,21 @@ export class UIController {
   ) {
     const { width, height } = this.scene.cameras.main;
     const isMobile = width < 768;
-    const scaleFactor = isMobile ? 0.75 : 1;
 
     // Player level UI - top center for mobile, bottom center for desktop
     const levelY = isMobile ? 20 : height - 100;
     this.playerLevelText = this.scene.add
       .text(width / 2, levelY, `LV. ${this.playerLevel}`, {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(18 * scaleFactor)}px`,
+        fontSize: "18px",
         color: "#00ffcc",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(12 * scaleFactor),
-          y: Math.round(6 * scaleFactor),
+          x: 12,
+          y: 6,
         },
         stroke: "#00aacc",
-        strokeThickness: Math.round(2 * scaleFactor),
+        strokeThickness: 2,
       })
       .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
@@ -80,35 +79,34 @@ export class UIController {
     this.playerHealthText = this.scene.add
       .text(width / 2, healthTextY, `HP: 100/100`, {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(14 * scaleFactor)}px`,
+        fontSize: "14px",
         color: "#ffffff",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(8 * scaleFactor),
-          y: Math.round(4 * scaleFactor),
+          x: 8,
+          y: 4,
         },
         stroke: "#333333",
-        strokeThickness: Math.round(1 * scaleFactor),
+        strokeThickness: 1,
       })
       .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
       .setDepth(10000);
 
-    // Debug button - top-left corner with improved styling (responsive)
-    const buttonPadding = isMobile ? 8 : 16;
-    const buttonFontSize = isMobile ? 11 : 13;
+    // Debug button - top-left corner with improved styling
+    const buttonPadding = 16;
     this.debugButton = this.scene.add
       .text(buttonPadding, buttonPadding, "DEBUG: Show Map", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${buttonFontSize}px`,
+        fontSize: "13px",
         color: "#ffaa00",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(10 * scaleFactor),
-          y: Math.round(6 * scaleFactor),
+          x: 10,
+          y: 6,
         },
         stroke: "#664400",
-        strokeThickness: Math.round(1 * scaleFactor),
+        strokeThickness: 1,
       })
       .setOrigin(0, 0)
       .setScrollFactor(0)
@@ -137,20 +135,20 @@ export class UIController {
     // Menu button - top right corner
     this.createMenuButton(width, height);
 
-    // Tree display button - below debug button (responsive)
-    const treeButtonY = isMobile ? 40 : 50;
+    // Tree display button - below debug button
+    const treeButtonY = 50;
     this.treeDisplayButton = this.scene.add
       .text(buttonPadding, treeButtonY, "Show Tree", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${buttonFontSize}px`,
+        fontSize: "13px",
         color: "#00ffcc",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(10 * scaleFactor),
-          y: Math.round(6 * scaleFactor),
+          x: 10,
+          y: 6,
         },
         stroke: "#006666",
-        strokeThickness: Math.round(1 * scaleFactor),
+        strokeThickness: 1,
       })
       .setOrigin(0, 0)
       .setScrollFactor(0)
@@ -277,15 +275,15 @@ export class UIController {
           "",
           {
             fontFamily: "'Pixelify Sans', monospace",
-            fontSize: `${Math.round(13 * scaleFactor)}px`,
+            fontSize: "13px",
             color: config.color,
             backgroundColor: "#000000",
             padding: {
-              x: Math.round(10 * scaleFactor),
-              y: Math.round(5 * scaleFactor),
+              x: 10,
+              y: 5,
             },
             stroke: "#333333",
-            strokeThickness: Math.round(1 * scaleFactor),
+            strokeThickness: 1,
           }
         )
         .setOrigin(1, 0)
@@ -347,9 +345,8 @@ export class UIController {
   updateHealthBar() {
     const { width, height } = this.scene.cameras.main;
     const isMobile = width < 768;
-    const scaleFactor = isMobile ? 0.75 : 1;
-    const barWidth = 200 * scaleFactor;
-    const barHeight = 24 * scaleFactor;
+    const barWidth = 200;
+    const barHeight = 24;
     const barX = width / 2 - barWidth / 2;
     const barY = isMobile ? 75 : height - 60;
 
@@ -591,8 +588,7 @@ export class UIController {
   private createMenuButton(width: number, height: number) {
     // Position button with proper padding from edges (responsive)
     const isMobile = width < 768;
-    const scaleFactor = isMobile ? 0.75 : 1;
-    const buttonSize = 80 * scaleFactor;
+    const buttonSize = 80;
     const padding = isMobile ? 15 : 20;
     const buttonX = width - buttonSize / 2 - padding;
     const buttonY = buttonSize / 2 + padding;
@@ -623,12 +619,10 @@ export class UIController {
         2,
         0xffffff
       );
-      const isMobile = width < 768;
-      const scaleFactor = isMobile ? 0.75 : 1;
       this.menuButtonText = this.scene.add
         .text(buttonX, buttonY, "☰", {
           fontFamily: "'Pixelify Sans', monospace",
-          fontSize: `${Math.round(18 * scaleFactor)}px`,
+          fontSize: "18px",
           color: "#ffffff",
         })
         .setOrigin(0.5)
@@ -658,7 +652,6 @@ export class UIController {
     this.isMenuOpen = true;
 
     const isMobile = width < 768;
-    const scaleFactor = isMobile ? 0.8 : 1;
 
     // Dark overlay for popup
     const popupOverlay = this.scene.add.rectangle(
@@ -679,8 +672,8 @@ export class UIController {
     this.menuPopupObjects.push(popupOverlay);
 
     // Popup background (responsive)
-    const popupWidth = 400 * scaleFactor;
-    const popupHeight = 300 * scaleFactor;
+    const popupWidth = 400;
+    const popupHeight = 300;
     const popupBg = this.scene.add.rectangle(
       width / 2,
       height / 2,
@@ -691,14 +684,14 @@ export class UIController {
     );
     popupBg.setScrollFactor(0);
     popupBg.setDepth(20011);
-    popupBg.setStrokeStyle(Math.round(4 * scaleFactor), 0x00ffcc);
+    popupBg.setStrokeStyle(4, 0x00ffcc);
     this.menuPopupObjects.push(popupBg);
 
     // Popup title (responsive)
     const popupTitle = this.scene.add
-      .text(width / 2, height / 2 - 100 * scaleFactor, "MENU", {
+      .text(width / 2, height / 2 - 100, "MENU", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(32 * scaleFactor)}px`,
+        fontSize: "32px",
         color: "#00ffcc",
         align: "center",
       })
@@ -709,14 +702,14 @@ export class UIController {
 
     // Return to Game button (responsive)
     const returnButton = this.scene.add
-      .text(width / 2, height / 2 - 30 * scaleFactor, "Return to Game", {
+      .text(width / 2, height / 2 - 30, "Return to Game", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        fontSize: "24px",
         color: "#ffffff",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(20 * scaleFactor),
-          y: Math.round(10 * scaleFactor),
+          x: 20,
+          y: 10,
         },
       })
       .setOrigin(0.5)
@@ -733,14 +726,14 @@ export class UIController {
 
     // Tutorial button (responsive)
     const tutorialButton = this.scene.add
-      .text(width / 2, height / 2 + 30 * scaleFactor, "Tutorial", {
+      .text(width / 2, height / 2 + 30, "Tutorial", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        fontSize: "24px",
         color: "#ffffff",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(20 * scaleFactor),
-          y: Math.round(10 * scaleFactor),
+          x: 20,
+          y: 10,
         },
       })
       .setOrigin(0.5)
@@ -760,14 +753,14 @@ export class UIController {
 
     // Exit button (responsive)
     const exitButton = this.scene.add
-      .text(width / 2, height / 2 + 90 * scaleFactor, "Exit", {
+      .text(width / 2, height / 2 + 90, "Exit", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        fontSize: "24px",
         color: "#ff0000",
         backgroundColor: "#000000",
         padding: {
-          x: Math.round(20 * scaleFactor),
-          y: Math.round(10 * scaleFactor),
+          x: 20,
+          y: 10,
         },
       })
       .setOrigin(0.5)

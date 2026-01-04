@@ -216,9 +216,8 @@ export class TreeTraversalController {
     if (!tree) return;
 
     const isMobile = screenWidth < 768;
-    const scaleFactor = isMobile ? 0.75 : 1;
     const treeHeight = this.getTreeHeight(tree);
-    const nodeRadius = 22 * scaleFactor; // Responsive node radius
+    const nodeRadius = 22; // Fixed node radius
 
     // Calculate vertical spacing and centering (responsive)
     const topUIHeight = isMobile ? 80 : 120; // Title + tree size text
@@ -316,30 +315,35 @@ export class TreeTraversalController {
       nodeCircle.setScrollFactor(0); // Screen space
       this.traversalDisplayObjects.push(nodeCircle);
 
-      // Draw level number (center) - responsive
+      // Draw level number (center) - full size
       const levelText = this.scene.add
         .text(pos.x, pos.y, (node.node.level || 0).toString(), {
           fontFamily: "'Pixelify Sans', monospace",
-          fontSize: `${Math.round(18 * scaleFactor)}px`,
+          fontSize: "18px",
           color: "#000000",
           stroke: "#ffffff",
-          strokeThickness: Math.round(2 * scaleFactor),
+          strokeThickness: 2,
         })
         .setOrigin(0.5)
         .setScrollFactor(0) // Screen space
         .setDepth(20003);
       this.traversalDisplayObjects.push(levelText);
 
-      // Draw traversal order number (top-left) - responsive
+      // Draw traversal order number (top-left) - full size
       const orderOffset = isMobile ? 15 : 20;
       const orderText = this.scene.add
-        .text(pos.x - orderOffset, pos.y - orderOffset, (node.traversalOrder || 0).toString(), {
-          fontFamily: "'Pixelify Sans', monospace",
-          fontSize: `${Math.round(14 * scaleFactor)}px`,
-          color: "#ffffff",
-          backgroundColor: "#000000",
-          padding: { x: Math.round(4 * scaleFactor), y: Math.round(2 * scaleFactor) },
-        })
+        .text(
+          pos.x - orderOffset,
+          pos.y - orderOffset,
+          (node.traversalOrder || 0).toString(),
+          {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: "14px",
+            color: "#ffffff",
+            backgroundColor: "#000000",
+            padding: { x: 4, y: 2 },
+          }
+        )
         .setOrigin(0.5)
         .setScrollFactor(0) // Screen space
         .setDepth(20003);
@@ -354,27 +358,26 @@ export class TreeTraversalController {
     enemyLevels: number[]
   ) {
     const isMobile = width < 768;
-    const scaleFactor = isMobile ? 0.75 : 1;
 
-    // Title (screen space) - responsive
+    // Title (screen space) - full size
     const titleY = isMobile ? 25 : 40;
     const title = this.scene.add
       .text(width / 2, titleY, "BINARY TREE - LEFT TO RIGHT TRAVERSAL", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(32 * scaleFactor)}px`,
+        fontSize: "32px",
         color: "#00ffcc",
         align: "center",
         backgroundColor: "#000000",
-        padding: { x: Math.round(20 * scaleFactor), y: Math.round(10 * scaleFactor) },
+        padding: { x: 20, y: 10 },
         stroke: "#00aacc",
-        strokeThickness: Math.round(2 * scaleFactor),
+        strokeThickness: 2,
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(20001);
     this.traversalDisplayObjects.push(title);
 
-    // Input numbers and length (screen space) - responsive
+    // Input numbers and length (screen space) - full size
     const legendY = isMobile ? height - 60 : height - 80;
     const inputNumbers = enemyLevels.join(",");
     const legendText = this.scene.add
@@ -384,11 +387,11 @@ export class TreeTraversalController {
         `Nodes: ${inputNumbers} | Length: ${nodeCount}`,
         {
           fontFamily: "'Pixelify Sans', monospace",
-          fontSize: `${Math.round(18 * scaleFactor)}px`,
+          fontSize: "18px",
           color: "#ffffff",
           align: "center",
           backgroundColor: "#000000",
-          padding: { x: Math.round(15 * scaleFactor), y: Math.round(8 * scaleFactor) },
+          padding: { x: 15, y: 8 },
         }
       )
       .setOrigin(0.5)
@@ -396,17 +399,17 @@ export class TreeTraversalController {
       .setDepth(20001);
     this.traversalDisplayObjects.push(legendText);
 
-    // Close button (screen space) - responsive
+    // Close button (screen space) - full size
     const closeButtonY = isMobile ? height - 25 : height - 40;
     const closeButton = this.scene.add
       .text(width / 2, closeButtonY, "Press SPACE to Close", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        fontSize: "24px",
         color: "#00ffcc",
         backgroundColor: "#000000",
-        padding: { x: Math.round(20 * scaleFactor), y: Math.round(8 * scaleFactor) },
+        padding: { x: 20, y: 8 },
         stroke: "#00aacc",
-        strokeThickness: Math.round(2 * scaleFactor),
+        strokeThickness: 2,
       })
       .setOrigin(0.5)
       .setScrollFactor(0)

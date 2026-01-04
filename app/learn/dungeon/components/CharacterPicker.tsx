@@ -93,7 +93,7 @@ export function CharacterPicker({
         <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 w-full">
           {/* Left Arrow Button */}
           <CarouselPrevious
-            className="group static relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="group relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             aria-label="Previous character"
             style={{
               backgroundImage: "url('/sprite/btn_circle.png')",
@@ -125,7 +125,7 @@ export function CharacterPicker({
                 <CarouselItem key={char.id}>
                   <div className="flex items-center justify-center p-2 sm:p-3 md:p-4">
                     <div
-                      className="relative w-full aspect-[3/4] max-w-[280px] sm:max-w-[350px] md:max-w-[450px] transition-all duration-300"
+                      className="relative w-full aspect-3/4 max-w-[280px] sm:max-w-[350px] md:max-w-[450px] transition-all duration-300"
                       style={{
                         backgroundImage: `url('${char.cardBackground}')`,
                         backgroundSize: "100% 100%",
@@ -191,7 +191,7 @@ export function CharacterPicker({
 
           {/* Right Arrow Button */}
           <CarouselNext
-            className="group static relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="group relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             aria-label="Next character"
             style={{
               backgroundImage: "url('/sprite/btn_circle.png')",
