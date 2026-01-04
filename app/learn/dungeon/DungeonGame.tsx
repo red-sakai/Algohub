@@ -472,20 +472,8 @@ class DungeonScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
 
-    // Adjust zoom based on screen size for better mobile experience
-    const screenWidth = this.cameras.main.width;
-    let zoomLevel = 1;
-    if (screenWidth < 640) {
-      // Mobile: zoom out to 0.65x
-      zoomLevel = 0.65;
-    } else if (screenWidth < 768) {
-      // Small tablet: zoom out to 0.75x
-      zoomLevel = 0.75;
-    } else if (screenWidth < 1024) {
-      // Tablet: zoom out to 0.85x
-      zoomLevel = 0.85;
-    }
-    this.cameras.main.setZoom(zoomLevel);
+    // Set default zoom level
+    this.cameras.main.setZoom(1);
 
     // Initialize controllers
     const initialLevelForEnemies =
@@ -668,9 +656,11 @@ class DungeonScene extends Phaser.Scene {
           }
           this.enemyController.defeatEnemy(enemy);
           this.levelController.handleEnemyDefeat(enemy, () => {
-            this.treeTraversalController.displayTraversedMap(
-              this.enemyTraversalData
-            );
+            if (this.treeTraversalController) {
+              this.treeTraversalController.displayTraversedMap(
+                this.enemyTraversalData
+              );
+            }
           });
         }
         return; // Early return, skip normal damage calculation
@@ -725,9 +715,11 @@ class DungeonScene extends Phaser.Scene {
         }
         this.enemyController.defeatEnemy(enemy);
         this.levelController.handleEnemyDefeat(enemy, () => {
-          this.treeTraversalController.displayTraversedMap(
-            this.enemyTraversalData
-          );
+          if (this.treeTraversalController) {
+            this.treeTraversalController.displayTraversedMap(
+              this.enemyTraversalData
+            );
+          }
         });
       }
     });
@@ -748,6 +740,10 @@ class DungeonScene extends Phaser.Scene {
   private handleDebugClick() {
     try {
       if (this.enemyTraversalData && this.enemyTraversalData.length > 0) {
+        if (!this.treeTraversalController) {
+          console.warn("Tree traversal controller not yet initialized");
+          return;
+        }
         this.treeTraversalController.displayTraversedMap(
           this.enemyTraversalData
         );
@@ -775,9 +771,11 @@ class DungeonScene extends Phaser.Scene {
           }));
         if (tempData.length > 0) {
           this.enemyTraversalData = tempData;
-          this.treeTraversalController.displayTraversedMap(
-            this.enemyTraversalData
-          );
+          if (this.treeTraversalController) {
+            this.treeTraversalController.displayTraversedMap(
+              this.enemyTraversalData
+            );
+          }
         } else {
           console.warn("No valid enemy data found");
         }
@@ -821,6 +819,10 @@ class DungeonScene extends Phaser.Scene {
 
       // Show tree display
       if (this.enemyTraversalData && this.enemyTraversalData.length > 0) {
+        if (!this.treeTraversalController) {
+          console.warn("Tree traversal controller not yet initialized");
+          return;
+        }
         this.treeTraversalController.displayTraversedMap(
           this.enemyTraversalData
         );
@@ -1343,7 +1345,7 @@ export default function DungeonGame() {
           {showTitleScreen && (
             <>
               {/* Vignette effect */}
-              <div className="fixed inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none -z-5" />
+              <div className="fixed inset-0 bg-linear-to-b from-black/40 via-transparent to-black/60 pointer-events-none -z-5" />
               <div
                 className="fixed inset-0 pointer-events-none -z-5"
                 style={{
@@ -1395,7 +1397,7 @@ export default function DungeonGame() {
                   }}
                 >
                   {/* Dark overlay to dim the background */}
-                  <div className="fixed inset-0 bg-black/60 -z-0" />
+                  <div className="fixed inset-0 bg-black/60 z-0" />
                   <div className="relative z-10 flex items-center justify-center w-full h-full">
                     <CharacterPicker
                       onSelect={handleCharacterSelect}
@@ -1406,7 +1408,7 @@ export default function DungeonGame() {
               ) : showLevelInput ? (
                 <>
                   {/* Dark overlay to dim the background */}
-                  <div className="fixed inset-0 bg-black/60 -z-0" />
+                  <div className="fixed inset-0 bg-black/60 z-0" />
                   <div className="w-full max-w-2xl relative z-10 px-4 sm:px-6 flex flex-col gap-4 sm:gap-6">
                     <div
                       className="flex flex-col gap-4 sm:gap-8 bg-black/60 backdrop-blur-xl p-4 sm:p-6 md:p-10 border-4 shadow-[0_0_60px_rgba(120,53,15,0.25),0_0_30px_rgba(120,53,15,0.15)_inset]"
