@@ -2905,42 +2905,24 @@ class DungeonScene extends Phaser.Scene {
       );
     }
 
-    // Create enemies for ALL nodes in nodesWithIndex
-    // Use pre-order traversal order for nodes in tree, then add orphaned nodes
+    // CRITICAL FIX: Create enemies in PRE-ORDER TRAVERSAL ORDER to match level assignment
+    // This ensures level 1 = root, level 2 = first left node, etc.
     console.log(
       `Creating enemies: ${preOrderNodes.length} nodes in tree, ${orphanedNodes.length} orphaned, ${nodesWithIndex.length} total nodes`
     );
 
-    // Create enemies for all nodes - first from tree (pre-order), then orphaned
-    nodesWithIndex.forEach((nodeData) => {
-      const nodeIndex = nodeData.index;
+    // Helper function to create an enemy at a specific node
+    const createEnemyAtNode = (
+      nodeIndex: number,
+      enemyLevel: number,
+      isOrphaned: boolean = false
+    ) => {
       const node = this.nodes[nodeIndex];
       if (!node) {
-        console.warn(
-          `Node at index ${nodeIndex} not found in this.nodes array`
+        console.error(
+          `ERROR: Node at index ${nodeIndex} not found in this.nodes array`
         );
         return;
-      }
-
-      // Get level from map (assigned in pre-order traversal)
-      // Orphaned nodes get levels after all tree nodes
-      let enemyLevel = nodeToLevelMap.get(nodeIndex);
-      if (enemyLevel === undefined) {
-        // This is an orphaned node - assign level after all tree nodes
-        const orphanIndex = orphanedNodes.findIndex(
-          (n) => n.index === nodeIndex
-        );
-        if (orphanIndex >= 0) {
-          // Orphaned nodes get levels sequentially after tree nodes
-          enemyLevel = preOrderNodes.length + orphanIndex + 1;
-        } else {
-          // Fallback: use index as level
-          enemyLevel =
-            preOrderNodes.length + orphanedNodes.length + nodeIndex + 1;
-          console.warn(
-            `Node ${nodeIndex} not in tree or orphaned list, using fallback level ${enemyLevel}`
-          );
-        }
       }
 
       // Get parent and children info (for reference, but all enemies spawn immediately)
@@ -3027,115 +3009,46 @@ class DungeonScene extends Phaser.Scene {
       enemy.sprite.play("enemy-idle-down");
 
       this.enemies.push(enemy);
+      
+      if (isOrphaned) {
+        console.log(
+          `Created orphaned enemy: Level ${enemyLevel} at node ${nodeIndex}`
+        );
+      } else {
+        console.log(
+          `Created tree enemy: Level ${enemyLevel} at node ${nodeIndex} (pre-order position ${preOrderNodes.findIndex(n => n.index === nodeIndex) + 1})`
+        );
+      }
+    };
+
+    // FIRST: Create enemies for nodes in PRE-ORDER TRAVERSAL ORDER (tree structure)
+    // This ensures level 1 = root, level 2 = first left node, level 3 = second left node, etc.
+    preOrderNodes.forEach((preOrderNode) => {
+      const nodeIndex = preOrderNode.index;
+      const enemyLevel = nodeToLevelMap.get(nodeIndex);
+      
+      if (enemyLevel === undefined) {
+        console.error(
+          `ERROR: No level assigned to node ${nodeIndex} in pre-order traversal`
+        );
+        return;
+      }
+      
+      createEnemyAtNode(nodeIndex, enemyLevel, false);
     });
 
-    // Also create enemies for orphaned nodes (nodes not in tree structure)
+    // SECOND: Create enemies for orphaned nodes (nodes not in tree structure)
     if (orphanedNodes.length > 0) {
       console.log(
         `Creating enemies for ${orphanedNodes.length} orphaned nodes`
       );
 
-      orphanedNodes.forEach((orphan) => {
+      orphanedNodes.forEach((orphan, orphanIndex) => {
         const nodeIndex = orphan.index;
-        const node = this.nodes[nodeIndex];
-        if (!node) {
-          console.warn(
-            `Orphaned node at index ${nodeIndex} not found in this.nodes array`
-          );
-          return;
-        }
-
-        // Assign level for orphaned nodes (after all tree nodes in pre-order)
-        const orphanIndex = orphanedNodes.indexOf(orphan);
         // Orphaned nodes get levels sequentially after tree nodes
         const enemyLevel = preOrderNodes.length + orphanIndex + 1;
-
-        // Get parent and children info (for reference)
-        const parentNodeIndex = this.enemyParentMap.get(nodeIndex) ?? null;
-        const childrenNodeIndices =
-          this.enemyParentChildMap.get(nodeIndex) ?? [];
-
-        // All enemies spawn immediately - no prerequisite system
-        const isUnlocked = true;
-
-        const shadow = this.add.ellipse(
-          node.x,
-          node.y + shadowOffset,
-          50,
-          20,
-          0x000000,
-          0.3
-        );
-        shadow.setDepth(1000);
-
-        const sprite = this.physics.add.sprite(node.x, node.y, "enemy-idle");
-        sprite.setScale(this.SPRITE_SCALE);
-        sprite.setOrigin(0.5, 0.5);
-        sprite.setDepth(1001);
-        sprite.setTint(0xff8888);
-
-        const orphanBodyWidth = this.getCollisionWidth();
-        const orphanBodyHeight = this.getCollisionHeight();
-        const orphanBody = sprite.body as Phaser.Physics.Arcade.Body;
-        orphanBody.setSize(
-          orphanBodyWidth / this.SPRITE_SCALE,
-          orphanBodyHeight / this.SPRITE_SCALE
-        );
-        const bodyOffsetY =
-          (this.FRAME_OFFSET_BOTTOM - this.FRAME_OFFSET_TOP) / 2;
-        orphanBody.setOffset(
-          (this.FRAME_WIDTH - orphanBodyWidth / this.SPRITE_SCALE) / 2,
-          (this.FRAME_HEIGHT - orphanBodyHeight / this.SPRITE_SCALE) / 2 +
-            bodyOffsetY
-        );
-        orphanBody.setMaxVelocity(this.enemySpeed, this.enemySpeed);
-        orphanBody.setDrag(600, 600);
-        orphanBody.setAllowGravity(false);
-
-        this.physics.add.collider(sprite, this.wallColliders);
-
-        // Health bar graphics placed above enemy
-        const healthBarBg = this.add.graphics().setDepth(1200);
-        const healthBar = this.add.graphics().setDepth(1201);
-
-        // Level label above enemy
-        const levelText = this.add
-          .text(node.x, node.y - 70, `Lv ${enemyLevel}`, {
-            fontFamily: "'Pixelify Sans', monospace",
-            fontSize: "12px",
-            color: "#ffffff",
-            backgroundColor: "#000000",
-            padding: { x: 6, y: 3 },
-          })
-          .setOrigin(0.5, 0.5)
-          .setDepth(1202);
-
-        const enemy: EnemyUnit = {
-          sprite,
-          shadow,
-          health: 60 + (enemyLevel - 1) * 12,
-          maxHealth: 60 + (enemyLevel - 1) * 12,
-          level: enemyLevel,
-          levelText,
-          lastDirection: "down",
-          defeated: false,
-          healthBarBg,
-          healthBar,
-          homeX: node.x,
-          homeY: node.y,
-          attackCooldownMs: 900,
-          attackCooldownRemaining: 0,
-          attacking: false,
-          nodeIndex,
-          parentNodeIndex,
-          unlocked: isUnlocked,
-          childrenNodeIndices,
-        };
-
-        // All enemies spawn immediately - start idle animation
-        enemy.sprite.play("enemy-idle-down");
-
-        this.enemies.push(enemy);
+        
+        createEnemyAtNode(nodeIndex, enemyLevel, true);
       });
     }
 
