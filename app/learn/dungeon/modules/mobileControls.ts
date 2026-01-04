@@ -247,12 +247,16 @@ export class MobileControls {
           this.virtualInput.ultJustPressed = true;
         }
         this.virtualInput.ult = true;
-        this.ultButton.setAlpha(0.6);
+        if (this.ultButton) {
+          this.ultButton.setAlpha(0.6);
+        }
       });
 
       this.ultButton.on("pointerup", () => {
         this.virtualInput.ult = false;
-        this.ultButton.setAlpha(0.8);
+        if (this.ultButton) {
+          this.ultButton.setAlpha(0.8);
+        }
       });
     }
 
