@@ -13,10 +13,14 @@ import { TorchController } from "./modules/torchController";
 import { UIController } from "./modules/uiController";
 import { LevelController } from "./modules/levelController";
 import { TreeTraversalController } from "./modules/treeTraversalController";
+import { WisdomController } from "./modules/wisdomController";
 import { GAME_CONSTANTS } from "./modules/constants";
 import { UltScene } from "./scenes/UltScene";
 import { CharacterPicker } from "./components/CharacterPicker";
 import type { EnemyUnit } from "./modules/types";
+import { MobileControls, type VirtualInput } from "./modules/mobileControls";
+import { AudioController } from "./modules/audioController";
+import { LoadingScreen } from "./components/LoadingScreen";
 
 const pixelFont = Pixelify_Sans({
   weight: ["400", "500", "600", "700"],
@@ -47,6 +51,10 @@ class DungeonScene extends Phaser.Scene {
   private uiController!: UIController;
   private levelController!: LevelController;
   private treeTraversalController!: TreeTraversalController;
+  private wisdomController!: WisdomController;
+  private mobileControls!: MobileControls;
+  private audioController!: AudioController;
+  private lastScreenWidth: number = 0;
 
   // Core game objects
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -90,6 +98,13 @@ class DungeonScene extends Phaser.Scene {
   }
 
   preload() {
+    // Initialize audio controller and load audio
+    this.audioController = new AudioController(this);
+    this.audioController.preload();
+
+    // Load menu button image
+    this.load.image("menu-button", "/sprite/menu.png");
+
     // Load the custom tilemap JSON and tileset spritesheet
     this.load.json("tilemap", `/sprite/map/${this.mapName}`);
     this.load.spritesheet("tiles", "/sprite/map/spritesheet.png", {
@@ -193,6 +208,7 @@ class DungeonScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.cameras.main;
+    this.lastScreenWidth = width;
 
     console.log("Create called - Viewport:", width, "x", height);
 
@@ -261,7 +277,8 @@ class DungeonScene extends Phaser.Scene {
       "Pickups", // 8 - Pickup items
       "Miscs", // 9 - Miscellaneous decorations (chests, etc)
       "nodes", // 10 - Path nodes
-      "Layer_9", // 11 - Empty layer
+      "wisdom", // 11 - Wisdom tiles
+      "Layer_9", // 12 - Empty layer
     ];
 
     // Use MapRenderer to render all layers (removes duplicate code)
@@ -280,67 +297,67 @@ class DungeonScene extends Phaser.Scene {
       DEPTH_PER_LAYER
     );
 
-    // Find the Door layer to spawn the player
-    const doorLayer = mapData.layers.find(
+    // Find the spawn layer to spawn the player
+    const spawnLayer = mapData.layers.find(
       (layer: {
         name: string;
-        tiles: Array<{ x: number; y: number; id: string }>;
-      }) => layer.name === "Door"
+        tiles?: Array<{ x: number; y: number; id: string }>;
+      }) => layer.name === "spawn"
     );
 
     // Find the nodes layer for enemy spawning
     const nodesLayer = mapData.layers.find(
       (layer: {
         name: string;
-        tiles: Array<{ x: number; y: number; id: string }>;
+        tiles?: Array<{ x: number; y: number; id: string }>;
       }) => layer.name === "nodes"
     );
 
     let playerX = this.mapWidth * 0.5; // Default to center
     let playerY = this.mapHeight * 0.5;
 
-    // Spawn player at Door tile (prefer center of door structure)
-    if (doorLayer && doorLayer.tiles.length > 0) {
-      // Group door tiles by Y position to find the middle row
+    // Spawn player at spawn tile (prefer center of spawn structure)
+    if (spawnLayer && spawnLayer.tiles && spawnLayer.tiles.length > 0) {
+      // Group spawn tiles by Y position to find the middle row
       const tilesByY = new Map<
         number,
         Array<{ x: number; y: number; id: string }>
       >();
-      doorLayer.tiles.forEach((tile: { x: number; y: number; id: string }) => {
+      spawnLayer.tiles.forEach((tile: { x: number; y: number; id: string }) => {
         if (!tilesByY.has(tile.y)) {
           tilesByY.set(tile.y, []);
         }
         tilesByY.get(tile.y)!.push(tile);
       });
 
-      // Find the middle Y position (center row of door)
+      // Find the middle Y position (center row of spawn)
       const yPositions = Array.from(tilesByY.keys()).sort((a, b) => a - b);
       const middleY = yPositions[Math.floor(yPositions.length / 2)];
       const middleRowTiles = tilesByY.get(middleY) || [];
 
       // Pick the center tile from the middle row, or first tile if no middle row
-      let selectedDoor;
+      let selectedSpawn;
       if (middleRowTiles.length > 0) {
         middleRowTiles.sort((a, b) => a.x - b.x);
         const centerIndex = Math.floor(middleRowTiles.length / 2);
-        selectedDoor = middleRowTiles[centerIndex];
+        selectedSpawn = middleRowTiles[centerIndex];
       } else {
         // Fallback: use first tile sorted by Y then X
-        const sortedDoors = [...doorLayer.tiles].sort((a, b) => {
+        const sortedSpawns = [...spawnLayer.tiles].sort((a, b) => {
           if (a.y !== b.y) return a.y - b.y;
           return a.x - b.x;
         });
-        selectedDoor = sortedDoors[0];
+        selectedSpawn = sortedSpawns[0];
       }
 
       // Convert tile coordinates to world coordinates
-      playerX = (selectedDoor.x + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
-      playerY = (selectedDoor.y + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
+      playerX = (selectedSpawn.x + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
+      playerY = (selectedSpawn.y + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
       // Store player spawn position for filtering
       this.playerSpawnX = playerX;
       this.playerSpawnY = playerY;
       console.log(
-        `Player spawning at Door: tile (${selectedDoor.x}, ${selectedDoor.y}) -> world (${playerX}, ${playerY})`
+        `Player spawning at spawn: tile (${selectedSpawn.x}, ${selectedSpawn.y}) -> world (${playerX}, ${playerY})`
       );
     }
 
@@ -454,13 +471,25 @@ class DungeonScene extends Phaser.Scene {
     // Set up camera to follow player smoothly across the map
     this.cameras.main.setBounds(0, 0, this.mapWidth, this.mapHeight);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
-    this.cameras.main.setZoom(1);
+
+    // Adjust zoom based on screen size for better mobile experience
+    const screenWidth = this.cameras.main.width;
+    let zoomLevel = 1;
+    if (screenWidth < 640) {
+      // Mobile: zoom out to 0.65x
+      zoomLevel = 0.65;
+    } else if (screenWidth < 768) {
+      // Small tablet: zoom out to 0.75x
+      zoomLevel = 0.75;
+    } else if (screenWidth < 1024) {
+      // Tablet: zoom out to 0.85x
+      zoomLevel = 0.85;
+    }
+    this.cameras.main.setZoom(zoomLevel);
 
     // Initialize controllers
     const initialLevelForEnemies =
-      this.enemyLevels.length > 0
-        ? [...this.enemyLevels].sort((a, b) => a - b)[0] || 1
-        : 1;
+      this.enemyLevels.length > 0 ? Math.min(...this.enemyLevels) : 1;
     this.enemyController = new EnemyController(
       this,
       this.wallColliders,
@@ -478,7 +507,11 @@ class DungeonScene extends Phaser.Scene {
     // Create torches
     this.torches = this.physics.add.group();
     this.torchController = new TorchController(this, this.torches, this.player);
-    this.torchController.createTorches(this.nodes);
+    this.torchController.createTorches(
+      mapData,
+      this.nodes,
+      GAME_CONSTANTS.MAP_SCALE
+    );
     this.physics.add.overlap(
       this.player,
       this.torches,
@@ -540,10 +573,8 @@ class DungeonScene extends Phaser.Scene {
 
     // Initialize player controller
     const initialLevel =
-      this.enemyLevels.length > 0
-        ? [...this.enemyLevels].sort((a, b) => a - b)[0] || 1
-        : 1;
-    const playerMaxHealth = 100 + (initialLevel - 1) * 10;
+      this.enemyLevels.length > 0 ? Math.min(...this.enemyLevels) : 1;
+    const playerMaxHealth = 100; // Fixed max health
     const playerHealth = playerMaxHealth;
     this.playerController = new PlayerController(
       this,
@@ -553,14 +584,16 @@ class DungeonScene extends Phaser.Scene {
       playerHealth,
       playerMaxHealth,
       this.mapWidth,
-      this.mapHeight
+      this.mapHeight,
+      this.audioController
     );
 
     // Initialize UI controller
     this.uiController = new UIController(
       this,
       this.playerController,
-      initialLevel
+      initialLevel,
+      this.audioController
     );
     this.uiController.createUI(
       this.mapWidth,
@@ -569,6 +602,14 @@ class DungeonScene extends Phaser.Scene {
       () => this.handleTreeDisplayClick()
     );
     this.uiController.createDebugOverlays(this.player.x, this.player.y);
+
+    // Initialize mobile controls
+    this.mobileControls = new MobileControls(this);
+    const hasUlt = this.selectedCharacter === "goku";
+    this.mobileControls.createControls(width, height, hasUlt);
+
+    // Initialize audio controller
+    this.audioController.create();
 
     // Initialize level controller (after enemyController is created)
     this.levelController = new LevelController(
@@ -587,18 +628,101 @@ class DungeonScene extends Phaser.Scene {
       this.playerSpawnX,
       this.playerSpawnY,
       () => this.uiController.hideButtons(),
-      () => this.uiController.showButtons()
+      () => this.uiController.showButtons(),
+      () => this.uiController.hideHUD(),
+      () => this.uiController.showHUD(),
+      () => this.mobileControls.hideControls(),
+      () => this.mobileControls.showControls()
     );
+
+    // Initialize wisdom controller
+    this.wisdomController = new WisdomController(this, this.player, (fact) => {
+      // Dispatch custom event to React component
+      const event = new CustomEvent("show-wisdom", { detail: fact });
+      window.dispatchEvent(event);
+    });
+    this.wisdomController.initializeWisdomTiles(
+      mapData,
+      GAME_CONSTANTS.MAP_SCALE
+    );
+
+    console.log("Wisdom controller initialized");
 
     // Listen for player attack hits
     this.events.on("player-attack-hit", (enemy: EnemyUnit) => {
+      const playerLevel = this.levelController.getPlayerLevel();
+
+      // If facing an enemy higher level than player, reduce damage to 1
+      // (The "player-attack-hit" event only fires when player is facing the enemy)
+      if (enemy.level > playerLevel) {
+        const damage = 1;
+        const defeated = this.enemyController.damageEnemy(
+          enemy,
+          damage,
+          playerLevel
+        );
+        if (defeated) {
+          // Duck music when enemy is defeated
+          if (this.audioController) {
+            this.audioController.duckForDuration(400);
+          }
+          this.enemyController.defeatEnemy(enemy);
+          this.levelController.handleEnemyDefeat(enemy, () => {
+            this.treeTraversalController.displayTraversedMap(
+              this.enemyTraversalData
+            );
+          });
+        }
+        return; // Early return, skip normal damage calculation
+      }
+
+      let damage =
+        GAME_CONSTANTS.PLAYER_BASE_DAMAGE *
+        this.collectiblesController.getAttackBoostMultiplier();
+
+      // Apply crit if special buff is active
+      const critRate = this.collectiblesController.getCritRate();
+      if (critRate > 0 && Math.random() < critRate) {
+        const critMultiplier =
+          this.collectiblesController.getCritDamageMultiplier();
+        damage *= critMultiplier;
+        // Duck music for critical hit
+        if (this.audioController) {
+          this.audioController.duckForDuration(500);
+        }
+        // Show crit text
+        const critText = this.add.text(
+          enemy.sprite.x,
+          enemy.sprite.y - 80,
+          "CRITICAL!",
+          {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: "20px",
+            color: "#ff00ff",
+            stroke: "#000000",
+            strokeThickness: 4,
+          }
+        );
+        critText.setDepth(1300);
+        this.tweens.add({
+          targets: critText,
+          y: critText.y - 30,
+          alpha: 0,
+          duration: 1000,
+          onComplete: () => critText.destroy(),
+        });
+      }
+
       const defeated = this.enemyController.damageEnemy(
         enemy,
-        GAME_CONSTANTS.PLAYER_BASE_DAMAGE *
-          this.collectiblesController.getAttackBoostMultiplier(),
-        this.levelController.getPlayerLevel()
+        damage,
+        playerLevel
       );
       if (defeated) {
+        // Duck music when enemy is defeated
+        if (this.audioController) {
+          this.audioController.duckForDuration(400);
+        }
         this.enemyController.defeatEnemy(enemy);
         this.levelController.handleEnemyDefeat(enemy, () => {
           this.treeTraversalController.displayTraversedMap(
@@ -616,6 +740,9 @@ class DungeonScene extends Phaser.Scene {
     this.debugKey = this.input.keyboard!.addKey(
       Phaser.Input.Keyboard.KeyCodes.F
     );
+
+    // Dispatch scene ready event to React component
+    window.dispatchEvent(new Event("scene-ready"));
   }
 
   private handleDebugClick() {
@@ -713,8 +840,40 @@ class DungeonScene extends Phaser.Scene {
     // If player is dead, don't update gameplay
     if (this.playerController.getHealth() <= 0) return;
 
+    // Check if screen size changed and update mobile controls visibility
+    const { width } = this.cameras.main;
+    if (Math.abs(width - this.lastScreenWidth) > 10) {
+      // Screen size changed significantly, update controls visibility
+      this.lastScreenWidth = width;
+      if (this.mobileControls) {
+        this.mobileControls.updateControlsVisibility();
+      }
+
+      // Update camera zoom based on new screen size
+      let zoomLevel = 1;
+      if (width < 640) {
+        zoomLevel = 0.65;
+      } else if (width < 768) {
+        zoomLevel = 0.75;
+      } else if (width < 1024) {
+        zoomLevel = 0.85;
+      }
+      this.cameras.main.setZoom(zoomLevel);
+    }
+
     // Update controllers
-    this.playerController.update(delta, this.enemyController.getEnemies());
+    // Get virtual input from mobile controls if on mobile
+    let virtualInput: VirtualInput | undefined = undefined;
+    if (this.mobileControls && this.mobileControls.isMobileDevice()) {
+      virtualInput = this.mobileControls.getVirtualInput();
+      // Reset justPressed flags after processing
+      this.mobileControls.resetJustPressedFlags();
+    }
+    this.playerController.update(
+      delta,
+      this.enemyController.getEnemies(),
+      virtualInput
+    );
     this.enemyController.update(delta, (enemy, damage) => {
       this.damagePlayer(damage, enemy.level);
     });
@@ -731,11 +890,13 @@ class DungeonScene extends Phaser.Scene {
         attack_speed: "Attack Speed Buff Ended",
         speed_boost: "Speed Boost Ended",
         attack_boost: "Attack Boost Ended",
+        special_buff: "Special Buff Ended",
       };
       const buffColors: Record<string, string> = {
         attack_speed: "#ff0000",
         speed_boost: "#00aaff",
         attack_boost: "#ffaa00",
+        special_buff: "#9d00ff",
       };
 
       const buffEndText = this.add
@@ -776,6 +937,9 @@ class DungeonScene extends Phaser.Scene {
     // Update lighting
     this.lightingController.update();
 
+    // Update wisdom controller
+    this.wisdomController.update();
+
     // Check for F key press to toggle debug mode
     if (Phaser.Input.Keyboard.JustDown(this.debugKey)) {
       this.uiController.toggleDebugMode(this.wallColliders, this.player);
@@ -783,6 +947,11 @@ class DungeonScene extends Phaser.Scene {
 
     // Update debug overlay positions
     this.uiController.updateDebugOverlays(this.player);
+
+    // Update buff timers (including torch)
+    const buffTimers = this.collectiblesController.getBuffTimers();
+    const torchTime = this.torchController.getTorchTimeRemaining();
+    this.uiController.updateBuffTimers(buffTimers, torchTime);
   }
 
   // Player actions moved to PlayerController
@@ -884,6 +1053,13 @@ export default function DungeonGame() {
   const [levelInput, setLevelInput] = useState("");
   const [enemyLevels, setEnemyLevels] = useState<number[]>([]);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showWisdom, setShowWisdom] = useState(false);
+  const [wisdomFact, setWisdomFact] = useState<{
+    title: string;
+    content: string;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGameActive, setIsGameActive] = useState(false);
   const gameRef = useRef<Phaser.Game | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -974,73 +1150,163 @@ export default function DungeonGame() {
     if (!parentRef.current || !selectedCharacter || enemyLevels.length === 0)
       return;
 
-    // Get window dimensions
-    const getWindowSize = () => ({
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    // Show loading screen
+    setIsLoading(true);
+    setIsGameActive(true);
 
-    const initialSize = getWindowSize();
-
-    const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.AUTO,
-      width: initialSize.width,
-      height: initialSize.height,
-      parent: parentRef.current,
-      backgroundColor: "#1a1a2e",
-      scene: [DungeonScene, UltScene],
-      physics: {
-        default: "arcade",
-        arcade: {
-          gravity: { y: 0, x: 0 },
-          debug: false, // Set to true to see collision boxes
-          fps: 60,
-        },
-      },
-      scale: {
-        mode: Phaser.Scale.RESIZE,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-      },
-      render: {
-        antialias: false,
-        pixelArt: true,
-      },
-    };
-
-    gameRef.current = new Phaser.Game(config);
-
-    // Handle window resize
-    const handleResize = () => {
-      if (gameRef.current) {
-        const newSize = getWindowSize();
-        gameRef.current.scale.resize(newSize.width, newSize.height);
+    // Pause any global audio/music playing
+    if (typeof window !== "undefined") {
+      try {
+        // Try to get and pause the global audio singleton
+        const globalAudio = (window as any).__ALG_HUB_AUDIO;
+        if (globalAudio && typeof globalAudio.pause === "function") {
+          globalAudio.pause();
+        }
+      } catch (e) {
+        console.log("Could not pause global audio:", e);
       }
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    // Determine map name based on number of levels
-    let mapName = "map10.json";
-    if (enemyLevels.length === 11) {
-      mapName = "map11.json";
-    } else if (enemyLevels.length === 12) {
-      mapName = "map12.json";
     }
 
-    // Pass character data, enemy levels, and map name to scene
-    gameRef.current.scene.start("DungeonScene", {
-      character: selectedCharacter,
-      enemyLevels: enemyLevels,
-      mapName: mapName,
-    });
+    // Small delay to ensure loading screen is visible
+    const loadingTimer = setTimeout(() => {
+      // Get window dimensions
+      const getWindowSize = () => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+
+      const initialSize = getWindowSize();
+
+      const config: Phaser.Types.Core.GameConfig = {
+        type: Phaser.AUTO,
+        width: initialSize.width,
+        height: initialSize.height,
+        parent: parentRef.current,
+        backgroundColor: "#1a1a2e",
+        scene: [DungeonScene, UltScene],
+        physics: {
+          default: "arcade",
+          arcade: {
+            gravity: { y: 0, x: 0 },
+            debug: false, // Set to true to see collision boxes
+            fps: 60,
+          },
+        },
+        scale: {
+          mode: Phaser.Scale.RESIZE,
+          autoCenter: Phaser.Scale.CENTER_BOTH,
+        },
+        render: {
+          antialias: false,
+          pixelArt: true,
+        },
+        loader: {
+          maxParallelDownloads: 10, // Load multiple assets in parallel
+          timeout: 30000,
+        },
+      };
+
+      gameRef.current = new Phaser.Game(config);
+
+      // Handle window resize
+      const handleResize = () => {
+        if (gameRef.current) {
+          const newSize = getWindowSize();
+          gameRef.current.scale.resize(newSize.width, newSize.height);
+        }
+      };
+
+      window.addEventListener("resize", handleResize);
+
+      // Determine map name based on number of levels
+      let mapName = "map10.json";
+      if (enemyLevels.length === 11) {
+        mapName = "map11.json";
+      } else if (enemyLevels.length === 12) {
+        mapName = "map12.json";
+      }
+
+      // Listen for wisdom events from Phaser scene
+      // Use a custom event system since Phaser game events might not work as expected
+      const handleWisdomEvent = (event: Event) => {
+        const customEvent = event as CustomEvent<{
+          title: string;
+          content: string;
+        }>;
+        if (customEvent.detail) {
+          console.log("Wisdom event received:", customEvent.detail);
+          setWisdomFact(customEvent.detail);
+          setShowWisdom(true);
+        }
+      };
+
+      window.addEventListener("show-wisdom", handleWisdomEvent);
+      console.log("Wisdom event listener registered");
+
+      // Listen for tutorial event
+      const handleTutorialEvent = () => {
+        setShowTutorial(true);
+      };
+      window.addEventListener("show-tutorial", handleTutorialEvent);
+
+      // Listen for exit event
+      const handleExitEvent = () => {
+        // Reset game state to go back to title screen
+        setSelectedCharacter(null);
+        setEnemyLevels([]);
+        setLevelInput("");
+        setShowLevelInput(false);
+        setShowPicker(false);
+        setShowTitleScreen(true);
+        setIsLoading(false);
+        setIsGameActive(false);
+
+        // Optionally resume global audio when exiting
+        if (typeof window !== "undefined") {
+          try {
+            const globalAudio = (window as any).__ALG_HUB_AUDIO;
+            if (
+              globalAudio &&
+              typeof globalAudio.play === "function" &&
+              !globalAudio.ended
+            ) {
+              globalAudio.play().catch(() => {
+                // Ignore if autoplay is blocked
+              });
+            }
+          } catch (e) {
+            console.log("Could not resume global audio:", e);
+          }
+        }
+      };
+      window.addEventListener("exit-game", handleExitEvent);
+
+      // Listen for scene ready (custom event from scene)
+      const handleSceneReady = () => {
+        setIsLoading(false);
+      };
+      window.addEventListener("scene-ready", handleSceneReady);
+
+      // Pass character data, enemy levels, and map name to scene
+      gameRef.current.scene.start("DungeonScene", {
+        character: selectedCharacter,
+        enemyLevels: enemyLevels,
+        mapName: mapName,
+      });
+    }, 100);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      gameRef.current?.destroy(true);
+      clearTimeout(loadingTimer);
+      if (gameRef.current) {
+        window.removeEventListener("resize", () => {});
+        window.removeEventListener("show-wisdom", () => {});
+        window.removeEventListener("show-tutorial", () => {});
+        window.removeEventListener("exit-game", () => {});
+        window.removeEventListener("scene-ready", () => {});
+        gameRef.current?.destroy(true);
+      }
     };
   }, [selectedCharacter, enemyLevels]);
-
-  const isGameActive = selectedCharacter && enemyLevels.length > 0;
 
   return (
     <div
@@ -1060,6 +1326,11 @@ export default function DungeonGame() {
           : undefined
       }
     >
+      {/* Loading Screen */}
+      {isLoading && selectedCharacter && (
+        <LoadingScreen character={selectedCharacter} />
+      )}
+
       {!isGameActive && (
         <>
           {/* Dark overlay for better text readability */}
@@ -1096,17 +1367,17 @@ export default function DungeonGame() {
           {showTitleScreen ? (
             // Title Screen
             <div
-              className="flex flex-col items-center justify-center min-h-screen cursor-pointer relative z-10"
+              className="flex flex-col items-center justify-center min-h-screen cursor-pointer relative z-10 px-4"
               onClick={handleTitleClick}
             >
-              <div className="flex flex-col items-center gap-8">
+              <div className="flex flex-col items-center gap-4 sm:gap-8 w-full max-w-3xl">
                 <img
                   src="/sprite/title.png"
                   alt="Node Quest"
-                  className="w-full max-w-3xl h-auto drop-shadow-[0_0_40px_rgba(255,180,0,0.6)] transition-all duration-300 hover:drop-shadow-[0_0_60px_rgba(255,180,0,0.8)] hover:scale-105"
+                  className="w-full h-auto drop-shadow-[0_0_40px_rgba(255,180,0,0.6)] transition-all duration-300 hover:drop-shadow-[0_0_60px_rgba(255,180,0,0.8)] hover:scale-105"
                   style={{ imageRendering: "pixelated" }}
                 />
-                <p className="text-white text-2xl font-bold drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] bg-black/40 backdrop-blur-md px-8 py-4 rounded-lg border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(255,180,0,0.3)] animate-pulse">
+                <p className="text-white text-base sm:text-xl md:text-2xl font-bold drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] bg-black/40 backdrop-blur-md px-4 sm:px-8 py-3 sm:py-4 rounded-lg border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(255,180,0,0.3)] animate-pulse text-center">
                   Click anywhere to start
                 </p>
               </div>
@@ -1136,9 +1407,9 @@ export default function DungeonGame() {
                 <>
                   {/* Dark overlay to dim the background */}
                   <div className="fixed inset-0 bg-black/60 -z-0" />
-                  <div className="w-full max-w-2xl relative z-10 px-4 flex flex-col gap-6">
+                  <div className="w-full max-w-2xl relative z-10 px-4 sm:px-6 flex flex-col gap-4 sm:gap-6">
                     <div
-                      className="flex flex-col gap-8 bg-black/60 backdrop-blur-xl p-10 border-4 shadow-[0_0_60px_rgba(120,53,15,0.25),0_0_30px_rgba(120,53,15,0.15)_inset]"
+                      className="flex flex-col gap-4 sm:gap-8 bg-black/60 backdrop-blur-xl p-4 sm:p-6 md:p-10 border-4 shadow-[0_0_60px_rgba(120,53,15,0.25),0_0_30px_rgba(120,53,15,0.15)_inset]"
                       style={{
                         borderImage:
                           "linear-gradient(135deg, #92400e 0%, #78350f 25%, #92400e 50%, #78350f 75%, #92400e 100%) 4",
@@ -1149,14 +1420,14 @@ export default function DungeonGame() {
                     >
                       {/* Header */}
                       <div className="text-center">
-                        <h2 className="text-5xl font-bold text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
+                        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
                           Level Selection
                         </h2>
                       </div>
 
                       {/* Level Input Section */}
                       <div
-                        className="flex flex-col gap-4 bg-black/40 p-6 border-4 shadow-[0_0_20px_rgba(120,53,15,0.1)_inset]"
+                        className="flex flex-col gap-3 sm:gap-4 bg-black/40 p-3 sm:p-4 md:p-6 border-4 shadow-[0_0_20px_rgba(120,53,15,0.1)_inset]"
                         style={{
                           borderImage:
                             "linear-gradient(135deg, #78350f 0%, #92400e 50%, #78350f 100%) 4",
@@ -1165,12 +1436,12 @@ export default function DungeonGame() {
                           imageRendering: "pixelated",
                         }}
                       >
-                        <div className="flex items-center justify-between">
-                          <label className="text-amber-100 font-bold text-lg">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                          <label className="text-amber-100 font-bold text-base sm:text-lg">
                             Enemy Levels
                           </label>
                           <span
-                            className="text-amber-200/70 text-sm font-medium bg-amber-900/50 px-3 py-1 border-2 shadow-[0_0_10px_rgba(120,53,15,0.2)]"
+                            className="text-amber-200/70 text-xs sm:text-sm font-medium bg-amber-900/50 px-2 sm:px-3 py-1 border-2 shadow-[0_0_10px_rgba(120,53,15,0.2)]"
                             style={{
                               borderImage:
                                 "linear-gradient(90deg, #78350f 0%, #92400e 100%) 2",
@@ -1189,7 +1460,7 @@ export default function DungeonGame() {
                             value={levelInput}
                             onChange={(e) => setLevelInput(e.target.value)}
                             placeholder="e.g., 1, 6, 5, 2, 7, 4, 3, 8, 9, 10"
-                            className="w-full pl-5 pr-20 py-4 bg-black/70 backdrop-blur-md border-2 text-white placeholder-white/40 focus:outline-none focus:shadow-[0_0_20px_rgba(120,53,15,0.3)] text-center text-lg font-medium shadow-xl transition-all hover:shadow-[0_0_15px_rgba(120,53,15,0.2)]"
+                            className="w-full pl-3 sm:pl-5 pr-12 sm:pr-20 py-3 sm:py-4 bg-black/70 backdrop-blur-md border-2 text-white placeholder-white/40 focus:outline-none focus:shadow-[0_0_20px_rgba(120,53,15,0.3)] text-center text-sm sm:text-base md:text-lg font-medium shadow-xl transition-all hover:shadow-[0_0_15px_rgba(120,53,15,0.2)]"
                             style={{
                               borderImage:
                                 "linear-gradient(90deg, #78350f 0%, #92400e 50%, #78350f 100%) 2",
@@ -1205,15 +1476,15 @@ export default function DungeonGame() {
                           />
                           <button
                             onClick={generateRandomLevels}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 transition-all duration-300 hover:scale-110 active:scale-95 hover:drop-shadow-[0_0_15px_rgba(146,64,14,0.6)]"
+                            className="absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 transition-all duration-300 hover:scale-110 active:scale-95 hover:drop-shadow-[0_0_15px_rgba(146,64,14,0.6)]"
                             style={{
                               backgroundImage: "url('/sprite/random.png')",
                               backgroundSize: "100% 100%",
                               backgroundPosition: "center",
                               backgroundRepeat: "no-repeat",
                               imageRendering: "pixelated",
-                              width: "35px",
-                              height: "35px",
+                              width: "28px",
+                              height: "28px",
                               border: "none",
                               padding: 0,
                             }}
@@ -1222,7 +1493,7 @@ export default function DungeonGame() {
                           />
                         </div>
 
-                        <div className="text-amber-200/70 text-sm text-center bg-black/30 p-3">
+                        <div className="text-amber-200/70 text-xs sm:text-sm text-center bg-black/30 p-2 sm:p-3">
                           Levels range from 1-100. Lower values make enemies
                           easier to defeat.
                         </div>
@@ -1231,7 +1502,7 @@ export default function DungeonGame() {
                       {/* Start Button */}
                       <button
                         onClick={handleLevelInputSubmit}
-                        className="w-full px-8 font-bold text-2xl transition-all duration-300 hover:scale-105 hover:drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                        className="w-full px-4 sm:px-8 font-bold text-lg sm:text-xl md:text-2xl transition-all duration-300 hover:scale-105 hover:drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]"
                         style={{
                           backgroundImage: "url('/sprite/btn_small.png')",
                           backgroundSize: "auto 100%",
@@ -1251,13 +1522,13 @@ export default function DungeonGame() {
                     </div>
 
                     {/* Navigation Buttons - Outside Card */}
-                    <div className="flex gap-4 items-center justify-center">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-center">
                       <button
                         onClick={() => {
                           setShowLevelInput(false);
                           setShowPicker(true);
                         }}
-                        className="font-semibold text-base transition-all duration-300 hover:scale-105"
+                        className="font-semibold text-sm sm:text-base transition-all duration-300 hover:scale-105 w-full sm:w-auto"
                         style={{
                           backgroundImage: "url('/sprite/btn_small.png')",
                           backgroundSize: "auto 100%",
@@ -1278,7 +1549,7 @@ export default function DungeonGame() {
                       </button>
                       <button
                         onClick={() => setShowTutorial(true)}
-                        className="font-semibold text-base transition-all duration-300 hover:scale-105"
+                        className="font-semibold text-sm sm:text-base transition-all duration-300 hover:scale-105 w-full sm:w-auto"
                         style={{
                           backgroundImage: "url('/sprite/btn_small.png')",
                           backgroundSize: "auto 100%",
@@ -1411,7 +1682,52 @@ export default function DungeonGame() {
               ? "w-full h-full"
               : "rounded-lg shadow-2xl overflow-hidden border-4 border-green-500"
           }
+          style={{
+            visibility: isLoading ? "hidden" : "visible",
+          }}
         />
+      )}
+
+      {/* Wisdom Modal - Available during gameplay */}
+      {showWisdom && wisdomFact && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/80"
+            onClick={() => setShowWisdom(false)}
+          />
+          {/* Wisdom Content */}
+          <div
+            className="relative w-full max-w-lg mx-4"
+            style={{
+              backgroundImage: "url('/sprite/infosheet.png')",
+              backgroundSize: "contain",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              imageRendering: "pixelated",
+              aspectRatio: "3/4",
+              padding: "3rem 2rem",
+            }}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowWisdom(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-amber-900 hover:text-amber-700 transition-colors font-bold text-2xl"
+            >
+              ×
+            </button>
+
+            {/* Wisdom Text Content */}
+            <div className="px-8 py-6 text-amber-900">
+              <h2 className="text-3xl font-bold mb-4 text-center">
+                {wisdomFact.title}
+              </h2>
+              <div className="space-y-4 text-lg leading-relaxed">
+                <p>{wisdomFact.content}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

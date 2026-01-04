@@ -40,7 +40,7 @@ export class MapRenderer {
     tileSprite.setDepth(depth);
 
     let colliderCreated = false;
-    if (hasCollider && layerName !== "nodes" && layerName !== "Door") {
+    if (hasCollider && layerName !== "nodes") {
       const collider = this.scene.add.rectangle(
         x + (tileSize * this.mapScale) / 2,
         y + (tileSize * this.mapScale) / 2,

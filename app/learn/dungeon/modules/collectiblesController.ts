@@ -13,6 +13,10 @@ export class CollectiblesController {
   private speedBoostTimer: number = 0;
   private attackBoostMultiplier: number = 1;
   private attackBoostTimer: number = 0;
+  private specialBuffActive: boolean = false;
+  private specialBuffTimer: number = 0;
+  private critRate: number = 0;
+  private critDamageMultiplier: number = 1;
 
   constructor(
     scene: Phaser.Scene,
@@ -36,9 +40,119 @@ export class CollectiblesController {
     return this.attackBoostMultiplier;
   }
 
+  getSpecialBuffActive(): boolean {
+    return this.specialBuffActive;
+  }
+
+  getCritRate(): number {
+    return this.critRate;
+  }
+
+  getCritDamageMultiplier(): number {
+    return this.critDamageMultiplier;
+  }
+
+  getBuffTimers(): {
+    attackSpeed: number;
+    speedBoost: number;
+    attackBoost: number;
+    specialBuff: number;
+  } {
+    return {
+      attackSpeed: this.attackSpeedBuffTimer,
+      speedBoost: this.speedBoostTimer,
+      attackBoost: this.attackBoostTimer,
+      specialBuff: this.specialBuffTimer,
+    };
+  }
+
   createCollectibles(mapData: any, nodes: Array<{ x: number; y: number }>, mapScale: number) {
     if (!mapData) return;
 
+    const tileSize = mapData.tileSize;
+
+    // Create special buffs in chests (chest layer) only
+    const chestsLayer = mapData.layers?.find(
+      (layer: {
+        name: string;
+        tiles?: Array<{ x: number; y: number; id: string }>;
+      }) => layer.name === "chest" || layer.name === "Chest"
+    );
+
+    console.log("Looking for chest layer for special buffs...");
+    if (chestsLayer) {
+      console.log(`Found chest layer (${chestsLayer.name}) with ${chestsLayer.tiles?.length || 0} tiles`);
+    } else {
+      console.warn("Chest layer not found in map data. Available layers:", mapData.layers?.map((l: { name: string }) => l.name));
+    }
+
+    if (chestsLayer?.tiles && chestsLayer.tiles.length > 0) {
+      // Create special buffs at ALL chest locations (100% spawn rate)
+      const usedChestTiles = new Set<string>();
+      let created = 0;
+
+      for (const chestTile of chestsLayer.tiles) {
+        const tileKey = `${chestTile.x}-${chestTile.y}`;
+        if (usedChestTiles.has(tileKey)) continue;
+        usedChestTiles.add(tileKey);
+
+        const collectibleX = (chestTile.x + 0.5) * tileSize * mapScale;
+        const collectibleY = (chestTile.y + 0.5) * tileSize * mapScale;
+
+        const specialBuffType = GAME_CONSTANTS.COLLECTIBLE_TYPES.find(
+          (t) => t.type === "special_buff"
+        )!;
+
+        if (!specialBuffType) {
+          console.error("Special buff type not found in COLLECTIBLE_TYPES");
+          continue;
+        }
+
+        const textureKey = `collectible-special-${created}`;
+        const graphics = this.scene.add.graphics();
+        graphics.fillStyle(specialBuffType.color, 1);
+        graphics.fillCircle(10, 10, 10);
+        graphics.generateTexture(textureKey, 20, 20);
+        graphics.destroy();
+
+        const collectible = this.collectibles.create(
+          collectibleX,
+          collectibleY,
+          textureKey
+        ) as Phaser.Physics.Arcade.Sprite;
+        collectible.setScale(1.5);
+        collectible.setDepth(500);
+        collectible.setData("type", specialBuffType.type);
+        collectible.setData("label", specialBuffType.label);
+        collectible.setData("color", specialBuffType.color);
+
+        this.scene.tweens.add({
+          targets: collectible,
+          y: collectible.y - 10,
+          duration: 1000,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+
+        this.scene.tweens.add({
+          targets: collectible,
+          angle: 360,
+          duration: 2000,
+          repeat: -1,
+          ease: "Linear",
+        });
+
+        created++;
+        console.log(`Created special buff at chest tile (${chestTile.x}, ${chestTile.y}) -> world (${collectibleX}, ${collectibleY})`);
+      }
+      
+      console.log(`Total special buffs created: ${created}`);
+    } else {
+      console.warn("No chest tiles found in chest layer or layer has no tiles");
+    }
+
+    // Create regular collectibles on floors (excluding special_buff and speed_boost)
     const floorsLayer = mapData.layers.find(
       (layer: {
         name: string;
@@ -46,7 +160,6 @@ export class CollectiblesController {
       }) => layer.name === "floors"
     );
 
-    const tileSize = mapData.tileSize;
     let floorsTiles: Array<{ x: number; y: number; id: string }> = [];
 
     if (floorsLayer?.tiles?.length > 0) {
@@ -61,15 +174,21 @@ export class CollectiblesController {
       }));
     }
 
+    // Reduced collectible count
     const collectibleCount = Math.min(
-      Math.floor(floorsTiles.length / 20),
-      15
+      Math.floor(floorsTiles.length / 50), // Further reduced spawn rate
+      8 // Reduced max count
     );
 
     const usedTextureKeys = new Set<string>();
     const usedFloorTiles = new Set<string>();
     let attempts = 0;
     const maxAttempts = floorsTiles.length * 2;
+
+    // Filter out special_buff and speed_boost from floor spawns
+    const floorCollectibleTypes = GAME_CONSTANTS.COLLECTIBLE_TYPES.filter(
+      (t) => t.type !== "special_buff" && t.type !== "speed_boost"
+    );
 
     while (usedTextureKeys.size < collectibleCount && attempts < maxAttempts) {
       attempts++;
@@ -85,8 +204,8 @@ export class CollectiblesController {
       const collectibleY = (floorTile.y + 0.5) * tileSize * mapScale;
 
       const collectibleType =
-        GAME_CONSTANTS.COLLECTIBLE_TYPES[
-          Phaser.Math.Between(0, GAME_CONSTANTS.COLLECTIBLE_TYPES.length - 1)
+        floorCollectibleTypes[
+          Phaser.Math.Between(0, floorCollectibleTypes.length - 1)
         ];
 
       const textureIndex = usedTextureKeys.size;
@@ -132,6 +251,73 @@ export class CollectiblesController {
         ease: "Linear",
       });
     }
+
+    // Create speed boost collectibles separately with reduced spawn rate
+    const speedBoostType = GAME_CONSTANTS.COLLECTIBLE_TYPES.find(
+      (t) => t.type === "speed_boost"
+    )!;
+    const speedBoostCount = Math.min(
+      Math.floor(floorsTiles.length / 80), // Further reduced spawn rate
+      2 // Max 2 speed boosts
+    );
+
+    let speedBoostCreated = 0;
+    attempts = 0;
+    const speedBoostMaxAttempts = floorsTiles.length * 3;
+
+    while (speedBoostCreated < speedBoostCount && attempts < speedBoostMaxAttempts) {
+      attempts++;
+
+      const randomTileIndex = Phaser.Math.Between(0, floorsTiles.length - 1);
+      const floorTile = floorsTiles[randomTileIndex];
+      const tileKey = `speed-${floorTile.x}-${floorTile.y}`;
+
+      if (usedFloorTiles.has(tileKey)) continue;
+      usedFloorTiles.add(tileKey);
+
+      // Only 3% chance to actually create (reduced from 5%)
+      if (Phaser.Math.Between(0, 100) >= 3) continue;
+
+      const collectibleX = (floorTile.x + 0.5) * tileSize * mapScale;
+      const collectibleY = (floorTile.y + 0.5) * tileSize * mapScale;
+
+      const textureKey = `collectible-speed-${speedBoostCreated}`;
+      const graphics = this.scene.add.graphics();
+      graphics.fillStyle(speedBoostType.color, 1);
+      graphics.fillCircle(10, 10, 10);
+      graphics.generateTexture(textureKey, 20, 20);
+      graphics.destroy();
+
+      const collectible = this.collectibles.create(
+        collectibleX,
+        collectibleY,
+        textureKey
+      ) as Phaser.Physics.Arcade.Sprite;
+      collectible.setScale(1.5);
+      collectible.setDepth(500);
+      collectible.setData("type", speedBoostType.type);
+      collectible.setData("label", speedBoostType.label);
+      collectible.setData("color", speedBoostType.color);
+
+      this.scene.tweens.add({
+        targets: collectible,
+        y: collectible.y - 10,
+        duration: 1000,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+
+      this.scene.tweens.add({
+        targets: collectible,
+        angle: 360,
+        duration: 3000,
+        repeat: -1,
+        ease: "Linear",
+      });
+
+      speedBoostCreated++;
+    }
   }
 
   collectItem(
@@ -162,7 +348,7 @@ export class CollectiblesController {
       case "speed_boost":
         this.speedBoostMultiplier = GAME_CONSTANTS.SPEED_BOOST_MULTIPLIER;
         this.speedBoostTimer = GAME_CONSTANTS.SPEED_BOOST_DURATION;
-        effectText = "+50% Movement Speed (10s)";
+        effectText = "+50% Movement Speed (20s)";
         textColor = "#00aaff";
         break;
 
@@ -171,6 +357,16 @@ export class CollectiblesController {
         this.attackBoostTimer = GAME_CONSTANTS.ATTACK_BOOST_DURATION;
         effectText = "+50% Attack Damage (15s)";
         textColor = "#ffaa00";
+        break;
+
+      case "special_buff":
+        this.specialBuffActive = true;
+        this.specialBuffTimer = GAME_CONSTANTS.SPECIAL_BUFF_DURATION;
+        this.attackBoostMultiplier = GAME_CONSTANTS.SPECIAL_BUFF_ATTACK_MULTIPLIER;
+        this.critRate = GAME_CONSTANTS.SPECIAL_BUFF_CRIT_RATE;
+        this.critDamageMultiplier = GAME_CONSTANTS.SPECIAL_BUFF_CRIT_DAMAGE;
+        effectText = "SPECIAL BUFF! +100% ATK, 30% Crit (25s)";
+        textColor = "#9d00ff";
         break;
     }
 
@@ -241,6 +437,21 @@ export class CollectiblesController {
         this.attackBoostTimer = 0;
         this.attackBoostMultiplier = 1;
         onBuffEnd("attack_boost");
+      }
+    }
+
+    if (this.specialBuffTimer > 0) {
+      this.specialBuffTimer -= delta;
+      if (this.specialBuffTimer <= 0) {
+        this.specialBuffTimer = 0;
+        this.specialBuffActive = false;
+        this.critRate = 0;
+        this.critDamageMultiplier = 1;
+        // Reset attack boost if special buff was active
+        if (this.attackBoostMultiplier === GAME_CONSTANTS.SPECIAL_BUFF_ATTACK_MULTIPLIER) {
+          this.attackBoostMultiplier = 1;
+        }
+        onBuffEnd("special_buff");
       }
     }
   }

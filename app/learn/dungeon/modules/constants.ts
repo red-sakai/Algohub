@@ -14,14 +14,14 @@ export const GAME_CONSTANTS = {
 
   // Frame offsets (inset from edges)
   FRAME_OFFSET_TOP: 0,
-  FRAME_OFFSET_BOTTOM: 30,
+  FRAME_OFFSET_BOTTOM: 35,
   FRAME_OFFSET_LEFT: 20,
   FRAME_OFFSET_RIGHT: 20,
 
   // Lighting and torch system
-  BASE_VISION_RADIUS: 120,
+  BASE_VISION_RADIUS: 200,
   TORCH_VISION_BONUS: 80,
-  TORCH_DURATION: 15000, // 15 seconds per torch
+  TORCH_DURATION: 60000, // 30 seconds per torch (increased from 15)
   MAX_TORCHES: 5,
 
   // Player configuration
@@ -66,17 +66,22 @@ export const GAME_CONSTANTS = {
     { type: "attack_speed", color: 0xff0000, label: "ATK SPD" },
     { type: "speed_boost", color: 0x00aaff, label: "SPD" },
     { type: "attack_boost", color: 0xffaa00, label: "ATK" },
+    { type: "special_buff", color: 0x9d00ff, label: "SPECIAL" },
   ] as const,
 
   // Buff durations (ms)
   ATTACK_SPEED_BUFF_DURATION: 10000,
-  SPEED_BOOST_DURATION: 10000,
+  SPEED_BOOST_DURATION: 20000, // Increased from 10s to 20s
   ATTACK_BOOST_DURATION: 15000,
+  SPECIAL_BUFF_DURATION: 25000, // 25 seconds
 
   // Buff multipliers
   ATTACK_SPEED_MULTIPLIER: 1.5,
   SPEED_BOOST_MULTIPLIER: 1.5,
   ATTACK_BOOST_MULTIPLIER: 1.5,
+  SPECIAL_BUFF_ATTACK_MULTIPLIER: 2.0, // 100% attack boost
+  SPECIAL_BUFF_CRIT_RATE: 0.3, // 30% crit chance
+  SPECIAL_BUFF_CRIT_DAMAGE: 2.0, // 2x damage on crit
 
   // Health potion
   HEALTH_POTION_AMOUNT: 30,

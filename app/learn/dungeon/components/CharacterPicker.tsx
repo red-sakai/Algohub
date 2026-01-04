@@ -74,10 +74,10 @@ export function CharacterPicker({
   }, [api]);
 
   return (
-    <div className={`w-full ${pixelFont.className} relative z-10`}>
+    <div className={`w-full ${pixelFont.className} relative z-10 px-4 sm:px-6`}>
       {/* Header */}
-      <div className="flex justify-center mb-8">
-        <h1 className="text-5xl font-normal text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]">
+      <div className="flex justify-center mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-normal text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] text-center">
           Pick a Character
         </h1>
       </div>
@@ -90,10 +90,10 @@ export function CharacterPicker({
         }}
         className="w-full"
       >
-        <div className="flex items-center justify-center gap-8 w-full">
+        <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 w-full">
           {/* Left Arrow Button */}
           <CarouselPrevious
-            className="group static relative shrink-0 flex items-center justify-center w-16 h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="group static relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             aria-label="Previous character"
             style={{
               backgroundImage: "url('/sprite/btn_circle.png')",
@@ -104,7 +104,7 @@ export function CharacterPicker({
             }}
           >
             <svg
-              className="w-8 h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
+              className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -119,13 +119,13 @@ export function CharacterPicker({
           </CarouselPrevious>
 
           {/* Carousel Content */}
-          <div className="flex-1 max-w-[500px]">
+          <div className="flex-1 max-w-[280px] sm:max-w-[350px] md:max-w-[450px] lg:max-w-[500px]">
             <CarouselContent>
               {CHARACTERS.map((char) => (
                 <CarouselItem key={char.id}>
-                  <div className="flex items-center justify-center p-4">
+                  <div className="flex items-center justify-center p-2 sm:p-3 md:p-4">
                     <div
-                      className="relative w-[450px] h-[600px] transition-all duration-300"
+                      className="relative w-full aspect-[3/4] max-w-[280px] sm:max-w-[350px] md:max-w-[450px] transition-all duration-300"
                       style={{
                         backgroundImage: `url('${char.cardBackground}')`,
                         backgroundSize: "100% 100%",
@@ -136,14 +136,14 @@ export function CharacterPicker({
                     >
                       {/* Character Name on Top Scroll */}
                       <div className="absolute top-[6%] left-0 right-0 flex items-center justify-center">
-                        <h2 className="text-4xl font-bold text-amber-900 tracking-wider text-center w-full">
+                        <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-amber-900 tracking-wider text-center w-full px-2">
                           {char.name}
                         </h2>
                       </div>
 
                       {/* Character Sprite in Center */}
                       <div className="absolute top-[22%] left-0 right-0 bottom-[45%] flex items-center justify-center">
-                        <div className="w-[70%] h-[70%] flex items-center justify-center">
+                        <div className="w-[70%] h-[70%] flex items-center justify-center scale-[0.6] sm:scale-[0.8] md:scale-100">
                           <AnimatedSprite
                             key={char.id}
                             characterId={char.id}
@@ -159,7 +159,7 @@ export function CharacterPicker({
 
                       {/* Description on Bottom Scroll */}
                       <div className="absolute bottom-[28%] left-[12%] right-[12%] flex items-center justify-center">
-                        <p className="text-base font-medium text-amber-900 text-center leading-snug px-2">
+                        <p className="text-xs sm:text-sm md:text-base font-medium text-amber-900 text-center leading-snug px-1 sm:px-2">
                           {char.description}
                         </p>
                       </div>
@@ -167,17 +167,17 @@ export function CharacterPicker({
                       {/* Stats Bar at Bottom */}
                       <div className="absolute bottom-[5%] left-[15%] right-[7%] flex items-center justify-around">
                         <div className="flex items-center justify-center">
-                          <span className="text-xl font-bold text-amber-900">
+                          <span className="text-base sm:text-lg md:text-xl font-bold text-amber-900">
                             {char.attack}
                           </span>
                         </div>
                         <div className="flex items-center justify-center">
-                          <span className="text-xl font-bold text-amber-900">
+                          <span className="text-base sm:text-lg md:text-xl font-bold text-amber-900">
                             {char.defense}
                           </span>
                         </div>
                         <div className="flex items-center justify-center">
-                          <span className="text-xl font-bold text-amber-900">
+                          <span className="text-base sm:text-lg md:text-xl font-bold text-amber-900">
                             {char.life}
                           </span>
                         </div>
@@ -191,7 +191,7 @@ export function CharacterPicker({
 
           {/* Right Arrow Button */}
           <CarouselNext
-            className="group static relative shrink-0 flex items-center justify-center w-16 h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="group static relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             aria-label="Next character"
             style={{
               backgroundImage: "url('/sprite/btn_circle.png')",
@@ -202,7 +202,7 @@ export function CharacterPicker({
             }}
           >
             <svg
-              className="w-8 h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
+              className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -219,11 +219,11 @@ export function CharacterPicker({
       </Carousel>
 
       {/* Select Button */}
-      <div className="flex justify-center mt-6">
+      <div className="flex justify-center mt-4 sm:mt-6">
         <button
           onClick={() => onSelect(CHARACTERS[current].id)}
           disabled={currentCharacter === CHARACTERS[current].id}
-          className={`font-bold text-xl transition-all duration-300 px-8 ${
+          className={`font-bold text-base sm:text-lg md:text-xl transition-all duration-300 px-6 sm:px-8 ${
             currentCharacter === CHARACTERS[current].id
               ? "opacity-60 cursor-not-allowed"
               : "hover:scale-105 active:scale-95 cursor-pointer"
@@ -239,8 +239,8 @@ export function CharacterPicker({
                 ? "#10b981"
                 : "#fbbf24",
             textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
-            height: "48px",
-            minWidth: "200px",
+            height: "40px",
+            minWidth: "160px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
