@@ -3009,14 +3009,16 @@ class DungeonScene extends Phaser.Scene {
       enemy.sprite.play("enemy-idle-down");
 
       this.enemies.push(enemy);
-      
+
       if (isOrphaned) {
         console.log(
           `Created orphaned enemy: Level ${enemyLevel} at node ${nodeIndex}`
         );
       } else {
         console.log(
-          `Created tree enemy: Level ${enemyLevel} at node ${nodeIndex} (pre-order position ${preOrderNodes.findIndex(n => n.index === nodeIndex) + 1})`
+          `Created tree enemy: Level ${enemyLevel} at node ${nodeIndex} (pre-order position ${
+            preOrderNodes.findIndex((n) => n.index === nodeIndex) + 1
+          })`
         );
       }
     };
@@ -3026,14 +3028,14 @@ class DungeonScene extends Phaser.Scene {
     preOrderNodes.forEach((preOrderNode) => {
       const nodeIndex = preOrderNode.index;
       const enemyLevel = nodeToLevelMap.get(nodeIndex);
-      
+
       if (enemyLevel === undefined) {
         console.error(
           `ERROR: No level assigned to node ${nodeIndex} in pre-order traversal`
         );
         return;
       }
-      
+
       createEnemyAtNode(nodeIndex, enemyLevel, false);
     });
 
@@ -3047,7 +3049,7 @@ class DungeonScene extends Phaser.Scene {
         const nodeIndex = orphan.index;
         // Orphaned nodes get levels sequentially after tree nodes
         const enemyLevel = preOrderNodes.length + orphanIndex + 1;
-        
+
         createEnemyAtNode(nodeIndex, enemyLevel, true);
       });
     }
