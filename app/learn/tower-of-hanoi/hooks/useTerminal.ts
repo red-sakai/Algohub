@@ -3,14 +3,14 @@ import { useEffect } from "@/hooks/useEffect";
 import type { ScreenType } from "./useScreenTransition";
 
 const terminalLines = [
-	"> Connecting to secure network...",
-	"> Establishing connection...",
-	"> Loading data stream...",
-	"> Accessing encrypted files...",
-	"> Decrypting packets...",
-	"> WARNING: Unusual activity detected",
-	"> Attempting to stabilize connection...",
-	"> ERROR: Data corruption detected",
+	"> Initializing neural pathway connections...",
+	"> Synchronizing quantum relay nodes...",
+	"> Streaming encrypted data packets...",
+	"> Bypassing firewall authentication protocols...",
+	"> Decrypting multi-layer security barriers...",
+	"> WARNING: Anomalous signal interference detected",
+	"> Attempting emergency system stabilization...",
+	"> ERROR: Critical data lines were rerouted incorrectly during the reboot",
 ];
 
 export function useTerminal(screen: ScreenType) {
@@ -19,7 +19,13 @@ export function useTerminal(screen: ScreenType) {
 	const [showError, setShowError] = useState(false);
 
 	useEffect(() => {
-		if (screen !== "terminal") return;
+		if (screen !== "terminal") {
+			// Reset state when leaving terminal screen
+			setCurrentLine(0);
+			setLoading(true);
+			setShowError(false);
+			return;
+		}
 
 		const interval = setInterval(() => {
 			setCurrentLine((prev) => {
@@ -28,7 +34,10 @@ export function useTerminal(screen: ScreenType) {
 				} else {
 					clearInterval(interval);
 					setLoading(false);
-					setTimeout(() => setShowError(true), 1000);
+					// Show error popup after a short delay when all lines are shown
+					setTimeout(() => {
+						setShowError(true);
+					}, 1000);
 					return prev;
 				}
 			});
