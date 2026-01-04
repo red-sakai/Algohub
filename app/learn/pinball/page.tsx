@@ -330,47 +330,12 @@ export default function PinballGamePage() {
     animatorRef.current.reset();
     visualStateManagerRef.current.reset();
     cancelAnimationFrame(animationFrameRef.current);
-    setScore(0);
-    setCombo(0);
-    setVisitedNodes([]);
-    setShowPredictGame(false);
     setGameState(prev => ({
       ...prev,
       phase: 'select',
       currentTraversal: null,
       pinball: null
     }));
-  };
-
-  // ============================================================================
-  // PREDICT NODE GAME HANDLERS
-  // ============================================================================
-
-  const handlePredictAnswer = (correct: boolean) => {
-    if (correct) {
-      setScore(prev => prev + 500);
-      soundEffects.playCombo(combo + 1);
-    } else {
-      soundEffects.playWrongNode();
-    }
-  };
-
-  const handlePredictClose = () => {
-    setShowPredictGame(false);
-    handleResume();
-  };
-  
-  // Get current node from tree
-  const getCurrentNode = (): TreeNode3D | null => {
-    if (!gameState.tree || visitedNodes.length === 0) return null;
-    
-    const findNode = (node: TreeNode3D | null, nodeId: string): TreeNode3D | null => {
-      if (!node) return null;
-      if (node.nodeId === nodeId) return node;
-      return findNode(node.left, nodeId) || findNode(node.right, nodeId);
-    };
-    
-    return findNode(gameState.tree, visitedNodes[visitedNodes.length - 1]);
   };
 
   const handleNewTree = () => {
