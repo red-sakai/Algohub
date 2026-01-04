@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { GAME_CONSTANTS } from "./constants";
 import type { EnemyUnit } from "./types";
 import type { VirtualInput } from "./mobileControls";
+import type { AudioController } from "./audioController";
 
 export class PlayerController {
   private scene: Phaser.Scene;
@@ -34,6 +35,9 @@ export class PlayerController {
   // Map bounds
   private mapWidth: number;
   private mapHeight: number;
+  
+  // Audio
+  private audioController?: AudioController;
 
   constructor(
     scene: Phaser.Scene,
@@ -43,7 +47,8 @@ export class PlayerController {
     initialHealth: number,
     initialMaxHealth: number,
     mapWidth: number,
-    mapHeight: number
+    mapHeight: number,
+    audioController?: AudioController
   ) {
     this.scene = scene;
     this.player = player;
@@ -53,6 +58,7 @@ export class PlayerController {
     this.maxHealth = initialMaxHealth;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.audioController = audioController;
 
     // Setup keyboard controls
     this.cursors = scene.input.keyboard!.createCursorKeys();
@@ -306,6 +312,11 @@ export class PlayerController {
   private performSlash(enemies: EnemyUnit[]) {
     this.isSlashing = true;
     const skillAnim = `skill-${this.lastDirection}`;
+
+    // Play sword sound
+    if (this.audioController) {
+      this.audioController.playSwordSound();
+    }
 
     this.player.setVelocity(0, 0);
     this.player.setAcceleration(0, 0);

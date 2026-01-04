@@ -1,10 +1,12 @@
 import Phaser from "phaser";
 import { GAME_CONSTANTS } from "./constants";
+import type { AudioController } from "./audioController";
 
 export class UIController {
   private scene: Phaser.Scene;
   private playerController: any; // PlayerController type
   private playerLevel: number;
+  private audioController?: AudioController;
   private playerLevelText!: Phaser.GameObjects.Text;
   private playerHealthBar!: Phaser.GameObjects.Graphics;
   private playerHealthBarBg!: Phaser.GameObjects.Graphics;
@@ -26,11 +28,13 @@ export class UIController {
   constructor(
     scene: Phaser.Scene,
     playerController: any,
-    initialLevel: number
+    initialLevel: number,
+    audioController?: AudioController
   ) {
     this.scene = scene;
     this.playerController = playerController;
     this.playerLevel = initialLevel;
+    this.audioController = audioController;
   }
 
   createUI(
@@ -43,8 +47,8 @@ export class UIController {
     const isMobile = width < 768;
     const scaleFactor = isMobile ? 0.75 : 1;
 
-    // Player level UI - bottom center with better styling (responsive)
-    const levelY = isMobile ? height - 180 : height - 100;
+    // Player level UI - top center for mobile, bottom center for desktop
+    const levelY = isMobile ? 20 : height - 100;
     this.playerLevelText = this.scene.add
       .text(width / 2, levelY, `LV. ${this.playerLevel}`, {
         fontFamily: "'Pixelify Sans', monospace",
@@ -62,7 +66,7 @@ export class UIController {
       .setScrollFactor(0)
       .setDepth(10000);
 
-    // Player health bar - bottom center below level with improved styling
+    // Player health bar - top center below level for mobile, bottom center for desktop
     this.playerHealthBarBg = this.scene.add
       .graphics()
       .setDepth(10000)
@@ -72,7 +76,7 @@ export class UIController {
       .setDepth(10001)
       .setScrollFactor(0);
 
-    const healthTextY = isMobile ? height - 110 : height - 30;
+    const healthTextY = isMobile ? 50 : height - 30;
     this.playerHealthText = this.scene.add
       .text(width / 2, healthTextY, `HP: 100/100`, {
         fontFamily: "'Pixelify Sans', monospace",
@@ -111,7 +115,12 @@ export class UIController {
       .setDepth(10000)
       .setInteractive({ useHandCursor: true });
 
-    this.debugButton.on("pointerdown", onDebugClick);
+    this.debugButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
+      onDebugClick();
+    });
     this.debugButton.on("pointerover", () => {
       this.debugButton.setStyle({
         backgroundColor: "#333333",
@@ -148,7 +157,12 @@ export class UIController {
       .setDepth(10000)
       .setInteractive({ useHandCursor: true });
 
-    this.treeDisplayButton.on("pointerdown", onTreeDisplayClick);
+    this.treeDisplayButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
+      onTreeDisplayClick();
+    });
     this.treeDisplayButton.on("pointerover", () => {
       this.treeDisplayButton.setStyle({
         backgroundColor: "#333333",
@@ -337,7 +351,7 @@ export class UIController {
     const barWidth = 200 * scaleFactor;
     const barHeight = 24 * scaleFactor;
     const barX = width / 2 - barWidth / 2;
-    const barY = isMobile ? height - 140 : height - 60;
+    const barY = isMobile ? 75 : height - 60;
 
     this.playerHealthBarBg.clear();
     this.playerHealthBar.clear();
@@ -628,6 +642,9 @@ export class UIController {
     this.menuButton.setInteractive({ useHandCursor: true });
 
     this.menuButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
       if (this.isMenuOpen) {
         this.closeMenuPopup();
       } else {
@@ -707,6 +724,9 @@ export class UIController {
       .setDepth(20012)
       .setInteractive({ useHandCursor: true });
     returnButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
       this.closeMenuPopup();
     });
     this.menuPopupObjects.push(returnButton);
@@ -728,6 +748,9 @@ export class UIController {
       .setDepth(20012)
       .setInteractive({ useHandCursor: true });
     tutorialButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
       // Dispatch custom event to show tutorial
       const event = new CustomEvent("show-tutorial");
       window.dispatchEvent(event);
@@ -752,6 +775,9 @@ export class UIController {
       .setDepth(20012)
       .setInteractive({ useHandCursor: true });
     exitButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
       // Dispatch custom event to exit
       const event = new CustomEvent("exit-game");
       window.dispatchEvent(event);

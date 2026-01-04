@@ -31,14 +31,14 @@ export class MobileControls {
   private joystickActive: boolean = false;
   private joystickBaseX: number = 0;
   private joystickBaseY: number = 0;
-  private joystickRadius: number = 60;
-  private joystickHandleRadius: number = 30;
+  private joystickRadius: number = 50;
+  private joystickHandleRadius: number = 25;
 
   // Action buttons
   private attackButton!: Phaser.GameObjects.Ellipse;
   private jumpButton!: Phaser.GameObjects.Ellipse;
   private ultButton!: Phaser.GameObjects.Ellipse | null;
-  private buttonRadius: number = 40;
+  private buttonRadius: number = 35;
 
   // Button labels
   private attackLabel!: Phaser.GameObjects.Text;
@@ -48,17 +48,19 @@ export class MobileControls {
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     // Store initial mobile state (for user agent check)
-    const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
+    const isMobileUserAgent =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
     this.isMobile = isMobileUserAgent;
   }
 
   isMobileDevice(): boolean {
     // Check dynamically based on current screen size
-    const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
+    const isMobileUserAgent =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
     const isSmallScreen = window.innerWidth < 768;
     // Consider it mobile if it's a mobile user agent OR small screen (for responsive design)
     return isMobileUserAgent || isSmallScreen;
@@ -127,12 +129,19 @@ export class MobileControls {
 
     // Action buttons (right side)
     const buttonY = height - this.buttonRadius - padding;
-    const buttonSpacing = this.buttonRadius * 2.5;
+    const buttonSpacing = this.buttonRadius * 2.2;
     let buttonX = width - this.buttonRadius - padding;
 
     // Attack button (E)
     this.attackButton = this.scene.add
-      .ellipse(buttonX, buttonY, this.buttonRadius * 2, this.buttonRadius * 2, 0xff0000, 0.8)
+      .ellipse(
+        buttonX,
+        buttonY,
+        this.buttonRadius * 2,
+        this.buttonRadius * 2,
+        0xff0000,
+        0.8
+      )
       .setScrollFactor(0)
       .setDepth(20000)
       .setInteractive({ useHandCursor: true })
@@ -141,7 +150,7 @@ export class MobileControls {
     this.attackLabel = this.scene.add
       .text(buttonX, buttonY, "E", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "20px",
+        fontSize: "16px",
         color: "#ffffff",
         stroke: "#000000",
         strokeThickness: 2,
@@ -166,7 +175,14 @@ export class MobileControls {
     // Jump button (Space)
     buttonX -= buttonSpacing;
     this.jumpButton = this.scene.add
-      .ellipse(buttonX, buttonY, this.buttonRadius * 2, this.buttonRadius * 2, 0x00aaff, 0.8)
+      .ellipse(
+        buttonX,
+        buttonY,
+        this.buttonRadius * 2,
+        this.buttonRadius * 2,
+        0x00aaff,
+        0.8
+      )
       .setScrollFactor(0)
       .setDepth(20000)
       .setInteractive({ useHandCursor: true })
@@ -175,7 +191,7 @@ export class MobileControls {
     this.jumpLabel = this.scene.add
       .text(buttonX, buttonY, "⤴", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "24px",
+        fontSize: "20px",
         color: "#ffffff",
         stroke: "#000000",
         strokeThickness: 2,
@@ -201,7 +217,14 @@ export class MobileControls {
     if (hasUlt) {
       buttonX -= buttonSpacing;
       this.ultButton = this.scene.add
-        .ellipse(buttonX, buttonY, this.buttonRadius * 2, this.buttonRadius * 2, 0x9d00ff, 0.8)
+        .ellipse(
+          buttonX,
+          buttonY,
+          this.buttonRadius * 2,
+          this.buttonRadius * 2,
+          0x9d00ff,
+          0.8
+        )
         .setScrollFactor(0)
         .setDepth(20000)
         .setInteractive({ useHandCursor: true })
@@ -210,7 +233,7 @@ export class MobileControls {
       this.ultLabel = this.scene.add
         .text(buttonX, buttonY, "Q", {
           fontFamily: "'Pixelify Sans', monospace",
-          fontSize: "20px",
+          fontSize: "16px",
           color: "#ffffff",
           stroke: "#000000",
           strokeThickness: 2,
