@@ -10,6 +10,15 @@ import { DifficultyModal } from "./components/DifficultyModal";
 import { GameBoard } from "./components/GameBoard";
 import { GameOverScreen } from "./components/GameOverScreen";
 import { VictoryScreen } from "./components/VictoryScreen";
+import { getSupabaseClient } from '@/lib/supabase/client';
+import { clearStaleSupabaseSession } from '@/lib/supabase/sessionCleanup';
+import { grantAchievementBySlug } from '@/lib/supabase/achievements';
+
+const COFFEE_BREAK_SLUG = 'coffee-break';
+const MAINTENANCE_WINDOW_MASTER_SLUG = 'maintenance-window-master';
+const PLENTY_OF_HEADROOM_SLUG = 'plenty-of-headroom';
+const COFFEE_BREAK_IDLE_SECONDS = 30;
+const MAINTENANCE_WINDOW_MIN_SECONDS = 30;
 
 export default function TohCenterPage() {
 	const [isLoaded, setIsLoaded] = useState<boolean>(false);
@@ -23,8 +32,74 @@ export default function TohCenterPage() {
 	const [timer, setTimer] = useState<number>(0);
 	const [gameOver, setGameOver] = useState<boolean>(false);
 	const [gameWon, setGameWon] = useState<boolean>(false);
+	const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 	
 	const gameEndedRef = useRef<boolean>(false);
+	const timerRef = useRef<number>(0);
+	const timeLimitRef = useRef<number>(0);
+	const minTimerRemainingRef = useRef<number>(Infinity);
+	const lastInteractionAtRef = useRef<number>(Date.now());
+	const coffeeBreakUnlockedRef = useRef(false);
+	const coffeeBreakInFlightRef = useRef(false);
+	const endRunAwardsDoneRef = useRef(false);
+	const maintenanceInFlightRef = useRef(false);
+	const headroomInFlightRef = useRef(false);
+	const supabaseRef = useRef<ReturnType<typeof getSupabaseClient> | null>(null);
+	if (!supabaseRef.current) {
+		supabaseRef.current = getSupabaseClient();
+	}
+	const supabase = supabaseRef.current;
+
+	useEffect(() => {
+		timerRef.current = timer;
+	}, [timer]);
+
+	useEffect(() => {
+		let isMounted = true;
+
+		const primeSession = async () => {
+			try {
+				const { data, error } = await supabase.auth.getSession();
+				if (!isMounted) {
+					return;
+				}
+				if (error) {
+					const handled = await clearStaleSupabaseSession(supabase, error, '[CriticalMigration] primeSession');
+					if (!handled) {
+						console.error('[CriticalMigration] Failed to read Supabase session', error);
+					}
+					setCurrentUserId(null);
+					return;
+				}
+				setCurrentUserId(data?.session?.user?.id ?? null);
+			} catch (sessionError: unknown) {
+				if (!isMounted) {
+					return;
+				}
+				const handled = await clearStaleSupabaseSession(supabase, sessionError as Error, '[CriticalMigration] primeSession');
+				if (!handled) {
+					console.error('[CriticalMigration] Unexpected Supabase session failure', sessionError);
+				}
+				setCurrentUserId(null);
+			}
+		};
+
+		primeSession().catch((error) => {
+			console.error('[CriticalMigration] Unhandled Supabase session error', error);
+		});
+
+		const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+			if (!isMounted) {
+				return;
+			}
+			setCurrentUserId(session?.user?.id ?? null);
+		});
+
+		return () => {
+			isMounted = false;
+			authListener?.subscription?.unsubscribe();
+		};
+	}, [supabase]);
 
 	useEffect(() => {
 		document.body.style.overflow = "hidden";
@@ -75,11 +150,72 @@ export default function TohCenterPage() {
 		}
 	}, [gameStarted, difficulty, timer]);
 
+	useEffect(() => {
+		if (!gameStarted || !difficulty || difficulty === 'free-time' || gameEndedRef.current || gameOver || gameWon) {
+			return;
+		}
+		if (timer <= 0) {
+			return;
+		}
+		minTimerRemainingRef.current = Math.min(minTimerRemainingRef.current, timer);
+	}, [difficulty, gameOver, gameStarted, gameWon, timer]);
+
+	useEffect(() => {
+		if (!currentUserId) {
+			return;
+		}
+		if (!gameStarted || !difficulty || difficulty === 'free-time' || gameEndedRef.current || gameOver || gameWon) {
+			return;
+		}
+		if (timerRef.current <= 0) {
+			return;
+		}
+		if (coffeeBreakUnlockedRef.current) {
+			return;
+		}
+
+		const interval = window.setInterval(() => {
+			if (coffeeBreakUnlockedRef.current || coffeeBreakInFlightRef.current) {
+				return;
+			}
+			if (gameEndedRef.current || timerRef.current <= 0) {
+				return;
+			}
+			const idleSeconds = (Date.now() - lastInteractionAtRef.current) / 1000;
+			if (idleSeconds < COFFEE_BREAK_IDLE_SECONDS) {
+				return;
+			}
+			coffeeBreakInFlightRef.current = true;
+			grantAchievementBySlug(supabase, currentUserId, COFFEE_BREAK_SLUG)
+				.then((result) => {
+					if (result.success || result.alreadyUnlocked) {
+						coffeeBreakUnlockedRef.current = true;
+					}
+				})
+				.catch((error) => {
+					console.error('[CriticalMigration] Failed to grant Coffee Break achievement', error);
+				})
+				.finally(() => {
+					coffeeBreakInFlightRef.current = false;
+				});
+		}, 1000);
+
+		return () => window.clearInterval(interval);
+	}, [currentUserId, difficulty, gameOver, gameStarted, gameWon, supabase]);
+
 	const handleDifficultySelect = (selectedDifficulty: Difficulty) => {
 		setDifficulty(selectedDifficulty);
 		setShowDifficultyModal(false);
 		setGameStarted(true);
 		gameEndedRef.current = false;
+		endRunAwardsDoneRef.current = false;
+		coffeeBreakUnlockedRef.current = false;
+		coffeeBreakInFlightRef.current = false;
+		maintenanceInFlightRef.current = false;
+		headroomInFlightRef.current = false;
+		lastInteractionAtRef.current = Date.now();
+		timeLimitRef.current = getTimeLimit(selectedDifficulty);
+		minTimerRemainingRef.current = timeLimitRef.current;
 		
 		// Initialize game with randomized first tower
 		const diskCount = getDiskCount(selectedDifficulty);
@@ -88,13 +224,17 @@ export default function TohCenterPage() {
 		
 		setTowers([randomizedDisks, [], []]);
 		setMoves(0);
-		setTimer(getTimeLimit(selectedDifficulty));
+		setTimer(timeLimitRef.current);
 		setSelectedTower(null);
 		setGameOver(false);
 		setGameWon(false);
 	};
 
 	const handleTowerClick = (towerIndex: number) => {
+		if (gameStarted && difficulty && difficulty !== 'free-time' && timer > 0 && !gameEndedRef.current) {
+			lastInteractionAtRef.current = Date.now();
+		}
+
 		// Prevent moves if time is up
 		if (difficulty !== "free-time" && timer === 0) return;
 		
@@ -137,6 +277,48 @@ export default function TohCenterPage() {
 			}
 		}
 	};
+
+	useEffect(() => {
+		if (!gameWon) {
+			return;
+		}
+		if (!currentUserId) {
+			return;
+		}
+		if (!difficulty || difficulty === 'free-time') {
+			return;
+		}
+		if (endRunAwardsDoneRef.current) {
+			return;
+		}
+		endRunAwardsDoneRef.current = true;
+
+		const timeLimit = timeLimitRef.current || getTimeLimit(difficulty);
+		const remaining = timerRef.current;
+		const minimumRemaining = minTimerRemainingRef.current;
+
+		if (minimumRemaining >= MAINTENANCE_WINDOW_MIN_SECONDS && !maintenanceInFlightRef.current) {
+			maintenanceInFlightRef.current = true;
+			grantAchievementBySlug(supabase, currentUserId, MAINTENANCE_WINDOW_MASTER_SLUG)
+				.catch((error) => {
+					console.error('[CriticalMigration] Failed to grant Maintenance Window Master achievement', error);
+				})
+				.finally(() => {
+					maintenanceInFlightRef.current = false;
+				});
+		}
+
+		if (timeLimit > 0 && remaining > timeLimit / 2 && !headroomInFlightRef.current) {
+			headroomInFlightRef.current = true;
+			grantAchievementBySlug(supabase, currentUserId, PLENTY_OF_HEADROOM_SLUG)
+				.catch((error) => {
+					console.error('[CriticalMigration] Failed to grant Plenty of Headroom achievement', error);
+				})
+				.finally(() => {
+					headroomInFlightRef.current = false;
+				});
+		}
+	}, [currentUserId, difficulty, gameWon, supabase]);
 
 	return (
 		<>

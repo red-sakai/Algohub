@@ -69,15 +69,6 @@ const GAMES: Game[] = [
     cover: "/images/game-covers/dungeon-explorer.svg",
   },
   {
-    id: "graph-quest",
-    title: "Graph Quest",
-    desc: "Coming soon.",
-    colorFrom: "from-emerald-500",
-    colorTo: "to-teal-500",
-    track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
-    cover: "/images/game-covers/graph-quest.svg",
-  },
-  {
     id: "dp-dungeon",
     title: "CRITICAL MIGRATION: Server Maintenance Night",
     desc: "Critical Migration is the Tower of Hanoi re-imagined as a server maintenance game, where you reorder processes to fix a corrupted stack.",
@@ -88,15 +79,6 @@ const GAMES: Game[] = [
       src: "/game-selector-audio/Aylex - Tension Rising.mp3",
     },
     cover: "/images/game-covers/critical.png",
-  },
-  {
-    id: "tree-trek",
-    title: "Tree Trek",
-    desc: "Coming soon.",
-    colorFrom: "from-amber-500",
-    colorTo: "to-orange-500",
-    track: { title: "Ambient Loop", src: "/audio/ambient-loop.mp3" },
-    cover: "/images/game-covers/tree-trek.svg",
   },
 ];
 
