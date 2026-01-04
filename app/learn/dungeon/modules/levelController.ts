@@ -39,15 +39,12 @@ export class LevelController {
         this.enemyController.setPlayerLevel(this.playerLevel);
         this.uiController.updateLevel(this.playerLevel);
 
-        // Increase max health by 10 per level difference
-        const newMaxHealth =
-          this.playerController.getMaxHealth() + 10 * levelDifference;
-        const healAmount = Math.floor(newMaxHealth * 0.5);
-        const newHealth = Math.min(
-          newMaxHealth,
-          this.playerController.getHealth() + healAmount
-        );
-        this.playerController.setHealth(newHealth, newMaxHealth);
+        // Replenish health to 100 (max health is fixed at 100)
+        const fixedMaxHealth = 100;
+        const currentHealth = this.playerController.getHealth();
+        const healAmount = fixedMaxHealth - currentHealth;
+        const newHealth = fixedMaxHealth; // Always replenish to full health
+        this.playerController.setHealth(newHealth, fixedMaxHealth);
         this.uiController.updateHealthBar();
 
         // Show level up text

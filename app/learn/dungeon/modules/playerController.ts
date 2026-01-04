@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GAME_CONSTANTS } from "./constants";
 import type { EnemyUnit } from "./types";
+import type { VirtualInput } from "./mobileControls";
 
 export class PlayerController {
   private scene: Phaser.Scene;
@@ -111,30 +112,37 @@ export class PlayerController {
     }
   }
 
-  update(delta: number, enemies: EnemyUnit[]): void {
+  update(delta: number, enemies: EnemyUnit[], virtualInput?: VirtualInput): void {
     if (this.health <= 0) return;
 
-    // Handle input
-    if (Phaser.Input.Keyboard.JustDown(this.eKey) && !this.isSlashing && !this.isJumping) {
+    // Handle input - check virtual input first, then keyboard
+    const attackPressed = virtualInput?.attackJustPressed || Phaser.Input.Keyboard.JustDown(this.eKey);
+    const jumpPressed = virtualInput?.jumpJustPressed || Phaser.Input.Keyboard.JustDown(this.spaceKey);
+    const ultPressed = virtualInput?.ultJustPressed || (this.selectedCharacter === "goku" && Phaser.Input.Keyboard.JustDown(this.qKey));
+
+    if (attackPressed && !this.isSlashing && !this.isJumping) {
       this.performSlash(enemies);
+      if (virtualInput) {
+        virtualInput.attackJustPressed = false;
+        virtualInput.attack = false;
+      }
       return;
     }
 
-    if (
-      Phaser.Input.Keyboard.JustDown(this.spaceKey) &&
-      !this.isJumping &&
-      !this.isSlashing
-    ) {
+    if (jumpPressed && !this.isJumping && !this.isSlashing) {
       this.performJump();
+      if (virtualInput) {
+        virtualInput.jumpJustPressed = false;
+        virtualInput.jump = false;
+      }
     }
 
-    if (
-      this.selectedCharacter === "goku" &&
-      Phaser.Input.Keyboard.JustDown(this.qKey) &&
-      !this.isJumping &&
-      !this.isSlashing
-    ) {
+    if (ultPressed && !this.isJumping && !this.isSlashing) {
       this.performUlt();
+      if (virtualInput) {
+        virtualInput.ultJustPressed = false;
+        virtualInput.ult = false;
+      }
       return;
     }
 
@@ -146,7 +154,7 @@ export class PlayerController {
     }
 
     // Handle movement
-    this.handleMovement();
+    this.handleMovement(virtualInput);
 
     // Update shadow position
     this.updateShadowPosition();
@@ -155,26 +163,32 @@ export class PlayerController {
     this.handleAnimations();
   }
 
-  private handleMovement() {
+  private handleMovement(virtualInput?: VirtualInput) {
     let moveX = 0;
     let moveY = 0;
 
-    // Arrow keys
-    if (this.cursors.left.isDown) moveX = -1;
-    if (this.cursors.right.isDown) moveX = 1;
-    if (this.cursors.up.isDown) moveY = -1;
-    if (this.cursors.down.isDown) moveY = 1;
+    // Check virtual input first (mobile), but fall back to keyboard if virtual input is zero
+    if (virtualInput && (virtualInput.moveX !== 0 || virtualInput.moveY !== 0)) {
+      moveX = virtualInput.moveX;
+      moveY = virtualInput.moveY;
+    } else {
+      // Arrow keys
+      if (this.cursors.left.isDown) moveX = -1;
+      if (this.cursors.right.isDown) moveX = 1;
+      if (this.cursors.up.isDown) moveY = -1;
+      if (this.cursors.down.isDown) moveY = 1;
 
-    // WASD keys
-    if (this.wasd.W.isDown) moveY = -1;
-    if (this.wasd.S.isDown) moveY = 1;
-    if (this.wasd.A.isDown) moveX = -1;
-    if (this.wasd.D.isDown) moveX = 1;
+      // WASD keys
+      if (this.wasd.W.isDown) moveY = -1;
+      if (this.wasd.S.isDown) moveY = 1;
+      if (this.wasd.A.isDown) moveX = -1;
+      if (this.wasd.D.isDown) moveX = 1;
 
-    // Normalize diagonal movement
-    if (moveX !== 0 && moveY !== 0) {
-      moveX *= 0.707;
-      moveY *= 0.707;
+      // Normalize diagonal movement
+      if (moveX !== 0 && moveY !== 0) {
+        moveX *= 0.707;
+        moveY *= 0.707;
+      }
     }
 
     // Set velocity with speed boost

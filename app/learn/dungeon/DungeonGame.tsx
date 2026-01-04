@@ -13,10 +13,12 @@ import { TorchController } from "./modules/torchController";
 import { UIController } from "./modules/uiController";
 import { LevelController } from "./modules/levelController";
 import { TreeTraversalController } from "./modules/treeTraversalController";
+import { WisdomController } from "./modules/wisdomController";
 import { GAME_CONSTANTS } from "./modules/constants";
 import { UltScene } from "./scenes/UltScene";
 import { CharacterPicker } from "./components/CharacterPicker";
 import type { EnemyUnit } from "./modules/types";
+import { MobileControls, type VirtualInput } from "./modules/mobileControls";
 
 const pixelFont = Pixelify_Sans({
   weight: ["400", "500", "600", "700"],
@@ -47,6 +49,9 @@ class DungeonScene extends Phaser.Scene {
   private uiController!: UIController;
   private levelController!: LevelController;
   private treeTraversalController!: TreeTraversalController;
+  private wisdomController!: WisdomController;
+  private mobileControls!: MobileControls;
+  private lastScreenWidth: number = 0;
 
   // Core game objects
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -90,6 +95,9 @@ class DungeonScene extends Phaser.Scene {
   }
 
   preload() {
+    // Load menu button image
+    this.load.image("menu-button", "/sprite/menu.png");
+    
     // Load the custom tilemap JSON and tileset spritesheet
     this.load.json("tilemap", `/sprite/map/${this.mapName}`);
     this.load.spritesheet("tiles", "/sprite/map/spritesheet.png", {
@@ -193,6 +201,7 @@ class DungeonScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.cameras.main;
+    this.lastScreenWidth = width;
 
     console.log("Create called - Viewport:", width, "x", height);
 
@@ -261,7 +270,8 @@ class DungeonScene extends Phaser.Scene {
       "Pickups", // 8 - Pickup items
       "Miscs", // 9 - Miscellaneous decorations (chests, etc)
       "nodes", // 10 - Path nodes
-      "Layer_9", // 11 - Empty layer
+      "wisdom", // 11 - Wisdom tiles
+      "Layer_9", // 12 - Empty layer
     ];
 
     // Use MapRenderer to render all layers (removes duplicate code)
@@ -280,67 +290,67 @@ class DungeonScene extends Phaser.Scene {
       DEPTH_PER_LAYER
     );
 
-    // Find the Door layer to spawn the player
-    const doorLayer = mapData.layers.find(
+    // Find the spawn layer to spawn the player
+    const spawnLayer = mapData.layers.find(
       (layer: {
         name: string;
-        tiles: Array<{ x: number; y: number; id: string }>;
-      }) => layer.name === "Door"
+        tiles?: Array<{ x: number; y: number; id: string }>;
+      }) => layer.name === "spawn"
     );
 
     // Find the nodes layer for enemy spawning
     const nodesLayer = mapData.layers.find(
       (layer: {
         name: string;
-        tiles: Array<{ x: number; y: number; id: string }>;
+        tiles?: Array<{ x: number; y: number; id: string }>;
       }) => layer.name === "nodes"
     );
 
     let playerX = this.mapWidth * 0.5; // Default to center
     let playerY = this.mapHeight * 0.5;
 
-    // Spawn player at Door tile (prefer center of door structure)
-    if (doorLayer && doorLayer.tiles.length > 0) {
-      // Group door tiles by Y position to find the middle row
+    // Spawn player at spawn tile (prefer center of spawn structure)
+    if (spawnLayer && spawnLayer.tiles && spawnLayer.tiles.length > 0) {
+      // Group spawn tiles by Y position to find the middle row
       const tilesByY = new Map<
         number,
         Array<{ x: number; y: number; id: string }>
       >();
-      doorLayer.tiles.forEach((tile: { x: number; y: number; id: string }) => {
+      spawnLayer.tiles.forEach((tile: { x: number; y: number; id: string }) => {
         if (!tilesByY.has(tile.y)) {
           tilesByY.set(tile.y, []);
         }
         tilesByY.get(tile.y)!.push(tile);
       });
 
-      // Find the middle Y position (center row of door)
+      // Find the middle Y position (center row of spawn)
       const yPositions = Array.from(tilesByY.keys()).sort((a, b) => a - b);
       const middleY = yPositions[Math.floor(yPositions.length / 2)];
       const middleRowTiles = tilesByY.get(middleY) || [];
 
       // Pick the center tile from the middle row, or first tile if no middle row
-      let selectedDoor;
+      let selectedSpawn;
       if (middleRowTiles.length > 0) {
         middleRowTiles.sort((a, b) => a.x - b.x);
         const centerIndex = Math.floor(middleRowTiles.length / 2);
-        selectedDoor = middleRowTiles[centerIndex];
+        selectedSpawn = middleRowTiles[centerIndex];
       } else {
         // Fallback: use first tile sorted by Y then X
-        const sortedDoors = [...doorLayer.tiles].sort((a, b) => {
+        const sortedSpawns = [...spawnLayer.tiles].sort((a, b) => {
           if (a.y !== b.y) return a.y - b.y;
           return a.x - b.x;
         });
-        selectedDoor = sortedDoors[0];
+        selectedSpawn = sortedSpawns[0];
       }
 
       // Convert tile coordinates to world coordinates
-      playerX = (selectedDoor.x + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
-      playerY = (selectedDoor.y + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
+      playerX = (selectedSpawn.x + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
+      playerY = (selectedSpawn.y + 0.5) * tileSize * GAME_CONSTANTS.MAP_SCALE;
       // Store player spawn position for filtering
       this.playerSpawnX = playerX;
       this.playerSpawnY = playerY;
       console.log(
-        `Player spawning at Door: tile (${selectedDoor.x}, ${selectedDoor.y}) -> world (${playerX}, ${playerY})`
+        `Player spawning at spawn: tile (${selectedSpawn.x}, ${selectedSpawn.y}) -> world (${playerX}, ${playerY})`
       );
     }
 
@@ -458,9 +468,7 @@ class DungeonScene extends Phaser.Scene {
 
     // Initialize controllers
     const initialLevelForEnemies =
-      this.enemyLevels.length > 0
-        ? [...this.enemyLevels].sort((a, b) => a - b)[0] || 1
-        : 1;
+      this.enemyLevels.length > 0 ? Math.min(...this.enemyLevels) : 1;
     this.enemyController = new EnemyController(
       this,
       this.wallColliders,
@@ -478,7 +486,7 @@ class DungeonScene extends Phaser.Scene {
     // Create torches
     this.torches = this.physics.add.group();
     this.torchController = new TorchController(this, this.torches, this.player);
-    this.torchController.createTorches(this.nodes);
+    this.torchController.createTorches(mapData, this.nodes, GAME_CONSTANTS.MAP_SCALE);
     this.physics.add.overlap(
       this.player,
       this.torches,
@@ -540,10 +548,8 @@ class DungeonScene extends Phaser.Scene {
 
     // Initialize player controller
     const initialLevel =
-      this.enemyLevels.length > 0
-        ? [...this.enemyLevels].sort((a, b) => a - b)[0] || 1
-        : 1;
-    const playerMaxHealth = 100 + (initialLevel - 1) * 10;
+      this.enemyLevels.length > 0 ? Math.min(...this.enemyLevels) : 1;
+    const playerMaxHealth = 100; // Fixed max health
     const playerHealth = playerMaxHealth;
     this.playerController = new PlayerController(
       this,
@@ -570,6 +576,11 @@ class DungeonScene extends Phaser.Scene {
     );
     this.uiController.createDebugOverlays(this.player.x, this.player.y);
 
+    // Initialize mobile controls
+    this.mobileControls = new MobileControls(this);
+    const hasUlt = this.selectedCharacter === "goku";
+    this.mobileControls.createControls(width, height, hasUlt);
+
     // Initialize level controller (after enemyController is created)
     this.levelController = new LevelController(
       this,
@@ -587,16 +598,87 @@ class DungeonScene extends Phaser.Scene {
       this.playerSpawnX,
       this.playerSpawnY,
       () => this.uiController.hideButtons(),
-      () => this.uiController.showButtons()
+      () => this.uiController.showButtons(),
+      () => this.uiController.hideHUD(),
+      () => this.uiController.showHUD(),
+      () => this.mobileControls.hideControls(),
+      () => this.mobileControls.showControls()
     );
+
+    // Initialize wisdom controller
+    this.wisdomController = new WisdomController(this, this.player, (fact) => {
+      // Dispatch custom event to React component
+      const event = new CustomEvent("show-wisdom", { detail: fact });
+      window.dispatchEvent(event);
+    });
+    this.wisdomController.initializeWisdomTiles(
+      mapData,
+      GAME_CONSTANTS.MAP_SCALE
+    );
+
+    console.log("Wisdom controller initialized");
 
     // Listen for player attack hits
     this.events.on("player-attack-hit", (enemy: EnemyUnit) => {
+      const playerLevel = this.levelController.getPlayerLevel();
+      
+      // If facing an enemy higher level than player, reduce damage to 1
+      // (The "player-attack-hit" event only fires when player is facing the enemy)
+      if (enemy.level > playerLevel) {
+        const damage = 1;
+        const defeated = this.enemyController.damageEnemy(
+          enemy,
+          damage,
+          playerLevel
+        );
+        if (defeated) {
+          this.enemyController.defeatEnemy(enemy);
+          this.levelController.handleEnemyDefeat(enemy, () => {
+            this.treeTraversalController.displayTraversedMap(
+              this.enemyTraversalData
+            );
+          });
+        }
+        return; // Early return, skip normal damage calculation
+      }
+
+      let damage =
+        GAME_CONSTANTS.PLAYER_BASE_DAMAGE *
+        this.collectiblesController.getAttackBoostMultiplier();
+
+      // Apply crit if special buff is active
+      const critRate = this.collectiblesController.getCritRate();
+      if (critRate > 0 && Math.random() < critRate) {
+        const critMultiplier =
+          this.collectiblesController.getCritDamageMultiplier();
+        damage *= critMultiplier;
+        // Show crit text
+        const critText = this.add.text(
+          enemy.sprite.x,
+          enemy.sprite.y - 80,
+          "CRITICAL!",
+          {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: "20px",
+            color: "#ff00ff",
+            stroke: "#000000",
+            strokeThickness: 4,
+          }
+        );
+        critText.setDepth(1300);
+        this.tweens.add({
+          targets: critText,
+          y: critText.y - 30,
+          alpha: 0,
+          duration: 1000,
+          onComplete: () => critText.destroy(),
+        });
+      }
+
       const defeated = this.enemyController.damageEnemy(
         enemy,
-        GAME_CONSTANTS.PLAYER_BASE_DAMAGE *
-          this.collectiblesController.getAttackBoostMultiplier(),
-        this.levelController.getPlayerLevel()
+        damage,
+        playerLevel
       );
       if (defeated) {
         this.enemyController.defeatEnemy(enemy);
@@ -713,8 +795,25 @@ class DungeonScene extends Phaser.Scene {
     // If player is dead, don't update gameplay
     if (this.playerController.getHealth() <= 0) return;
 
+    // Check if screen size changed and update mobile controls visibility
+    const { width } = this.cameras.main;
+    if (Math.abs(width - this.lastScreenWidth) > 10) {
+      // Screen size changed significantly, update controls visibility
+      this.lastScreenWidth = width;
+      if (this.mobileControls) {
+        this.mobileControls.updateControlsVisibility();
+      }
+    }
+
     // Update controllers
-    this.playerController.update(delta, this.enemyController.getEnemies());
+    // Get virtual input from mobile controls if on mobile
+    let virtualInput: VirtualInput | undefined = undefined;
+    if (this.mobileControls && this.mobileControls.isMobileDevice()) {
+      virtualInput = this.mobileControls.getVirtualInput();
+      // Reset justPressed flags after processing
+      this.mobileControls.resetJustPressedFlags();
+    }
+    this.playerController.update(delta, this.enemyController.getEnemies(), virtualInput);
     this.enemyController.update(delta, (enemy, damage) => {
       this.damagePlayer(damage, enemy.level);
     });
@@ -731,11 +830,13 @@ class DungeonScene extends Phaser.Scene {
         attack_speed: "Attack Speed Buff Ended",
         speed_boost: "Speed Boost Ended",
         attack_boost: "Attack Boost Ended",
+        special_buff: "Special Buff Ended",
       };
       const buffColors: Record<string, string> = {
         attack_speed: "#ff0000",
         speed_boost: "#00aaff",
         attack_boost: "#ffaa00",
+        special_buff: "#9d00ff",
       };
 
       const buffEndText = this.add
@@ -776,6 +877,9 @@ class DungeonScene extends Phaser.Scene {
     // Update lighting
     this.lightingController.update();
 
+    // Update wisdom controller
+    this.wisdomController.update();
+
     // Check for F key press to toggle debug mode
     if (Phaser.Input.Keyboard.JustDown(this.debugKey)) {
       this.uiController.toggleDebugMode(this.wallColliders, this.player);
@@ -783,6 +887,11 @@ class DungeonScene extends Phaser.Scene {
 
     // Update debug overlay positions
     this.uiController.updateDebugOverlays(this.player);
+
+    // Update buff timers (including torch)
+    const buffTimers = this.collectiblesController.getBuffTimers();
+    const torchTime = this.torchController.getTorchTimeRemaining();
+    this.uiController.updateBuffTimers(buffTimers, torchTime);
   }
 
   // Player actions moved to PlayerController
@@ -884,6 +993,11 @@ export default function DungeonGame() {
   const [levelInput, setLevelInput] = useState("");
   const [enemyLevels, setEnemyLevels] = useState<number[]>([]);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showWisdom, setShowWisdom] = useState(false);
+  const [wisdomFact, setWisdomFact] = useState<{
+    title: string;
+    content: string;
+  } | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -1027,6 +1141,41 @@ export default function DungeonGame() {
       mapName = "map12.json";
     }
 
+    // Listen for wisdom events from Phaser scene
+    // Use a custom event system since Phaser game events might not work as expected
+    const handleWisdomEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        title: string;
+        content: string;
+      }>;
+      if (customEvent.detail) {
+        console.log("Wisdom event received:", customEvent.detail);
+        setWisdomFact(customEvent.detail);
+        setShowWisdom(true);
+      }
+    };
+
+    window.addEventListener("show-wisdom", handleWisdomEvent);
+    console.log("Wisdom event listener registered");
+
+    // Listen for tutorial event
+    const handleTutorialEvent = () => {
+      setShowTutorial(true);
+    };
+    window.addEventListener("show-tutorial", handleTutorialEvent);
+
+    // Listen for exit event
+    const handleExitEvent = () => {
+      // Reset game state to go back to title screen
+      setSelectedCharacter(null);
+      setEnemyLevels([]);
+      setLevelInput("");
+      setShowLevelInput(false);
+      setShowPicker(false);
+      setShowTitleScreen(true);
+    };
+    window.addEventListener("exit-game", handleExitEvent);
+
     // Pass character data, enemy levels, and map name to scene
     gameRef.current.scene.start("DungeonScene", {
       character: selectedCharacter,
@@ -1036,6 +1185,9 @@ export default function DungeonGame() {
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("show-wisdom", handleWisdomEvent);
+      window.removeEventListener("show-tutorial", handleTutorialEvent);
+      window.removeEventListener("exit-game", handleExitEvent);
       gameRef.current?.destroy(true);
     };
   }, [selectedCharacter, enemyLevels]);
@@ -1412,6 +1564,48 @@ export default function DungeonGame() {
               : "rounded-lg shadow-2xl overflow-hidden border-4 border-green-500"
           }
         />
+      )}
+
+      {/* Wisdom Modal - Available during gameplay */}
+      {showWisdom && wisdomFact && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/80"
+            onClick={() => setShowWisdom(false)}
+          />
+          {/* Wisdom Content */}
+          <div
+            className="relative w-full max-w-lg mx-4"
+            style={{
+              backgroundImage: "url('/sprite/infosheet.png')",
+              backgroundSize: "contain",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              imageRendering: "pixelated",
+              aspectRatio: "3/4",
+              padding: "3rem 2rem",
+            }}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowWisdom(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-amber-900 hover:text-amber-700 transition-colors font-bold text-2xl"
+            >
+              ×
+            </button>
+
+            {/* Wisdom Text Content */}
+            <div className="px-8 py-6 text-amber-900">
+              <h2 className="text-3xl font-bold mb-4 text-center">
+                {wisdomFact.title}
+              </h2>
+              <div className="space-y-4 text-lg leading-relaxed">
+                <p>{wisdomFact.content}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

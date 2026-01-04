@@ -79,6 +79,9 @@ export class EnemyController {
       }
     }
 
+    // Sort levels so lowest is first (will be assigned to root in pre-order traversal)
+    uniqueLevels.sort((a, b) => a - b);
+
     // Add index to nodes
     const nodesWithIndex = nodes.map((node, index) => ({
       x: node.x,
@@ -272,9 +275,7 @@ export class EnemyController {
       .setOrigin(0.5, 0.5)
       .setDepth(1202);
 
-    const maxHealth =
-      GAME_CONSTANTS.ENEMY_BASE_HEALTH +
-      (enemyLevel - 1) * GAME_CONSTANTS.ENEMY_HEALTH_PER_LEVEL;
+    const maxHealth = 100; // Fixed enemy health
 
     const enemy: EnemyUnit = {
       sprite,
@@ -314,7 +315,30 @@ export class EnemyController {
 
     this.enemies.forEach((enemy) => {
       if (enemy.defeated) return;
-      const col = this.scene.physics.add.collider(enemy.sprite, this.player);
+      const col = this.scene.physics.add.collider(
+        enemy.sprite,
+        this.player,
+        (enemySprite, playerSprite) => {
+          // Push enemy away from player if they overlap
+          const enemyBody = enemySprite.body as Phaser.Physics.Arcade.Body;
+          const playerBody = playerSprite.body as Phaser.Physics.Arcade.Body;
+          if (!enemyBody || !playerBody) return;
+
+          const dx = enemySprite.x - playerSprite.x;
+          const dy = enemySprite.y - playerSprite.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const minDistance = 80;
+
+          if (distance < minDistance && distance > 0) {
+            const pushDistance = minDistance - distance;
+            const norm = Math.max(1, distance);
+            const pushX = (dx / norm) * pushDistance;
+            const pushY = (dy / norm) * pushDistance;
+            enemySprite.x += pushX;
+            enemySprite.y += pushY;
+          }
+        }
+      );
       this.enemyVsPlayerColliders.push(col);
     });
 
@@ -380,6 +404,17 @@ export class EnemyController {
         enemyUnit.attacking = true;
         sprite.setVelocity(0, 0);
 
+        // Push enemy back slightly to prevent overlap with player
+        const minDistance = 80; // Minimum distance to maintain
+        if (distanceToPlayer < minDistance && distanceToPlayer > 0) {
+          const pushBackDistance = minDistance - distanceToPlayer;
+          const norm = Math.max(1, distanceToPlayer);
+          const pushX = (-dx / norm) * pushBackDistance;
+          const pushY = (-dy / norm) * pushBackDistance;
+          sprite.x += pushX;
+          sprite.y += pushY;
+        }
+
         const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
         let dir: "up" | "down" | "left" | "right" = "down";
         if (angleDeg > -45 && angleDeg < 45) dir = "right";
@@ -422,41 +457,63 @@ export class EnemyController {
         !enemyUnit.attacking &&
         distanceToPlayer <= GAME_CONSTANTS.ENEMY_AGGRO_RANGE
       ) {
-        const angle = Math.atan2(dy, dx);
-        const vx = Math.cos(angle) * GAME_CONSTANTS.ENEMY_SPEED;
-        const vy = Math.sin(angle) * GAME_CONSTANTS.ENEMY_SPEED;
-        sprite.setVelocity(vx, vy);
-
-        if (Math.abs(vx) > Math.abs(vy)) {
-          if (vx < 0) {
-            enemyUnit.lastDirection = "left";
-            try {
-              sprite.play("enemy-run-left", true);
-            } catch (e) {
-              console.warn("Error playing enemy run animation:", e);
-            }
-          } else {
-            enemyUnit.lastDirection = "right";
-            try {
-              sprite.play("enemy-run-right", true);
-            } catch (e) {
-              console.warn("Error playing enemy run animation:", e);
-            }
+        // Stop moving if too close to player (within attack range but not attacking yet)
+        const minApproachDistance = 85; // Minimum distance to maintain
+        if (distanceToPlayer < minApproachDistance) {
+          sprite.setVelocity(0, 0);
+          // Push back if overlapping
+          if (distanceToPlayer < 80 && distanceToPlayer > 0) {
+            const pushBackDistance = 80 - distanceToPlayer;
+            const norm = Math.max(1, distanceToPlayer);
+            const pushX = (-dx / norm) * pushBackDistance;
+            const pushY = (-dy / norm) * pushBackDistance;
+            sprite.x += pushX;
+            sprite.y += pushY;
+          }
+          // Play idle animation when stopped
+          try {
+            sprite.play(`enemy-idle-${enemyUnit.lastDirection}`, true);
+          } catch (e) {
+            console.warn("Error playing enemy idle animation:", e);
           }
         } else {
-          if (vy < 0) {
-            enemyUnit.lastDirection = "up";
-            try {
-              sprite.play("enemy-run-up", true);
-            } catch (e) {
-              console.warn("Error playing enemy run animation:", e);
+          const angle = Math.atan2(dy, dx);
+          const vx = Math.cos(angle) * GAME_CONSTANTS.ENEMY_SPEED;
+          const vy = Math.sin(angle) * GAME_CONSTANTS.ENEMY_SPEED;
+          sprite.setVelocity(vx, vy);
+
+          // Update animation based on movement direction
+          if (Math.abs(vx) > Math.abs(vy)) {
+            if (vx < 0) {
+              enemyUnit.lastDirection = "left";
+              try {
+                sprite.play("enemy-run-left", true);
+              } catch (e) {
+                console.warn("Error playing enemy run animation:", e);
+              }
+            } else {
+              enemyUnit.lastDirection = "right";
+              try {
+                sprite.play("enemy-run-right", true);
+              } catch (e) {
+                console.warn("Error playing enemy run animation:", e);
+              }
             }
           } else {
-            enemyUnit.lastDirection = "down";
-            try {
-              sprite.play("enemy-run-down", true);
-            } catch (e) {
-              console.warn("Error playing enemy run animation:", e);
+            if (vy < 0) {
+              enemyUnit.lastDirection = "up";
+              try {
+                sprite.play("enemy-run-up", true);
+              } catch (e) {
+                console.warn("Error playing enemy run animation:", e);
+              }
+            } else {
+              enemyUnit.lastDirection = "down";
+              try {
+                sprite.play("enemy-run-down", true);
+              } catch (e) {
+                console.warn("Error playing enemy run animation:", e);
+              }
             }
           }
         }

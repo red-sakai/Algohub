@@ -15,6 +15,13 @@ export class UIController {
   private debugInnerBg!: Phaser.GameObjects.Rectangle;
   private debugInfoText!: Phaser.GameObjects.Text;
   private debugLegendText!: Phaser.GameObjects.Text;
+  private menuButton!: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+  private menuButtonText?: Phaser.GameObjects.Text;
+  private menuPopupObjects: Phaser.GameObjects.GameObject[] = [];
+  private isMenuOpen: boolean = false;
+
+  // Buff timers at top of screen
+  private buffTimerTexts: Map<string, Phaser.GameObjects.Text> = new Map();
 
   constructor(
     scene: Phaser.Scene,
@@ -33,20 +40,29 @@ export class UIController {
     onTreeDisplayClick: () => void
   ) {
     const { width, height } = this.scene.cameras.main;
+    const isMobile = width < 768;
+    const scaleFactor = isMobile ? 0.75 : 1;
 
-    // Player level UI - top-left
+    // Player level UI - bottom center with better styling (responsive)
+    const levelY = isMobile ? height - 180 : height - 100;
     this.playerLevelText = this.scene.add
-      .text(16, 90, `Level: ${this.playerLevel}`, {
+      .text(width / 2, levelY, `LV. ${this.playerLevel}`, {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "16px",
+        fontSize: `${Math.round(18 * scaleFactor)}px`,
         color: "#00ffcc",
         backgroundColor: "#000000",
-        padding: { x: 10, y: 6 },
+        padding: {
+          x: Math.round(12 * scaleFactor),
+          y: Math.round(6 * scaleFactor),
+        },
+        stroke: "#00aacc",
+        strokeThickness: Math.round(2 * scaleFactor),
       })
+      .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
       .setDepth(10000);
 
-    // Player health bar - top-left below level
+    // Player health bar - bottom center below level with improved styling
     this.playerHealthBarBg = this.scene.add
       .graphics()
       .setDepth(10000)
@@ -56,60 +72,94 @@ export class UIController {
       .setDepth(10001)
       .setScrollFactor(0);
 
+    const healthTextY = isMobile ? height - 110 : height - 30;
     this.playerHealthText = this.scene.add
-      .text(16, 130, `HP: 100/100`, {
+      .text(width / 2, healthTextY, `HP: 100/100`, {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "14px",
-        color: "#ff5555",
+        fontSize: `${Math.round(14 * scaleFactor)}px`,
+        color: "#ffffff",
         backgroundColor: "#000000",
-        padding: { x: 8, y: 4 },
+        padding: {
+          x: Math.round(8 * scaleFactor),
+          y: Math.round(4 * scaleFactor),
+        },
+        stroke: "#333333",
+        strokeThickness: Math.round(1 * scaleFactor),
       })
+      .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
       .setDepth(10000);
 
-    // Debug button - top-right corner
-    const screenWidth = this.scene.cameras.main.width;
+    // Debug button - top-left corner with improved styling (responsive)
+    const buttonPadding = isMobile ? 8 : 16;
+    const buttonFontSize = isMobile ? 11 : 13;
     this.debugButton = this.scene.add
-      .text(screenWidth - 16, 16, "DEBUG: Show Map", {
+      .text(buttonPadding, buttonPadding, "DEBUG: Show Map", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "14px",
+        fontSize: `${buttonFontSize}px`,
         color: "#ffaa00",
         backgroundColor: "#000000",
-        padding: { x: 10, y: 6 },
+        padding: {
+          x: Math.round(10 * scaleFactor),
+          y: Math.round(6 * scaleFactor),
+        },
+        stroke: "#664400",
+        strokeThickness: Math.round(1 * scaleFactor),
       })
-      .setOrigin(1, 0)
+      .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(10000)
       .setInteractive({ useHandCursor: true });
 
     this.debugButton.on("pointerdown", onDebugClick);
     this.debugButton.on("pointerover", () => {
-      this.debugButton.setStyle({ backgroundColor: "#333333" });
+      this.debugButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#ffcc00",
+      });
     });
     this.debugButton.on("pointerout", () => {
-      this.debugButton.setStyle({ backgroundColor: "#000000" });
+      this.debugButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#ffaa00",
+      });
     });
 
-    // Tree display button - below debug button
+    // Menu button - top right corner
+    this.createMenuButton(width, height);
+
+    // Tree display button - below debug button (responsive)
+    const treeButtonY = isMobile ? 40 : 50;
     this.treeDisplayButton = this.scene.add
-      .text(screenWidth - 16, 50, "Show Tree", {
+      .text(buttonPadding, treeButtonY, "Show Tree", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "14px",
+        fontSize: `${buttonFontSize}px`,
         color: "#00ffcc",
         backgroundColor: "#000000",
-        padding: { x: 10, y: 6 },
+        padding: {
+          x: Math.round(10 * scaleFactor),
+          y: Math.round(6 * scaleFactor),
+        },
+        stroke: "#006666",
+        strokeThickness: Math.round(1 * scaleFactor),
       })
-      .setOrigin(1, 0)
+      .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(10000)
       .setInteractive({ useHandCursor: true });
 
     this.treeDisplayButton.on("pointerdown", onTreeDisplayClick);
     this.treeDisplayButton.on("pointerover", () => {
-      this.treeDisplayButton.setStyle({ backgroundColor: "#333333" });
+      this.treeDisplayButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#00ffff",
+      });
     });
     this.treeDisplayButton.on("pointerout", () => {
-      this.treeDisplayButton.setStyle({ backgroundColor: "#000000" });
+      this.treeDisplayButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#00ffcc",
+      });
     });
 
     // Debug info text
@@ -126,9 +176,19 @@ export class UIController {
       .text(
         16,
         520,
-        `Map: ${Math.round(mapWidth)}x${Math.round(
-          mapHeight
-        )} (Scale: ${GAME_CONSTANTS.MAP_SCALE}x) | Viewport: ${width}x${height}\nSprite - Visual: ${GAME_CONSTANTS.FRAME_WIDTH}x${GAME_CONSTANTS.FRAME_HEIGHT} | Collision: ${collisionWidth}x${collisionHeight} | Scale: ${GAME_CONSTANTS.SPRITE_SCALE}x\nOffsets - T:${GAME_CONSTANTS.FRAME_OFFSET_TOP} B:${GAME_CONSTANTS.FRAME_OFFSET_BOTTOM} L:${GAME_CONSTANTS.FRAME_OFFSET_LEFT} R:${GAME_CONSTANTS.FRAME_OFFSET_RIGHT}`,
+        `Map: ${Math.round(mapWidth)}x${Math.round(mapHeight)} (Scale: ${
+          GAME_CONSTANTS.MAP_SCALE
+        }x) | Viewport: ${width}x${height}\nSprite - Visual: ${
+          GAME_CONSTANTS.FRAME_WIDTH
+        }x${
+          GAME_CONSTANTS.FRAME_HEIGHT
+        } | Collision: ${collisionWidth}x${collisionHeight} | Scale: ${
+          GAME_CONSTANTS.SPRITE_SCALE
+        }x\nOffsets - T:${GAME_CONSTANTS.FRAME_OFFSET_TOP} B:${
+          GAME_CONSTANTS.FRAME_OFFSET_BOTTOM
+        } L:${GAME_CONSTANTS.FRAME_OFFSET_LEFT} R:${
+          GAME_CONSTANTS.FRAME_OFFSET_RIGHT
+        }`,
         {
           fontFamily: "'Pixelify Sans', monospace",
           fontSize: "10px",
@@ -153,6 +213,73 @@ export class UIController {
       .setDepth(1000);
 
     this.updateHealthBar();
+
+    // Create buff timer texts at top-right with improved styling (including torch)
+    const buffConfigs = [
+      {
+        type: "torch",
+        label: "🔥",
+        name: "LIGHT",
+        color: "#ffaa00",
+        yOffset: 0,
+      },
+      {
+        type: "attack_speed",
+        label: "⚡",
+        name: "ATK SPD",
+        color: "#ff0000",
+        yOffset: 35,
+      },
+      {
+        type: "speed_boost",
+        label: "💨",
+        name: "SPD",
+        color: "#00aaff",
+        yOffset: 70,
+      },
+      {
+        type: "attack_boost",
+        label: "⚔️",
+        name: "ATK",
+        color: "#ffaa00",
+        yOffset: 105,
+      },
+      {
+        type: "special_buff",
+        label: "✨",
+        name: "SPECIAL",
+        color: "#9d00ff",
+        yOffset: 140,
+      },
+    ];
+
+    const buffYOffset = isMobile ? 60 : 100;
+    const buffSpacing = isMobile ? 25 : 35;
+    buffConfigs.forEach((config, index) => {
+      const text = this.scene.add
+        .text(
+          width - buttonPadding,
+          buffYOffset + (config.yOffset / 35) * buffSpacing,
+          "",
+          {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: `${Math.round(13 * scaleFactor)}px`,
+            color: config.color,
+            backgroundColor: "#000000",
+            padding: {
+              x: Math.round(10 * scaleFactor),
+              y: Math.round(5 * scaleFactor),
+            },
+            stroke: "#333333",
+            strokeThickness: Math.round(1 * scaleFactor),
+          }
+        )
+        .setOrigin(1, 0)
+        .setScrollFactor(0)
+        .setDepth(10000)
+        .setVisible(false);
+      this.buffTimerTexts.set(config.type, text);
+    });
   }
 
   createDebugOverlays(playerX: number, playerY: number) {
@@ -180,13 +307,11 @@ export class UIController {
         GAME_CONSTANTS.FRAME_OFFSET_BOTTOM) *
       GAME_CONSTANTS.SPRITE_SCALE;
     const offsetX =
-      ((GAME_CONSTANTS.FRAME_OFFSET_RIGHT -
-        GAME_CONSTANTS.FRAME_OFFSET_LEFT) /
+      ((GAME_CONSTANTS.FRAME_OFFSET_RIGHT - GAME_CONSTANTS.FRAME_OFFSET_LEFT) /
         2) *
       GAME_CONSTANTS.SPRITE_SCALE;
     const offsetY =
-      ((GAME_CONSTANTS.FRAME_OFFSET_BOTTOM -
-        GAME_CONSTANTS.FRAME_OFFSET_TOP) /
+      ((GAME_CONSTANTS.FRAME_OFFSET_BOTTOM - GAME_CONSTANTS.FRAME_OFFSET_TOP) /
         2) *
       GAME_CONSTANTS.SPRITE_SCALE;
 
@@ -206,10 +331,13 @@ export class UIController {
   }
 
   updateHealthBar() {
-    const barWidth = 150;
-    const barHeight = 20;
-    const barX = 16;
-    const barY = 160;
+    const { width, height } = this.scene.cameras.main;
+    const isMobile = width < 768;
+    const scaleFactor = isMobile ? 0.75 : 1;
+    const barWidth = 200 * scaleFactor;
+    const barHeight = 24 * scaleFactor;
+    const barX = width / 2 - barWidth / 2;
+    const barY = isMobile ? height - 140 : height - 60;
 
     this.playerHealthBarBg.clear();
     this.playerHealthBar.clear();
@@ -217,8 +345,17 @@ export class UIController {
     const health = this.playerController.getHealth();
     const maxHealth = this.playerController.getMaxHealth();
 
-    // Background
-    this.playerHealthBarBg.fillStyle(0x000000, 0.8);
+    // Outer border (dark)
+    this.playerHealthBarBg.fillStyle(0x000000, 1);
+    this.playerHealthBarBg.fillRect(
+      barX - 4,
+      barY - 4,
+      barWidth + 8,
+      barHeight + 8
+    );
+
+    // Middle border (lighter)
+    this.playerHealthBarBg.fillStyle(0x333333, 1);
     this.playerHealthBarBg.fillRect(
       barX - 2,
       barY - 2,
@@ -230,25 +367,130 @@ export class UIController {
     this.playerHealthBarBg.fillStyle(0x550000, 1);
     this.playerHealthBarBg.fillRect(barX, barY, barWidth, barHeight);
 
-    // Health bar with color based on percentage
+    // Health bar with color based on percentage and gradient effect
     const pct = Phaser.Math.Clamp(health / maxHealth, 0, 1);
     let color = 0x00ff00;
-    if (pct < 0.3) color = 0xff0000;
-    else if (pct < 0.6) color = 0xffaa00;
+    let glowColor = 0x00cc00;
+    if (pct < 0.3) {
+      color = 0xff0000;
+      glowColor = 0xcc0000;
+    } else if (pct < 0.6) {
+      color = 0xffaa00;
+      glowColor = 0xcc8800;
+    }
 
+    // Health bar fill
     this.playerHealthBar.fillStyle(color, 1);
     this.playerHealthBar.fillRect(barX, barY, barWidth * pct, barHeight);
 
-    // Update text
+    // Add a subtle highlight on top of the health bar
+    if (pct > 0) {
+      this.playerHealthBar.fillStyle(0xffffff, 0.3);
+      this.playerHealthBar.fillRect(
+        barX,
+        barY,
+        barWidth * pct,
+        barHeight * 0.3
+      );
+    }
+
+    // Update text with color based on health
+    const healthPct = health / maxHealth;
+    let textColor = "#ffffff";
+    if (healthPct < 0.3) textColor = "#ff5555";
+    else if (healthPct < 0.6) textColor = "#ffaa55";
+
+    this.playerHealthText.setColor(textColor);
     this.playerHealthText.setText(
       `HP: ${Math.max(0, Math.floor(health))}/${maxHealth}`
     );
   }
 
+  updateBuffTimers(
+    buffTimers: {
+      attackSpeed: number;
+      speedBoost: number;
+      attackBoost: number;
+      specialBuff: number;
+    },
+    torchTime: number = 0
+  ) {
+    const buffConfigs = [
+      {
+        type: "attack_speed",
+        key: "attackSpeed" as keyof typeof buffTimers,
+        label: "⚡",
+        name: "ATK SPD",
+        color: "#ff0000",
+      },
+      {
+        type: "speed_boost",
+        key: "speedBoost" as keyof typeof buffTimers,
+        label: "💨",
+        name: "SPD",
+        color: "#00aaff",
+      },
+      {
+        type: "attack_boost",
+        key: "attackBoost" as keyof typeof buffTimers,
+        label: "⚔️",
+        name: "ATK",
+        color: "#ffaa00",
+      },
+      {
+        type: "special_buff",
+        key: "specialBuff" as keyof typeof buffTimers,
+        label: "✨",
+        name: "SPECIAL",
+        color: "#9d00ff",
+      },
+      {
+        type: "torch",
+        key: "torch" as any,
+        label: "🔥",
+        name: "LIGHT",
+        color: "#ffaa00",
+      },
+    ];
+
+    buffConfigs.forEach((config) => {
+      const text = this.buffTimerTexts.get(config.type);
+      if (!text) return;
+
+      // Handle torch separately
+      let timer = 0;
+      if (config.type === "torch") {
+        timer = torchTime;
+      } else {
+        timer = buffTimers[config.key as keyof typeof buffTimers] || 0;
+      }
+
+      if (timer > 0) {
+        const seconds = Math.ceil(timer / 1000);
+        text.setText(`${config.label} ${config.name}: ${seconds}s`);
+        text.setVisible(true);
+
+        // Change color based on remaining time with smooth transitions
+        if (seconds <= 3) {
+          text.setColor("#ff0000");
+          text.setStroke("#cc0000", 2);
+        } else if (seconds <= 7) {
+          text.setColor("#ff8800");
+          text.setStroke("#cc6600", 1);
+        } else {
+          text.setColor(config.color);
+          text.setStroke("#333333", 1);
+        }
+      } else {
+        text.setVisible(false);
+      }
+    });
+  }
+
   updateLevel(level: number) {
     this.playerLevel = level;
     if (this.playerLevelText) {
-      this.playerLevelText.setText(`Level: ${level}`);
+      this.playerLevelText.setText(`LV. ${level}`);
     }
   }
 
@@ -267,6 +509,25 @@ export class UIController {
     if (this.treeDisplayButton) this.treeDisplayButton.setVisible(true);
   }
 
+  hideHUD() {
+    if (this.playerLevelText) this.playerLevelText.setVisible(false);
+    if (this.playerHealthBar) this.playerHealthBar.setVisible(false);
+    if (this.playerHealthBarBg) this.playerHealthBarBg.setVisible(false);
+    if (this.playerHealthText) this.playerHealthText.setVisible(false);
+    // Hide buff timers
+    this.buffTimerTexts.forEach((text) => {
+      if (text) text.setVisible(false);
+    });
+  }
+
+  showHUD() {
+    if (this.playerLevelText) this.playerLevelText.setVisible(true);
+    if (this.playerHealthBar) this.playerHealthBar.setVisible(true);
+    if (this.playerHealthBarBg) this.playerHealthBarBg.setVisible(true);
+    if (this.playerHealthText) this.playerHealthText.setVisible(true);
+    // Buff timers will be shown/hidden by updateBuffTimers based on active state
+  }
+
   private debugMode: boolean = false;
 
   toggleDebugMode(
@@ -276,17 +537,19 @@ export class UIController {
     this.debugMode = !this.debugMode;
     this.toggleDebugOverlays(this.debugMode);
 
-    wallColliders.getChildren().forEach((collider: Phaser.GameObjects.GameObject) => {
-      const rect = collider as Phaser.GameObjects.Rectangle;
-      if (this.debugMode) {
-        rect.setAlpha(0.5);
-        rect.setFillStyle(0xff0000, 0.5);
-        rect.setStrokeStyle(2, 0xff0000, 1);
-        rect.setVisible(true);
-      } else {
-        rect.setVisible(false);
-      }
-    });
+    wallColliders
+      .getChildren()
+      .forEach((collider: Phaser.GameObjects.GameObject) => {
+        const rect = collider as Phaser.GameObjects.Rectangle;
+        if (this.debugMode) {
+          rect.setAlpha(0.5);
+          rect.setFillStyle(0xff0000, 0.5);
+          rect.setStrokeStyle(2, 0xff0000, 1);
+          rect.setVisible(true);
+        } else {
+          rect.setVisible(false);
+        }
+      });
 
     console.log(`Debug mode: ${this.debugMode ? "ON" : "OFF"}`);
   }
@@ -309,5 +572,205 @@ export class UIController {
       GAME_CONSTANTS.SPRITE_SCALE;
     this.debugInnerBg.x = player.x + debugOffsetX;
     this.debugInnerBg.y = player.y + debugOffsetY;
+  }
+
+  private createMenuButton(width: number, height: number) {
+    // Position button with proper padding from edges (responsive)
+    const isMobile = width < 768;
+    const scaleFactor = isMobile ? 0.75 : 1;
+    const buttonSize = 80 * scaleFactor;
+    const padding = isMobile ? 15 : 20;
+    const buttonX = width - buttonSize / 2 - padding;
+    const buttonY = buttonSize / 2 + padding;
+
+    // Try to use menu image if available, otherwise use fallback
+    if (this.scene.textures.exists("menu-button")) {
+      this.menuButton = this.scene.add.image(buttonX, buttonY, "menu-button");
+      // Calculate scale to fit within buttonSize
+      const texture = this.scene.textures.get("menu-button");
+      const scale =
+        Math.min(
+          buttonSize / texture.source[0].width,
+          buttonSize / texture.source[0].height
+        ) * 0.8;
+      (this.menuButton as Phaser.GameObjects.Image).setScale(scale);
+      (this.menuButton as Phaser.GameObjects.Image).setOrigin(0.5, 0.5);
+    } else {
+      // Fallback: create a simple button
+      this.menuButton = this.scene.add.rectangle(
+        buttonX,
+        buttonY,
+        buttonSize,
+        buttonSize,
+        0x666666,
+        0.8
+      );
+      (this.menuButton as Phaser.GameObjects.Rectangle).setStrokeStyle(
+        2,
+        0xffffff
+      );
+      const isMobile = width < 768;
+      const scaleFactor = isMobile ? 0.75 : 1;
+      this.menuButtonText = this.scene.add
+        .text(buttonX, buttonY, "☰", {
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: `${Math.round(18 * scaleFactor)}px`,
+          color: "#ffffff",
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(10002);
+    }
+
+    this.menuButton.setScrollFactor(0);
+    this.menuButton.setDepth(10001);
+    this.menuButton.setOrigin(0.5, 0.5);
+    this.menuButton.setInteractive({ useHandCursor: true });
+
+    this.menuButton.on("pointerdown", () => {
+      if (this.isMenuOpen) {
+        this.closeMenuPopup();
+      } else {
+        this.showMenuPopup(width, height);
+      }
+    });
+  }
+
+  private showMenuPopup(width: number, height: number) {
+    if (this.isMenuOpen) return;
+    this.isMenuOpen = true;
+
+    const isMobile = width < 768;
+    const scaleFactor = isMobile ? 0.8 : 1;
+
+    // Dark overlay for popup
+    const popupOverlay = this.scene.add.rectangle(
+      0,
+      0,
+      width,
+      height,
+      0x000000,
+      0.5
+    );
+    popupOverlay.setOrigin(0, 0);
+    popupOverlay.setScrollFactor(0);
+    popupOverlay.setDepth(20010);
+    popupOverlay.setInteractive({ useHandCursor: false });
+    popupOverlay.on("pointerdown", () => {
+      this.closeMenuPopup();
+    });
+    this.menuPopupObjects.push(popupOverlay);
+
+    // Popup background (responsive)
+    const popupWidth = 400 * scaleFactor;
+    const popupHeight = 300 * scaleFactor;
+    const popupBg = this.scene.add.rectangle(
+      width / 2,
+      height / 2,
+      popupWidth,
+      popupHeight,
+      0x1a1a2e,
+      0.95
+    );
+    popupBg.setScrollFactor(0);
+    popupBg.setDepth(20011);
+    popupBg.setStrokeStyle(Math.round(4 * scaleFactor), 0x00ffcc);
+    this.menuPopupObjects.push(popupBg);
+
+    // Popup title (responsive)
+    const popupTitle = this.scene.add
+      .text(width / 2, height / 2 - 100 * scaleFactor, "MENU", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: `${Math.round(32 * scaleFactor)}px`,
+        color: "#00ffcc",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20012);
+    this.menuPopupObjects.push(popupTitle);
+
+    // Return to Game button (responsive)
+    const returnButton = this.scene.add
+      .text(width / 2, height / 2 - 30 * scaleFactor, "Return to Game", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        color: "#ffffff",
+        backgroundColor: "#000000",
+        padding: {
+          x: Math.round(20 * scaleFactor),
+          y: Math.round(10 * scaleFactor),
+        },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20012)
+      .setInteractive({ useHandCursor: true });
+    returnButton.on("pointerdown", () => {
+      this.closeMenuPopup();
+    });
+    this.menuPopupObjects.push(returnButton);
+
+    // Tutorial button (responsive)
+    const tutorialButton = this.scene.add
+      .text(width / 2, height / 2 + 30 * scaleFactor, "Tutorial", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        color: "#ffffff",
+        backgroundColor: "#000000",
+        padding: {
+          x: Math.round(20 * scaleFactor),
+          y: Math.round(10 * scaleFactor),
+        },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20012)
+      .setInteractive({ useHandCursor: true });
+    tutorialButton.on("pointerdown", () => {
+      // Dispatch custom event to show tutorial
+      const event = new CustomEvent("show-tutorial");
+      window.dispatchEvent(event);
+      this.closeMenuPopup();
+    });
+    this.menuPopupObjects.push(tutorialButton);
+
+    // Exit button (responsive)
+    const exitButton = this.scene.add
+      .text(width / 2, height / 2 + 90 * scaleFactor, "Exit", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: `${Math.round(24 * scaleFactor)}px`,
+        color: "#ff0000",
+        backgroundColor: "#000000",
+        padding: {
+          x: Math.round(20 * scaleFactor),
+          y: Math.round(10 * scaleFactor),
+        },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20012)
+      .setInteractive({ useHandCursor: true });
+    exitButton.on("pointerdown", () => {
+      // Dispatch custom event to exit
+      const event = new CustomEvent("exit-game");
+      window.dispatchEvent(event);
+      this.closeMenuPopup();
+    });
+    this.menuPopupObjects.push(exitButton);
+  }
+
+  private closeMenuPopup() {
+    this.menuPopupObjects.forEach((obj) => {
+      if (obj && obj.active) {
+        try {
+          obj.destroy();
+        } catch (e) {
+          console.warn("Error destroying menu popup object:", e);
+        }
+      }
+    });
+    this.menuPopupObjects = [];
+    this.isMenuOpen = false;
   }
 }

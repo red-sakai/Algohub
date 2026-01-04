@@ -7,8 +7,6 @@ export class TorchController {
   private torchGlowSprites: Phaser.GameObjects.Sprite[] = [];
   private torchCount: number = 0;
   private torchTimeRemaining: number = 0;
-  private torchText: Phaser.GameObjects.Text;
-  private torchTimerText: Phaser.GameObjects.Text;
   private player: Phaser.Physics.Arcade.Sprite;
 
   constructor(
@@ -19,50 +17,64 @@ export class TorchController {
     this.scene = scene;
     this.torches = torches;
     this.player = player;
-
-    const { width } = scene.cameras.main;
-    this.torchText = scene.add
-      .text(width / 2, 20, "Torches: 0", {
-        fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "18px",
-        color: "#ffaa00",
-        backgroundColor: "#000000",
-        padding: { x: 12, y: 6 },
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(10000);
-
-    this.torchTimerText = scene.add
-      .text(width / 2, 55, "", {
-        fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "14px",
-        color: "#ffff00",
-        backgroundColor: "#000000",
-        padding: { x: 10, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(10000);
   }
 
-  createTorches(nodes: Array<{ x: number; y: number }>) {
-    if (!nodes.length) return;
+  createTorches(mapData: any, nodes: Array<{ x: number; y: number }>, mapScale: number) {
+    if (!mapData) return;
 
-    for (let i = 3; i < nodes.length; i += 4) {
-      const node = nodes[i];
-      const offsetX = Phaser.Math.Between(-20, 20);
-      const offsetY = Phaser.Math.Between(-20, 20);
+    const tileSize = mapData.tileSize;
 
-      const torch = this.torches.create(
-        node.x + offsetX,
-        node.y + offsetY,
-        "torch"
-      ) as Phaser.Physics.Arcade.Sprite;
+    // Create torches on floors layer (scattered across the map like collectibles)
+    const floorsLayer = mapData.layers.find(
+      (layer: {
+        name: string;
+        tiles: Array<{ x: number; y: number; id: string }>;
+      }) => layer.name === "floors"
+    );
+
+    let floorsTiles: Array<{ x: number; y: number; id: string }> = [];
+
+    if (floorsLayer?.tiles?.length > 0) {
+      floorsTiles = floorsLayer.tiles;
+    } else {
+      console.warn("Floors layer not found, using nodes as fallback");
+      if (!nodes.length) return;
+      floorsTiles = nodes.map((node, index) => ({
+        x: Math.floor(node.x / (tileSize * mapScale)),
+        y: Math.floor(node.y / (tileSize * mapScale)),
+        id: `node-${index}`,
+      }));
+    }
+
+    // Reduced torch spawn rate
+    const torchCount = Math.min(
+      Math.floor(floorsTiles.length / 30), // Reduced spawn rate
+      15 // Max 15 torches
+    );
+
+    const usedFloorTiles = new Set<string>();
+    let attempts = 0;
+    const maxAttempts = floorsTiles.length * 2;
+    let created = 0;
+
+    while (created < torchCount && attempts < maxAttempts) {
+      attempts++;
+
+      const randomTileIndex = Phaser.Math.Between(0, floorsTiles.length - 1);
+      const floorTile = floorsTiles[randomTileIndex];
+      const tileKey = `${floorTile.x}-${floorTile.y}`;
+
+      if (usedFloorTiles.has(tileKey)) continue;
+      usedFloorTiles.add(tileKey);
+
+      const torchX = (floorTile.x + 0.5) * tileSize * mapScale;
+      const torchY = (floorTile.y + 0.5) * tileSize * mapScale;
+
+      const torch = this.torches.create(torchX, torchY, "torch") as Phaser.Physics.Arcade.Sprite;
       torch.setScale(2);
       torch.setDepth(500);
 
-      const glow = this.scene.add.sprite(node.x + offsetX, node.y + offsetY, "torch");
+      const glow = this.scene.add.sprite(torchX, torchY, "torch");
       glow.setScale(3);
       glow.setDepth(499);
       glow.setAlpha(0.3);
@@ -78,7 +90,11 @@ export class TorchController {
         repeat: -1,
         ease: "Sine.easeInOut",
       });
+
+      created++;
     }
+
+    console.log(`Created ${created} torches scattered across the map`);
   }
 
   collectTorch(torch: Phaser.Physics.Arcade.Body | Phaser.Physics.Arcade.StaticBody | Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile): number {
@@ -99,11 +115,9 @@ export class TorchController {
       this.torchTimeRemaining >
       GAME_CONSTANTS.TORCH_DURATION * GAME_CONSTANTS.MAX_TORCHES
     ) {
-      this.torchTimeRemaining =
-        GAME_CONSTANTS.TORCH_DURATION * GAME_CONSTANTS.MAX_TORCHES;
+    this.torchTimeRemaining =
+      GAME_CONSTANTS.TORCH_DURATION * GAME_CONSTANTS.MAX_TORCHES;
     }
-
-    this.torchText.setText(`🔥 Torches: ${this.torchCount}`);
 
     const collectText = this.scene.add.text(
       this.player.x,
@@ -134,21 +148,12 @@ export class TorchController {
       if (this.torchTimeRemaining < 0) {
         this.torchTimeRemaining = 0;
       }
-
-      const secondsRemaining = Math.ceil(this.torchTimeRemaining / 1000);
-      this.torchTimerText.setText(`Light Time: ${secondsRemaining}s`);
-
-      if (secondsRemaining <= 3) {
-        this.torchTimerText.setColor("#ff0000");
-      } else if (secondsRemaining <= 7) {
-        this.torchTimerText.setColor("#ff8800");
-      } else {
-        this.torchTimerText.setColor("#ffff00");
-      }
-    } else {
-      this.torchTimerText.setText("");
     }
 
+    return this.torchTimeRemaining;
+  }
+  
+  getTorchTimeRemaining(): number {
     return this.torchTimeRemaining;
   }
 

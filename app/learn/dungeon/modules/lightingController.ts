@@ -37,7 +37,7 @@ export class LightingController {
 
     this.renderTexture.clear();
     this.darknessOverlay.clear();
-    this.darknessOverlay.fillStyle(0x000000, 0.1);
+    this.darknessOverlay.fillStyle(0x000000, 1);
     this.darknessOverlay.fillRect(0, 0, width, height);
 
     const playerScreenX = this.player.x - this.scene.cameras.main.scrollX;
@@ -51,7 +51,7 @@ export class LightingController {
     for (let i = steps; i >= 0; i--) {
       const ratio = i / steps;
       const radius = this.currentVisionRadius * ratio;
-      const alpha = 1 - ratio * 0.7;
+      const alpha = 1 - ratio * 0.5;
 
       this.lightMask.fillStyle(0x000000, alpha);
       this.lightMask.fillCircle(playerScreenX, playerScreenY, radius);

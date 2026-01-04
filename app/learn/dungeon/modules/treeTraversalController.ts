@@ -1,5 +1,4 @@
 import Phaser from "phaser";
-import { Pathfinding } from "./pathfinding";
 import { TreeBuilder } from "./treeBuilder";
 import { GAME_CONSTANTS } from "./constants";
 import type { TreeNode } from "./types";
@@ -15,6 +14,10 @@ export class TreeTraversalController {
   private originalCameraY: number = 0;
   private hideButtons: () => void;
   private showButtons: () => void;
+  private hideHUD: () => void;
+  private showHUD: () => void;
+  private hideMobileControls?: () => void;
+  private showMobileControls?: () => void;
 
   constructor(
     scene: Phaser.Scene,
@@ -22,7 +25,11 @@ export class TreeTraversalController {
     playerSpawnX: number,
     playerSpawnY: number,
     hideButtons: () => void,
-    showButtons: () => void
+    showButtons: () => void,
+    hideHUD: () => void,
+    showHUD: () => void,
+    hideMobileControls?: () => void,
+    showMobileControls?: () => void
   ) {
     this.scene = scene;
     this.player = player;
@@ -30,6 +37,10 @@ export class TreeTraversalController {
     this.playerSpawnY = playerSpawnY;
     this.hideButtons = hideButtons;
     this.showButtons = showButtons;
+    this.hideHUD = hideHUD;
+    this.showHUD = showHUD;
+    this.hideMobileControls = hideMobileControls;
+    this.showMobileControls = showMobileControls;
   }
 
   displayTraversedMap(
@@ -55,12 +66,14 @@ export class TreeTraversalController {
       // Clear any existing display
       this.hideTraversedMap();
 
-      // Hide buttons while map is displayed
+      // Hide buttons and HUD while map is displayed
       this.hideButtons();
+      this.hideHUD();
+      if (this.hideMobileControls) this.hideMobileControls();
 
-      // Filter out player spawn position (Door location)
+      // Filter out player spawn position (spawn location)
       const enemyNodesOnly = enemyTraversalData.filter((node) => {
-        if (!node || typeof node.x !== 'number' || typeof node.y !== 'number') {
+        if (!node || typeof node.x !== "number" || typeof node.y !== "number") {
           return false;
         }
         const distance = Math.sqrt(
@@ -76,44 +89,44 @@ export class TreeTraversalController {
         return;
       }
 
-    // Get map data to access floors layer for tree building and branch pathfinding
-    const mapData = this.scene.cache.json.get("tilemap");
-    let floorTileWorldPositions: Array<{
-      tileX: number;
-      tileY: number;
-      worldX: number;
-      worldY: number;
-    }> = [];
-    let tileSize = 64; // Default
+      // Get map data to access floors layer for tree building and branch pathfinding
+      const mapData = this.scene.cache.json.get("tilemap");
+      let floorTileWorldPositions: Array<{
+        tileX: number;
+        tileY: number;
+        worldX: number;
+        worldY: number;
+      }> = [];
+      let tileSize = 64; // Default
 
-    if (mapData) {
-      // Find the floors layer
-      const floorsLayer = mapData.layers.find(
-        (layer: {
-          name: string;
-          tiles: Array<{ x: number; y: number; id: string }>;
-        }) => layer.name === "floors"
-      );
-
-      if (floorsLayer && floorsLayer.tiles && floorsLayer.tiles.length > 0) {
-        tileSize = mapData.tileSize;
-        const floorsTiles = floorsLayer.tiles;
-
-        // Convert floor tile coordinates to world coordinates
-        floorTileWorldPositions = floorsTiles.map(
-          (tile: { x: number; y: number; id: string }) => ({
-            tileX: tile.x,
-            tileY: tile.y,
-            worldX:
-              tile.x * tileSize * GAME_CONSTANTS.MAP_SCALE +
-              (tileSize * GAME_CONSTANTS.MAP_SCALE) / 2,
-            worldY:
-              tile.y * tileSize * GAME_CONSTANTS.MAP_SCALE +
-              (tileSize * GAME_CONSTANTS.MAP_SCALE) / 2,
-          })
+      if (mapData) {
+        // Find the floors layer
+        const floorsLayer = mapData.layers.find(
+          (layer: {
+            name: string;
+            tiles: Array<{ x: number; y: number; id: string }>;
+          }) => layer.name === "floors"
         );
+
+        if (floorsLayer && floorsLayer.tiles && floorsLayer.tiles.length > 0) {
+          tileSize = mapData.tileSize;
+          const floorsTiles = floorsLayer.tiles;
+
+          // Convert floor tile coordinates to world coordinates
+          floorTileWorldPositions = floorsTiles.map(
+            (tile: { x: number; y: number; id: string }) => ({
+              tileX: tile.x,
+              tileY: tile.y,
+              worldX:
+                tile.x * tileSize * GAME_CONSTANTS.MAP_SCALE +
+                (tileSize * GAME_CONSTANTS.MAP_SCALE) / 2,
+              worldY:
+                tile.y * tileSize * GAME_CONSTANTS.MAP_SCALE +
+                (tileSize * GAME_CONSTANTS.MAP_SCALE) / 2,
+            })
+          );
+        }
       }
-    }
 
       // Build binary tree structure using floor pathfinding (nodes stay at enemy positions)
       const tree = TreeBuilder.buildBinaryTreeStructure(
@@ -128,46 +141,49 @@ export class TreeTraversalController {
         return;
       }
 
-    // Assign traversal order numbers
-    const orderCounter = { value: 1 };
-    TreeBuilder.assignTraversalOrder(tree, orderCounter);
+      // Assign traversal order numbers
+      const orderCounter = { value: 1 };
+      TreeBuilder.assignTraversalOrder(tree, orderCounter);
 
-      // Calculate bounds of all nodes to fit the entire tree in view
-      const bounds = this.calculateTreeBounds(tree);
-      if (!bounds) {
-        console.warn("Failed to calculate tree bounds");
-        this.showButtons(); // Restore buttons if bounds calculation fails
-        return;
-      }
-
-      // Save original camera state
+      // Save original camera state (but don't change it)
       this.originalCameraZoom = this.scene.cameras.main.zoom || 1;
       this.originalCameraX = this.scene.cameras.main.scrollX || 0;
       this.originalCameraY = this.scene.cameras.main.scrollY || 0;
 
-      // Stop camera from following player
+      // Stop camera from following player (but keep zoom the same)
       this.scene.cameras.main.stopFollow();
 
-      // Calculate zoom level to fit entire tree
-      const viewportWidth = width;
-      const viewportHeight = height;
-      const zoomX = viewportWidth / bounds.treeWidth;
-      const zoomY = viewportHeight / bounds.treeHeight;
-      const zoom = Math.min(zoomX, zoomY, 1.0); // Don't zoom in, only out
-
-      // Set camera to center on tree and zoom out
-      this.scene.cameras.main.setZoom(zoom);
-      this.scene.cameras.main.centerOn(bounds.centerX, bounds.centerY);
-
-      // Draw tree structure
+      // Draw tree structure in screen space (simple layout)
       try {
-        const graphics = this.scene.add.graphics();
-        graphics.setDepth(20001);
-        this.drawTree(tree, graphics, floorTileWorldPositions, tileSize, null, null);
-        this.traversalDisplayObjects.push(graphics);
+        // Add dimmed background overlay
+        const overlay = this.scene.add.rectangle(
+          0,
+          0,
+          width,
+          height,
+          0x000000,
+          0.7
+        );
+        overlay.setOrigin(0, 0);
+        overlay.setScrollFactor(0); // Screen space
+        overlay.setDepth(20000);
+        this.traversalDisplayObjects.push(overlay);
 
-        // Add UI elements
-        this.addTreeUI(width, height);
+        // Count total nodes in tree
+        const nodeCount = this.countTreeNodes(tree);
+
+        // Collect enemy levels in traversal order
+        const enemyLevels: number[] = [];
+        const collectLevels = (node: TreeNode | null) => {
+          if (!node) return;
+          collectLevels(node.left);
+          enemyLevels.push(node.node.level);
+          collectLevels(node.right);
+        };
+        collectLevels(tree);
+
+        this.drawSimpleTree(tree, width, height);
+        this.addTreeUI(width, height, nodeCount, enemyLevels);
       } catch (e) {
         console.error("Error drawing tree structure:", e);
         this.showButtons(); // Restore buttons on error
@@ -179,188 +195,200 @@ export class TreeTraversalController {
     }
   }
 
-  private calculateTreeBounds(tree: TreeNode | null): {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-    treeWidth: number;
-    treeHeight: number;
-    centerX: number;
-    centerY: number;
-  } | null {
-    if (!tree) return null;
-
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-
-    const calculateBounds = (node: TreeNode | null) => {
-      if (!node) return;
-      const x = node.node.x;
-      const y = node.node.y;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      calculateBounds(node.left);
-      calculateBounds(node.right);
-    };
-
-    calculateBounds(tree);
-
-    // Add padding around the tree
-    const padding = 200;
-    const treeWidth = maxX - minX + padding * 2;
-    const treeHeight = maxY - minY + padding * 2;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    return {
-      minX,
-      maxX,
-      minY,
-      maxY,
-      treeWidth,
-      treeHeight,
-      centerX,
-      centerY,
-    };
+  private getTreeHeight(node: TreeNode | null): number {
+    if (!node) return 0;
+    return (
+      1 +
+      Math.max(this.getTreeHeight(node.left), this.getTreeHeight(node.right))
+    );
   }
 
-  private drawTree(
-    node: TreeNode | null,
-    graphics: Phaser.GameObjects.Graphics,
-    floorTileWorldPositions: Array<{
-      tileX: number;
-      tileY: number;
-      worldX: number;
-      worldY: number;
-    }>,
-    tileSize: number,
-    parentX: number | null = null,
-    parentY: number | null = null
+  private countTreeNodes(node: TreeNode | null): number {
+    if (!node) return 0;
+    return 1 + this.countTreeNodes(node.left) + this.countTreeNodes(node.right);
+  }
+
+  private drawSimpleTree(
+    tree: TreeNode | null,
+    screenWidth: number,
+    screenHeight: number
   ) {
-    if (!node || !node.node) return;
+    if (!tree) return;
 
-    try {
-      const x = node.node.x;
-      const y = node.node.y;
+    const isMobile = screenWidth < 768;
+    const scaleFactor = isMobile ? 0.75 : 1;
+    const treeHeight = this.getTreeHeight(tree);
+    const nodeRadius = 22 * scaleFactor; // Responsive node radius
 
-      if (typeof x !== 'number' || typeof y !== 'number' || !isFinite(x) || !isFinite(y)) {
-        console.warn("Invalid node coordinates:", node.node);
-        return;
-      }
+    // Calculate vertical spacing and centering (responsive)
+    const topUIHeight = isMobile ? 80 : 120; // Title + tree size text
+    const bottomUIHeight = isMobile ? 100 : 140; // Legend + close button
+    const availableHeight = screenHeight - topUIHeight - bottomUIHeight;
 
-      // Draw connection to parent through floor tiles
-      if (parentX !== null && parentY !== null && isFinite(parentX) && isFinite(parentY)) {
-        try {
-          graphics.lineStyle(3, 0x00ffcc, 0.8);
-          const path = Pathfinding.findPathThroughFloors(
-            parentX,
-            parentY,
-            x,
-            y,
-            floorTileWorldPositions,
-            tileSize,
-            GAME_CONSTANTS.MAP_SCALE
-          );
+    // Calculate vertical spacing based on tree height (scale down by 0.85)
+    // Handle edge case where treeHeight is 1 (only root node)
+    const verticalSpacing =
+      treeHeight > 1 ? (availableHeight / (treeHeight - 1)) * 0.85 : 0; // -1 because we have treeHeight levels but treeHeight-1 gaps
 
-          if (path && path.length > 0) {
-            graphics.moveTo(path[0].x, path[0].y);
-            for (let i = 1; i < path.length; i++) {
-              graphics.lineTo(path[i].x, path[i].y);
-            }
-            graphics.strokePath();
-          } else {
-            // Fallback: draw direct line if no path found
-            graphics.moveTo(parentX, parentY);
-            graphics.lineTo(x, y);
-            graphics.strokePath();
-          }
-        } catch (e) {
-          console.warn("Error drawing tree connection:", e);
-        }
-      }
+    // Center the tree vertically
+    const treeTotalHeight =
+      treeHeight > 1 ? (treeHeight - 1) * verticalSpacing : 0;
+    const startY = topUIHeight + (availableHeight - treeTotalHeight) / 2;
 
-      // Draw left child
+    // Use padding to center the tree - leave equal space on both sides (responsive)
+    const horizontalPadding = isMobile ? 20 : 150; // Responsive padding
+    const treeLeftBound = horizontalPadding;
+    const treeRightBound = screenWidth - horizontalPadding;
+
+    // Calculate positions for each node in screen space
+    const nodePositions = new Map<TreeNode, { x: number; y: number }>();
+
+    const calculatePositions = (
+      node: TreeNode | null,
+      level: number,
+      leftBound: number,
+      rightBound: number
+    ) => {
+      if (!node) return;
+
+      const x = (leftBound + rightBound) / 2;
+      const y = startY + level * verticalSpacing;
+      nodePositions.set(node, { x, y });
+
       if (node.left) {
-        this.drawTree(node.left, graphics, floorTileWorldPositions, tileSize, x, y);
+        const mid = (leftBound + rightBound) / 2;
+        calculatePositions(node.left, level + 1, leftBound, mid);
       }
-
-      // Draw right child
       if (node.right) {
-        this.drawTree(node.right, graphics, floorTileWorldPositions, tileSize, x, y);
+        const mid = (leftBound + rightBound) / 2;
+        calculatePositions(node.right, level + 1, mid, rightBound);
+      }
+    };
+
+    calculatePositions(tree, 0, treeLeftBound, treeRightBound);
+
+    // Draw connections
+    const graphics = this.scene.add.graphics();
+    graphics.setDepth(20001);
+    graphics.setScrollFactor(0); // Screen space
+    graphics.lineStyle(3, 0x00ffcc, 0.8);
+
+    const drawConnections = (node: TreeNode | null) => {
+      if (!node) return;
+      const pos = nodePositions.get(node);
+      if (!pos) return;
+
+      if (node.left) {
+        const leftPos = nodePositions.get(node.left);
+        if (leftPos) {
+          graphics.moveTo(pos.x, pos.y);
+          graphics.lineTo(leftPos.x, leftPos.y);
+          graphics.strokePath();
+        }
+        drawConnections(node.left);
       }
 
-      // Draw node circle at actual world position
-      try {
-        const nodeCircle = this.scene.add.circle(x, y, 25, 0x00ffcc, 0.9);
-        nodeCircle.setDepth(20002);
-        this.traversalDisplayObjects.push(nodeCircle);
-
-        // Draw level number (large, in center)
-        const levelText = this.scene.add
-          .text(x, y, (node.node.level || 0).toString(), {
-            fontFamily: "'Pixelify Sans', monospace",
-            fontSize: "20px",
-            color: "#000000",
-          })
-          .setOrigin(0.5)
-          .setDepth(20003);
-        this.traversalDisplayObjects.push(levelText);
-
-        // Draw traversal order number (small, top-left of circle)
-        const orderText = this.scene.add
-          .text(x - 20, y - 20, (node.traversalOrder || 0).toString(), {
-            fontFamily: "'Pixelify Sans', monospace",
-            fontSize: "14px",
-            color: "#ffffff",
-            backgroundColor: "#000000",
-            padding: { x: 4, y: 2 },
-          })
-          .setOrigin(0.5)
-          .setDepth(20003);
-        this.traversalDisplayObjects.push(orderText);
-      } catch (e) {
-        console.warn("Error drawing tree node:", e);
+      if (node.right) {
+        const rightPos = nodePositions.get(node.right);
+        if (rightPos) {
+          graphics.moveTo(pos.x, pos.y);
+          graphics.lineTo(rightPos.x, rightPos.y);
+          graphics.strokePath();
+        }
+        drawConnections(node.right);
       }
-    } catch (error) {
-      console.error("Error in drawTree:", error);
-    }
+    };
+
+    drawConnections(tree);
+    this.traversalDisplayObjects.push(graphics);
+
+    // Draw nodes
+    nodePositions.forEach((pos, node) => {
+      // Draw node circle
+      const nodeCircle = this.scene.add.circle(
+        pos.x,
+        pos.y,
+        nodeRadius,
+        0x00ffcc,
+        0.9
+      );
+      nodeCircle.setDepth(20002);
+      nodeCircle.setScrollFactor(0); // Screen space
+      this.traversalDisplayObjects.push(nodeCircle);
+
+      // Draw level number (center) - responsive
+      const levelText = this.scene.add
+        .text(pos.x, pos.y, (node.node.level || 0).toString(), {
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: `${Math.round(18 * scaleFactor)}px`,
+          color: "#000000",
+          stroke: "#ffffff",
+          strokeThickness: Math.round(2 * scaleFactor),
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0) // Screen space
+        .setDepth(20003);
+      this.traversalDisplayObjects.push(levelText);
+
+      // Draw traversal order number (top-left) - responsive
+      const orderOffset = isMobile ? 15 : 20;
+      const orderText = this.scene.add
+        .text(pos.x - orderOffset, pos.y - orderOffset, (node.traversalOrder || 0).toString(), {
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: `${Math.round(14 * scaleFactor)}px`,
+          color: "#ffffff",
+          backgroundColor: "#000000",
+          padding: { x: Math.round(4 * scaleFactor), y: Math.round(2 * scaleFactor) },
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0) // Screen space
+        .setDepth(20003);
+      this.traversalDisplayObjects.push(orderText);
+    });
   }
 
-  private addTreeUI(width: number, height: number) {
-    // Title (screen space)
+  private addTreeUI(
+    width: number,
+    height: number,
+    nodeCount: number,
+    enemyLevels: number[]
+  ) {
+    const isMobile = width < 768;
+    const scaleFactor = isMobile ? 0.75 : 1;
+
+    // Title (screen space) - responsive
+    const titleY = isMobile ? 25 : 40;
     const title = this.scene.add
-      .text(width / 2, 80, "BINARY TREE - LEFT TO RIGHT TRAVERSAL", {
+      .text(width / 2, titleY, "BINARY TREE - LEFT TO RIGHT TRAVERSAL", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "28px",
+        fontSize: `${Math.round(32 * scaleFactor)}px`,
         color: "#00ffcc",
         align: "center",
         backgroundColor: "#000000",
-        padding: { x: 15, y: 8 },
+        padding: { x: Math.round(20 * scaleFactor), y: Math.round(10 * scaleFactor) },
+        stroke: "#00aacc",
+        strokeThickness: Math.round(2 * scaleFactor),
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(20001);
     this.traversalDisplayObjects.push(title);
 
-    // Legend (screen space)
-    const legendY = height - 120;
+    // Input numbers and length (screen space) - responsive
+    const legendY = isMobile ? height - 60 : height - 80;
+    const inputNumbers = enemyLevels.join(",");
     const legendText = this.scene.add
       .text(
         width / 2,
         legendY,
-        "Numbers in circles = Enemy Levels | Small numbers = Traversal Order",
+        `Nodes: ${inputNumbers} | Length: ${nodeCount}`,
         {
           fontFamily: "'Pixelify Sans', monospace",
-          fontSize: "14px",
+          fontSize: `${Math.round(18 * scaleFactor)}px`,
           color: "#ffffff",
           align: "center",
           backgroundColor: "#000000",
-          padding: { x: 10, y: 5 },
+          padding: { x: Math.round(15 * scaleFactor), y: Math.round(8 * scaleFactor) },
         }
       )
       .setOrigin(0.5)
@@ -368,14 +396,17 @@ export class TreeTraversalController {
       .setDepth(20001);
     this.traversalDisplayObjects.push(legendText);
 
-    // Close button (screen space)
+    // Close button (screen space) - responsive
+    const closeButtonY = isMobile ? height - 25 : height - 40;
     const closeButton = this.scene.add
-      .text(width / 2, height - 60, "Press SPACE to Close", {
+      .text(width / 2, closeButtonY, "Press SPACE to Close", {
         fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "18px",
+        fontSize: `${Math.round(24 * scaleFactor)}px`,
         color: "#00ffcc",
         backgroundColor: "#000000",
-        padding: { x: 15, y: 8 },
+        padding: { x: Math.round(20 * scaleFactor), y: Math.round(8 * scaleFactor) },
+        stroke: "#00aacc",
+        strokeThickness: Math.round(2 * scaleFactor),
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
@@ -411,24 +442,21 @@ export class TreeTraversalController {
       });
       this.traversalDisplayObjects = [];
 
-      // Restore camera
-      if (this.originalCameraZoom !== undefined && this.scene.cameras.main) {
+      // Restore camera (zoom should already be the same, but restore follow)
+      if (this.scene.cameras.main) {
         try {
-          this.scene.cameras.main.setZoom(this.originalCameraZoom);
           if (this.player && this.player.active) {
             this.scene.cameras.main.startFollow(this.player);
           }
-          this.scene.cameras.main.setScroll(
-            this.originalCameraX,
-            this.originalCameraY
-          );
         } catch (e) {
           console.warn("Error restoring camera:", e);
         }
       }
 
-      // Show buttons again
+      // Show buttons and HUD again
       this.showButtons();
+      this.showHUD();
+      if (this.showMobileControls) this.showMobileControls();
     } catch (error) {
       console.error("Error hiding traversed map:", error);
       // Try to show buttons anyway
