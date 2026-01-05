@@ -18,6 +18,8 @@ export class TreeTraversalController {
   private showHUD: () => void;
   private hideMobileControls?: () => void;
   private showMobileControls?: () => void;
+  private animationInProgress: boolean = false;
+  private animationTimeline?: Phaser.Tweens.Timeline;
 
   constructor(
     scene: Phaser.Scene,
@@ -349,6 +351,11 @@ export class TreeTraversalController {
         .setDepth(20003);
       this.traversalDisplayObjects.push(orderText);
     });
+
+    // Start traversal animation after a short delay
+    this.scene.time.delayedCall(500, () => {
+      this.animateTraversal(tree, nodePositions, nodeRadius);
+    });
   }
 
   private addTreeUI(
@@ -434,6 +441,13 @@ export class TreeTraversalController {
 
   hideTraversedMap() {
     try {
+      // Stop any ongoing animation
+      if (this.animationTimeline) {
+        this.animationTimeline.destroy();
+        this.animationTimeline = undefined;
+      }
+      this.animationInProgress = false;
+
       this.traversalDisplayObjects.forEach((obj) => {
         if (obj && obj.active) {
           try {
@@ -469,5 +483,128 @@ export class TreeTraversalController {
         console.error("Error showing buttons:", e);
       }
     }
+  }
+
+  /**
+   * Animates the traversal path through the tree
+   * Shows how the player traversed the dungeon in order
+   */
+  private animateTraversal(
+    tree: TreeNode | null,
+    nodePositions: Map<TreeNode, { x: number; y: number }>,
+    nodeRadius: number
+  ) {
+    if (!tree) return;
+
+    this.animationInProgress = true;
+
+    // Collect nodes in traversal order
+    const nodesInOrder: Array<{ node: TreeNode; pos: { x: number; y: number } }> = [];
+    const collectInOrder = (node: TreeNode | null) => {
+      if (!node) return;
+      collectInOrder(node.left);
+      const pos = nodePositions.get(node);
+      if (pos) {
+        nodesInOrder.push({ node, pos });
+      }
+      collectInOrder(node.right);
+    };
+    collectInOrder(tree);
+
+    if (nodesInOrder.length === 0) return;
+
+    // Create graphics for the animated path
+    const pathGraphics = this.scene.add.graphics();
+    pathGraphics.setDepth(20004);
+    pathGraphics.setScrollFactor(0);
+    this.traversalDisplayObjects.push(pathGraphics);
+
+    // Create a moving indicator (circle that travels along the path)
+    const indicator = this.scene.add.circle(
+      nodesInOrder[0].pos.x,
+      nodesInOrder[0].pos.y,
+      nodeRadius * 0.5,
+      0xffaa00,
+      0.8
+    );
+    indicator.setDepth(20005);
+    indicator.setScrollFactor(0);
+    this.traversalDisplayObjects.push(indicator);
+
+    // Create highlight circles for visited nodes
+    const visitedCircles = new Map<TreeNode, Phaser.GameObjects.Arc>();
+
+    let currentIndex = 0;
+
+    // Animation loop
+    const animateNextStep = () => {
+      if (currentIndex >= nodesInOrder.length) {
+        this.animationInProgress = false;
+        // Pulse the indicator at the last node
+        this.scene.tweens.add({
+          targets: indicator,
+          alpha: 0.3,
+          scale: 1.5,
+          duration: 500,
+          yoyo: true,
+          repeat: -1,
+        });
+        return;
+      }
+
+      const currentNodeData = nodesInOrder[currentIndex];
+      const { node, pos } = currentNodeData;
+
+      // Highlight current node with a glow effect
+      const highlightCircle = this.scene.add.circle(
+        pos.x,
+        pos.y,
+        nodeRadius,
+        0xffaa00,
+        0.5
+      );
+      highlightCircle.setDepth(20004);
+      highlightCircle.setScrollFactor(0);
+      this.traversalDisplayObjects.push(highlightCircle);
+      visitedCircles.set(node, highlightCircle);
+
+      // Pulse effect for the highlighted node
+      this.scene.tweens.add({
+        targets: highlightCircle,
+        alpha: { from: 0.7, to: 0.2 },
+        scale: { from: 1.2, to: 1 },
+        duration: 400,
+        ease: 'Sine.easeOut'
+      });
+
+      // Draw line from previous node to current node
+      if (currentIndex > 0) {
+        const prevPos = nodesInOrder[currentIndex - 1].pos;
+        
+        // Draw animated line
+        pathGraphics.lineStyle(4, 0xffaa00, 0.8);
+        pathGraphics.beginPath();
+        pathGraphics.moveTo(prevPos.x, prevPos.y);
+        pathGraphics.lineTo(pos.x, pos.y);
+        pathGraphics.strokePath();
+      }
+
+      // Move indicator to current node
+      this.scene.tweens.add({
+        targets: indicator,
+        x: pos.x,
+        y: pos.y,
+        duration: 400,
+        ease: 'Sine.easeInOut',
+        onComplete: () => {
+          currentIndex++;
+          // Continue animation after a short pause
+          this.scene.time.delayedCall(200, animateNextStep);
+        }
+      });
+    };
+
+    // Start the animation
+    animateNextStep();
   }
 }
