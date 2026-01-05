@@ -22,12 +22,16 @@ interface LayoutConfig {
   verticalSpacing: number;
   horizontalSpacing: number;
   depthSpacing: number; // Z-axis variation for visual depth
+  maxWidth: number; // Maximum horizontal extent
+  maxHeight: number; // Maximum vertical extent
 }
 
 const DEFAULT_LAYOUT: LayoutConfig = {
   verticalSpacing: 4,
   horizontalSpacing: 3.5,
-  depthSpacing: 0.5
+  depthSpacing: 0.5,
+  maxWidth: 22, // Playfield width boundary
+  maxHeight: 24  // Playfield height boundary
 };
 
 /**
@@ -62,28 +66,45 @@ function assignPositions(
   parentX: number = 0,
   depth: number = 0,
   isLeftChild: boolean = false,
-  config: LayoutConfig = DEFAULT_LAYOUT
+  config: LayoutConfig = DEFAULT_LAYOUT,
+  treeHeight: number = 0
 ): TreeNode3D | null {
   if (node === null) return null;
 
-  // Calculate this node's position
+  // Dynamic spacing that scales down for taller trees
+  const scaleFactor = treeHeight > 5 ? Math.pow(0.85, treeHeight - 5) : 1;
+  const adjustedHSpacing = config.horizontalSpacing * scaleFactor;
+  // Moderate vertical scaling
+  const adjustedVSpacing = config.verticalSpacing * Math.min(1, 24 / (treeHeight * 3.5));
+  
+  // Calculate this node's position with improved spacing
   const horizontalOffset = depth === 0 
     ? 0 
-    : config.horizontalSpacing * Math.pow(0.75, depth) * (isLeftChild ? -1 : 1);
+    : adjustedHSpacing * Math.pow(0.7, depth) * (isLeftChild ? -1 : 1);
   
-  const x = parentX + horizontalOffset;
-  const y = -depth * config.verticalSpacing; // Negative Y = down
+  let x = parentX + horizontalOffset;
+  let y = -depth * adjustedVSpacing; // Negative Y = down
   const z = Math.sin(depth * 0.5) * config.depthSpacing; // Slight depth variation
+
+  // Clamp positions to playfield bounds
+  const halfMaxWidth = config.maxWidth / 2;
+  const halfMaxHeight = config.maxHeight / 2;
+  x = Math.max(-halfMaxWidth, Math.min(halfMaxWidth, x));
+  y = Math.max(-halfMaxHeight, Math.min(halfMaxHeight, y));
+
+  // Calculate node scale based on tree height (smaller nodes for bigger trees)
+  const nodeScale = treeHeight > 7 ? Math.max(0.5, 1 - (treeHeight - 7) * 0.08) : 1;
 
   // Create extended node with position
   const treeNode: TreeNode3D = {
     value: node.value,
     nodeId: node.nodeId,
-    left: assignPositions(node.left, x, depth + 1, true, config),
-    right: assignPositions(node.right, x, depth + 1, false, config),
+    left: assignPositions(node.left, x, depth + 1, true, config, treeHeight),
+    right: assignPositions(node.right, x, depth + 1, false, config, treeHeight),
     worldPosition: { x, y, z },
     depth,
-    horizontalOffset
+    horizontalOffset,
+    nodeScale
   };
 
   return treeNode;
@@ -98,7 +119,9 @@ export function convertTo3DTree(
   config: Partial<LayoutConfig> = {}
 ): TreeNode3D | null {
   const finalConfig = { ...DEFAULT_LAYOUT, ...config };
-  return assignPositions(root, 0, 0, false, finalConfig);
+  // Calculate tree height first for adaptive scaling
+  const height = getTreeHeight(root);
+  return assignPositions(root, 0, 0, false, finalConfig, height);
 }
 
 // ============================================================================

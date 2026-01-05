@@ -5,7 +5,8 @@
  * Educational 3D arcade game for teaching tree traversal algorithms
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { buildBST } from '@/lib/pinball/treeAlgorithms';
 import { convertTo3DTree, createTraversalResult } from '@/lib/pinball/positioningEngine';
 import { PinballAnimator, NodeVisualStateManager } from '@/lib/pinball/animationController';
@@ -21,6 +22,7 @@ import { soundEffects } from '@/lib/audio/soundEffects';
 import { backgroundMusic } from '@/lib/audio/backgroundMusic';
 
 export default function PinballGamePage() {
+  const router = useRouter();
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -145,6 +147,13 @@ export default function PinballGamePage() {
       return;
     }
 
+    // Prevent too many nodes to avoid overflow
+    const MAX_NODES = 15;
+    if (values.length > MAX_NODES) {
+      alert(`Too many nodes! Maximum is ${MAX_NODES} nodes to ensure proper visualization. Please reduce the number of inputs.`);
+      return;
+    }
+
     // Build BST using pure algorithm
     const bstRoot = buildBST(values);
     
@@ -240,6 +249,7 @@ export default function PinballGamePage() {
 
   const startAnimationLoop = () => {
     lastTimeRef.current = performance.now();
+    let frameCount = 0;
     
     const animate = (currentTime: number) => {
       const deltaTime = (currentTime - lastTimeRef.current) / 1000;
@@ -251,11 +261,15 @@ export default function PinballGamePage() {
       // Update visual states
       visualStateManagerRef.current.update(deltaTime);
 
-      // Update game state
-      setGameState(prev => ({
-        ...prev,
-        pinball: animatorRef.current.getState()
-      }));
+      // Throttle state updates to every 2 frames (~30fps)
+      frameCount++;
+      if (frameCount % 2 === 0) {
+        // Update game state
+        setGameState(prev => ({
+          ...prev,
+          pinball: animatorRef.current.getState()
+        }));
+      }
 
       const currentState = animatorRef.current.getState();
 
@@ -378,12 +392,12 @@ export default function PinballGamePage() {
       </div>
       
       {/* Floating casino elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
         <div className="casino-symbols"></div>
       </div>
       
       {/* Diamond pattern background */}
-      <div className="absolute inset-0 pointer-events-none opacity-5" style={{
+      <div className="absolute inset-0 pointer-events-none opacity-10" style={{
         backgroundImage: `
           repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,215,0,0.3) 35px, rgba(255,215,0,0.3) 70px),
           repeating-linear-gradient(-45deg, transparent, transparent 35px, rgba(255,0,128,0.3) 35px, rgba(255,0,128,0.3) 70px)
@@ -392,13 +406,13 @@ export default function PinballGamePage() {
       }} />
       
       {/* Spotlight effects */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-yellow-500/15 rounded-full blur-[120px] animate-pulse pointer-events-none" />
-      <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-red-500/15 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
-      <div className="absolute bottom-0 left-1/3 w-[600px] h-[600px] bg-purple-500/15 rounded-full blur-[130px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
-      <div className="absolute bottom-0 right-1/3 w-[600px] h-[600px] bg-cyan-500/15 rounded-full blur-[130px] animate-pulse pointer-events-none" style={{ animationDelay: '3s' }} />
+      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-yellow-500/25 rounded-full blur-[120px] animate-pulse pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-red-500/25 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
+      <div className="absolute bottom-0 left-1/3 w-[600px] h-[600px] bg-purple-500/25 rounded-full blur-[130px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
+      <div className="absolute bottom-0 right-1/3 w-[600px] h-[600px] bg-cyan-500/25 rounded-full blur-[130px] animate-pulse pointer-events-none" style={{ animationDelay: '3s' }} />
       
       {/* Velvet texture overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{
+      <div className="absolute inset-0 pointer-events-none opacity-[0.08]" style={{
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px)'
       }} />
       
@@ -445,8 +459,23 @@ export default function PinballGamePage() {
       `}</style>
       
       {/* Top Bar - Sleek Gaming Header */}
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden z-50">
         <div className="p-4 sm:p-6 text-center bg-gradient-to-r from-slate-900/60 via-purple-900/60 to-slate-900/60 backdrop-blur-xl border-b border-purple-500/20 relative">
+          {/* Back button */}
+          <button
+            onClick={() => {
+              console.log('Back button clicked!');
+              router.push('/learn');
+            }}
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-[9999] flex items-center gap-2 px-4 py-2 bg-slate-800/90 hover:bg-slate-700 text-white rounded-lg font-semibold transition-all border-2 border-slate-600 hover:border-slate-400 shadow-lg hover:scale-105 active:scale-95 cursor-pointer"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+            </svg>
+            <span className="hidden sm:inline">Back</span>
+          </button>
+
           {/* Subtle glow effect */}
           <div className="absolute inset-0 bg-gradient-to-b from-purple-500/5 to-transparent pointer-events-none" />
           
@@ -555,6 +584,7 @@ export default function PinballGamePage() {
                 <p className="font-semibold"><span className="text-green-400">• Balanced:</span> <span className="text-white">50,30,70,20,40,60,80</span></p>
                 <p className="font-semibold"><span className="text-yellow-400">• Left-heavy:</span> <span className="text-white">10,5,15,3,7</span></p>
                 <p className="font-semibold"><span className="text-red-400">• Sequential:</span> <span className="text-white">1,2,3,4,5,6,7</span></p>
+                <p className="font-semibold text-amber-300 mt-3">⚠️ Maximum 15 nodes for optimal visualization</p>
               </div>
               </div>
             </div>

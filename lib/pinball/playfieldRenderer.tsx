@@ -88,7 +88,7 @@ export function ArcadeCabinetFrame() {
       <group position={[0, 0, -2.9]}>
         {/* Large center circle (arcade coin slot style) */}
         <mesh position={[0, 0, 0]}>
-          <circleGeometry args={[8, 64]} />
+          <circleGeometry args={[8, 32]} />
           <meshStandardMaterial
             color="#2a1a4a"
             roughness={0.5}
@@ -101,7 +101,7 @@ export function ArcadeCabinetFrame() {
         {/* Concentric rings */}
         {[5, 6, 7].map((radius, i) => (
           <mesh key={`ring-${i}`} position={[0, 0, 0.01]}>
-            <ringGeometry args={[radius, radius + 0.2, 64]} />
+            <ringGeometry args={[radius, radius + 0.2, 32]} />
             <meshBasicMaterial
               color={i === 1 ? "#00ffff" : "#ff00ff"}
               transparent
@@ -200,10 +200,15 @@ export function ArcadeCabinetFrame() {
 // TEXTURED PLAYFIELD
 // ============================================================================
 
-export function TexturedPlayfield() {
+export const TexturedPlayfield = React.memo(() => {
   const meshRef = useRef<THREE.Mesh>(null);
+  const lastUpdate = useRef(0);
 
   useFrame((state) => {
+    // Throttle to ~30fps for subtle effects
+    if (state.clock.elapsedTime - lastUpdate.current < 0.033) return;
+    lastUpdate.current = state.clock.elapsedTime;
+
     // Animated scanlines and subtle pulse
     if (meshRef.current) {
       const material = meshRef.current.material as THREE.MeshStandardMaterial;
@@ -261,7 +266,7 @@ export function TexturedPlayfield() {
         {/* Circuit nodes (decorative dots) */}
         {[-6, 0, 6].map((x) => [-6, 0, 6].map((y) => (
           <mesh key={`node-${x}-${y}`} position={[x, y, 0.01]}>
-            <circleGeometry args={[0.15, 16]} />
+            <circleGeometry args={[0.15, 8]} />
             <meshBasicMaterial 
               color="#ffff00" 
               transparent 
@@ -278,7 +283,7 @@ export function TexturedPlayfield() {
       <PinballDecorations />
     </group>
   );
-}
+});
 
 // ============================================================================
 // STARFIELD EFFECT
@@ -286,6 +291,7 @@ export function TexturedPlayfield() {
 
 function Stars({ count = 300 }: { count?: number }) {
   const pointsRef = useRef<THREE.Points>(null);
+  const lastUpdate = useRef(0);
 
   const positions = React.useMemo(() => {
     const arr = new Float32Array(count * 3);
@@ -317,6 +323,10 @@ function Stars({ count = 300 }: { count?: number }) {
   }, [count]);
 
   useFrame((state) => {
+    // Throttle to ~20fps for star effects
+    if (state.clock.elapsedTime - lastUpdate.current < 0.05) return;
+    lastUpdate.current = state.clock.elapsedTime;
+
     if (pointsRef.current) {
       // Slow rotation for depth
       pointsRef.current.rotation.z = state.clock.elapsedTime * 0.015;

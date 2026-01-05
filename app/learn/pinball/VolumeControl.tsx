@@ -44,7 +44,7 @@ export default function VolumeControl() {
   };
 
   return (
-    <div className="fixed top-4 left-4 z-40">
+    <div className="fixed bottom-4 left-4 z-40">
       <div className="relative">
         {/* Volume Button */}
         <button
@@ -58,7 +58,7 @@ export default function VolumeControl() {
 
         {/* Volume Slider Panel */}
         {showSlider && (
-          <div className="absolute top-14 left-0 bg-gradient-to-br from-slate-900/95 to-purple-900/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border-2 border-purple-500/30 w-64">
+          <div className="absolute bottom-14 left-0 bg-gradient-to-br from-slate-900/95 to-purple-900/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border-2 border-purple-500/30 w-64">
             <div className="flex items-center justify-between mb-3">
               <span className="text-white font-semibold text-sm">Volume</span>
               <span className="text-purple-300 text-sm font-mono">{volume}%</span>
