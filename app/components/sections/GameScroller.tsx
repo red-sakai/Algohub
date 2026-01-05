@@ -559,7 +559,15 @@ export default function GameScroller() {
                     </h2>
                   ) : (
                     <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">
-                      {g.title}
+                      <span
+                        className={
+                          g.id === "sorting-sprint"
+                            ? "inline-block -rotate-1 italic tracking-wide drop-shadow-sm"
+                            : undefined
+                        }
+                      >
+                        {g.title}
+                      </span>
                     </h2>
                   )}
                   <p className="mx-auto mt-3 max-w-prose text-base text-white/90 sm:text-lg md:text-xl">
@@ -633,8 +641,22 @@ export default function GameScroller() {
             <p className="text-[0.55rem] font-semibold uppercase tracking-[0.45em] text-white/70">
               Featured Game
             </p>
-            <h2 className="text-4xl font-black sm:text-5xl md:text-6xl">
-              {activeGame.title}
+            <h2
+              className={`text-4xl font-black sm:text-5xl md:text-6xl ${
+                activeGame.id === "sorting-sprint"
+                  ? ""
+                  : ""
+              }`}
+            >
+              <span
+                className={
+                  activeGame.id === "sorting-sprint"
+                    ? "inline-block -rotate-1 italic tracking-wide drop-shadow-sm"
+                    : undefined
+                }
+              >
+                {activeGame.title}
+              </span>
             </h2>
             <p className="mx-auto max-w-3xl text-base text-white/85 sm:text-lg md:text-xl">
               {activeGame.desc}
@@ -705,7 +727,17 @@ export default function GameScroller() {
                   <p className="mt-3 text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">
                     {idx === active ? "Selected" : "Preview"}
                   </p>
-                  <h3 className="mt-2 text-2xl font-black">{game.title}</h3>
+                  <h3 className="mt-2 text-2xl font-black">
+                    <span
+                      className={
+                        game.id === "sorting-sprint"
+                          ? "inline-block -rotate-1 italic tracking-wide drop-shadow-sm"
+                          : undefined
+                      }
+                    >
+                      {game.title}
+                    </span>
+                  </h3>
                   <p className="mt-2 text-sm text-white/80">{game.desc}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-white/65">
                     <span>OST</span>
