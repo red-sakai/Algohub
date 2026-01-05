@@ -26,7 +26,7 @@ export default function KeyboardShortcutsPanel() {
     return (
       <button
         onClick={() => setShowPanel(true)}
-        className="fixed bottom-4 left-4 z-40 w-12 h-12 bg-purple-600/80 hover:bg-purple-600 backdrop-blur-md rounded-full text-white text-xl font-bold shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-110"
+        className="fixed top-4 right-4 z-40 w-12 h-12 bg-purple-600/80 hover:bg-purple-600 backdrop-blur-md rounded-full text-white text-xl font-bold shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-110"
         title="Show keyboard shortcuts"
       >
         ⌨️
@@ -47,7 +47,7 @@ export default function KeyboardShortcutsPanel() {
   ];
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 bg-gradient-to-br from-slate-900/95 to-purple-900/95 backdrop-blur-md rounded-2xl p-6 shadow-2xl border-2 border-purple-500/30 w-80">
+    <div className="fixed top-4 right-4 z-40 bg-gradient-to-br from-slate-900/95 to-purple-900/95 backdrop-blur-md rounded-2xl p-6 shadow-2xl border-2 border-purple-500/30 w-80">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-xl font-bold text-white flex items-center gap-2">
           ⌨️ Keyboard Shortcuts

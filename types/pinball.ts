@@ -26,6 +26,7 @@ export interface TreeNode3D extends Omit<BSTNode, 'left' | 'right'> {
   worldPosition: { x: number; y: number; z: number };
   depth: number; // Distance from root (for layout)
   horizontalOffset: number; // Position in level
+  nodeScale?: number; // Scale factor for rendering (smaller nodes in larger trees)
   left: TreeNode3D | null;
   right: TreeNode3D | null;
 }

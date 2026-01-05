@@ -54,7 +54,7 @@ const GAMES: Game[] = [
       title: "Arcade Vibes",
       src: "/game-selector-audio/Pokemon FireRed - Route 1.mp3",
     },
-    cover: "/images/game-covers/pinball.png",
+    cover: "/game-selector-bg/pinball.gif",
   },
   {
     id: "dungeon-explorer",
@@ -537,6 +537,13 @@ export default function GameScroller() {
                   playsInline
                   preload="auto"
                 />
+              ) : g.id === "pinball" ? (
+                <img
+                  className="absolute inset-0 h-full w-full object-cover"
+                  src="/game-selector-bg/pinball.gif"
+                  alt="Pinball background"
+                  style={{ zIndex: 0 }}
+                />
               ) : g.id === "dp-dungeon" ? (
                 <Image
                   className="absolute inset-0 h-full w-full object-cover"
@@ -712,13 +719,21 @@ export default function GameScroller() {
                     className="relative overflow-hidden rounded-xl border border-white/15 bg-black/40"
                     style={{ aspectRatio: "16 / 10" }}
                   >
-                    <Image
-                      src={game.cover}
-                      alt={`${game.title} cover art`}
-                      fill
-                      className="object-contain"
-                      sizes="(min-width: 1024px) 380px, 60vw"
-                    />
+                    {game.cover.endsWith('.gif') ? (
+                      <img
+                        src={game.cover}
+                        alt={`${game.title} cover art`}
+                        className="absolute inset-0 w-full h-full object-contain"
+                      />
+                    ) : (
+                      <Image
+                        src={game.cover}
+                        alt={`${game.title} cover art`}
+                        fill
+                        className="object-contain"
+                        sizes="(min-width: 1024px) 380px, 60vw"
+                      />
+                    )}
                   </div>
                   <p className="mt-3 text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-white/60">
                     {idx === active ? "Selected" : "Preview"}
