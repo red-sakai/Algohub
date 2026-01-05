@@ -499,7 +499,10 @@ export class TreeTraversalController {
     this.animationInProgress = true;
 
     // Collect nodes in traversal order
-    const nodesInOrder: Array<{ node: TreeNode; pos: { x: number; y: number } }> = [];
+    const nodesInOrder: Array<{
+      node: TreeNode;
+      pos: { x: number; y: number };
+    }> = [];
     const collectInOrder = (node: TreeNode | null) => {
       if (!node) return;
       collectInOrder(node.left);
@@ -574,13 +577,13 @@ export class TreeTraversalController {
         alpha: { from: 0.7, to: 0.2 },
         scale: { from: 1.2, to: 1 },
         duration: 400,
-        ease: 'Sine.easeOut'
+        ease: "Sine.easeOut",
       });
 
       // Draw line from previous node to current node
       if (currentIndex > 0) {
         const prevPos = nodesInOrder[currentIndex - 1].pos;
-        
+
         // Draw animated line
         pathGraphics.lineStyle(4, 0xffaa00, 0.8);
         pathGraphics.beginPath();
@@ -595,12 +598,12 @@ export class TreeTraversalController {
         x: pos.x,
         y: pos.y,
         duration: 400,
-        ease: 'Sine.easeInOut',
+        ease: "Sine.easeInOut",
         onComplete: () => {
           currentIndex++;
           // Continue animation after a short pause
           this.scene.time.delayedCall(200, animateNextStep);
-        }
+        },
       });
     };
 
