@@ -54,7 +54,12 @@ export default function PinballScene3D({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Canvas 
         shadows
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
+        gl={{ 
+          antialias: true, 
+          powerPreference: "high-performance"
+        }}
+        performance={{ min: 0.5 }}
         onPointerMissed={() => {
         // Reset cursor when clicking outside objects
         document.body.style.cursor = 'default';
@@ -281,17 +286,19 @@ interface TreeBumpersProps {
   visualStateManager: NodeVisualStateManager;
 }
 
-function TreeBumpers({ tree, visualStateManager }: TreeBumpersProps) {
-  const nodes: TreeNode3D[] = [];
-
-  function collectNodes(node: TreeNode3D | null) {
-    if (node === null) return;
-    nodes.push(node);
-    if (node.left) collectNodes(node.left as TreeNode3D);
-    if (node.right) collectNodes(node.right as TreeNode3D);
-  }
-
-  collectNodes(tree);
+const TreeBumpers = React.memo(({ tree, visualStateManager }: TreeBumpersProps) => {
+  // Memoize node collection
+  const nodes = useMemo(() => {
+    const nodeList: TreeNode3D[] = [];
+    function collectNodes(node: TreeNode3D | null) {
+      if (node === null) return;
+      nodeList.push(node);
+      if (node.left) collectNodes(node.left as TreeNode3D);
+      if (node.right) collectNodes(node.right as TreeNode3D);
+    }
+    collectNodes(tree);
+    return nodeList;
+  }, [tree]);
 
   return (
     <>
@@ -304,17 +311,22 @@ function TreeBumpers({ tree, visualStateManager }: TreeBumpersProps) {
       ))}
     </>
   );
-}
+});
 
-function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualStateManager: NodeVisualStateManager }) {
+const ArcadeBumper = React.memo(({ node, visualStateManager }: { node: TreeNode3D; visualStateManager: NodeVisualStateManager }) => {
   const coreRef = useRef<THREE.Mesh>(null);
   const rimRef = useRef<THREE.Mesh>(null);
   const innerRingRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.PointLight>(null);
   const [showParticles, setShowParticles] = useState(false);
   const prevActiveRef = useRef(false);
+  const lastUpdate = useRef(0);
 
   useFrame((state) => {
+    // Throttle to ~60fps
+    if (state.clock.elapsedTime - lastUpdate.current < 0.016) return;
+    lastUpdate.current = state.clock.elapsedTime;
+
     const visualState = visualStateManager.getNodeState(node.nodeId);
     if (!visualState) return;
 
@@ -336,13 +348,13 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       coreRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.2);
     }
 
-    // Rotate rim
-    if (rimRef.current) {
+    // Rotate rim (only if active or was visited)
+    if (rimRef.current && (visualState.isActive || visualState.wasVisited)) {
       rimRef.current.rotation.z += 0.018;
     }
 
-    // Counter-rotate inner ring
-    if (innerRingRef.current) {
+    // Counter-rotate inner ring (only if active or was visited)
+    if (innerRingRef.current && (visualState.isActive || visualState.wasVisited)) {
       innerRingRef.current.rotation.z -= 0.025;
     }
   });
@@ -354,11 +366,19 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
   const baseColor = wasVisited ? '#44ff44' : '#ff2222';
   const emissiveColor = isActive ? '#ffaa00' : (wasVisited ? '#22aa22' : '#aa0000');
 
+  // Scale node based on tree size
+  const nodeScale = node.nodeScale || 1;
+
+  // Memoize geometries to avoid recreating them
+  const rimGeometry = useMemo(() => new THREE.TorusGeometry(1.0, 0.25, 12, 24), []);
+  const coreGeometry = useMemo(() => new THREE.SphereGeometry(0.75, 16, 16), []);
+  const innerRingGeometry = useMemo(() => new THREE.TorusGeometry(0.65, 0.08, 8, 16), []);
+  const postGeometry = useMemo(() => new THREE.CylinderGeometry(0.2, 0.2, 0.25, 8), []);
+
   return (
-    <group position={[node.worldPosition.x, node.worldPosition.y, node.worldPosition.z]}>
+    <group position={[node.worldPosition.x, node.worldPosition.y, node.worldPosition.z]} scale={nodeScale}>
       {/* THICK OUTER RIM */}
-      <mesh ref={rimRef} castShadow receiveShadow>
-        <torusGeometry args={[1.0, 0.25, 16, 32]} />
+      <mesh ref={rimRef} castShadow receiveShadow geometry={rimGeometry}>
         <meshStandardMaterial
           color={baseColor}
           metalness={0.95}
@@ -369,8 +389,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </mesh>
 
       {/* INNER CORE (glowing center) */}
-      <mesh ref={coreRef} castShadow receiveShadow>
-        <sphereGeometry args={[0.75, 24, 24]} />
+      <mesh ref={coreRef} castShadow receiveShadow geometry={coreGeometry}>
         <meshStandardMaterial
           color={isActive ? '#ffff00' : (wasVisited ? '#88ff88' : '#ff6666')}
           metalness={0.85}
@@ -381,8 +400,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </mesh>
 
       {/* INNER ROTATING RING */}
-      <mesh ref={innerRingRef}>
-        <torusGeometry args={[0.65, 0.08, 12, 24]} />
+      <mesh ref={innerRingRef} geometry={innerRingGeometry}>
         <meshStandardMaterial
           color={isActive ? '#ffff00' : (wasVisited ? '#88ff88' : '#ff8888')}
           metalness={0.9}
@@ -393,12 +411,10 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </mesh>
 
       {/* TOP/BOTTOM POSTS */}
-      <mesh position={[0, 0, 0.7]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.25, 12]} />
+      <mesh position={[0, 0, 0.7]} castShadow geometry={postGeometry}>
         <meshStandardMaterial color="#555555" metalness={0.9} roughness={0.3} />
       </mesh>
-      <mesh position={[0, 0, -0.7]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.25, 12]} />
+      <mesh position={[0, 0, -0.7]} castShadow geometry={postGeometry}>
         <meshStandardMaterial color="#555555" metalness={0.9} roughness={0.3} />
       </mesh>
 
@@ -411,11 +427,11 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
         decay={2}
       />
       
-      {/* Particle burst on hit */}
+      {/* Particle burst on hit - reduced count for performance */}
       {showParticles && (
         <>
-          {[...Array(8)].map((_, i) => {
-            const angle = (i / 8) * Math.PI * 2;
+          {[...Array(6)].map((_, i) => {
+            const angle = (i / 6) * Math.PI * 2;
             const distance = 2 + Math.random();
             return (
               <mesh 
@@ -426,7 +442,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
                   (Math.random() - 0.5) * 2
                 ]}
               >
-                <sphereGeometry args={[0.15, 8, 8]} />
+                <sphereGeometry args={[0.15, 6, 6]} />
                 <meshBasicMaterial 
                   color={isActive ? '#ffff00' : '#44ff44'} 
                   transparent 
@@ -468,7 +484,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </Html>
     </group>
   );
-}
+});
 
 // ============================================================================
 // SPLINE RAILS (Glowing trajectory path)
