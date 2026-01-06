@@ -20,7 +20,7 @@ export class TreeTraversalController {
   private hideMobileControls?: () => void;
   private showMobileControls?: () => void;
   private animationInProgress: boolean = false;
-  private animationTimeline?: Phaser.Tweens.Timeline;
+  private animationTimeline?: Phaser.Tweens.Tween;
 
   constructor(
     scene: Phaser.Scene,
