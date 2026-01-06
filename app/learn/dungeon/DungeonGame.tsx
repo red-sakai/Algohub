@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
-import Image from "next/image";
 import { Pixelify_Sans } from "next/font/google";
 import { MapRenderer } from "./modules/mapRenderer";
 import { AnimationManager } from "./modules/animationManager";
@@ -17,7 +16,6 @@ import { TreeTraversalController } from "./modules/treeTraversalController";
 import { WisdomController } from "./modules/wisdomController";
 import { GAME_CONSTANTS } from "./modules/constants";
 import { UltScene } from "./scenes/UltScene";
-import { CharacterPicker } from "./components/CharacterPicker";
 import type { EnemyUnit } from "./modules/types";
 import { MobileControls, type VirtualInput } from "./modules/mobileControls";
 import { AudioController } from "./modules/audioController";
@@ -28,6 +26,14 @@ import {
   pauseGlobalAudio,
   resumeGlobalAudio,
 } from "./modules/globalAudioHelper";
+import { TitleScreen } from "./components/TitleScreen";
+import { LevelSelectionScreen } from "./components/LevelSelectionScreen";
+import { CharacterSelectionScreen } from "./components/CharacterSelectionScreen";
+import { TutorialContent } from "./components/TutorialContent";
+import {
+  validateLevelInput,
+  generateRandomLevels as generateLevels,
+} from "./utils/levelUtils";
 
 const pixelFont = Pixelify_Sans({
   weight: ["400", "500", "600", "700"],
@@ -1191,36 +1197,15 @@ export default function DungeonGame() {
   };
 
   const handleLevelInputSubmit = () => {
-    // Parse input: accept comma or space separated integers
-    const parsed = levelInput
-      .split(/[,\s]+/)
-      .map((s) => parseInt(s.trim(), 10))
-      .filter((n) => !isNaN(n) && n >= 1 && n <= 100);
+    const result = validateLevelInput(levelInput);
 
-    if (parsed.length < 10 || parsed.length > 12) {
-      alert(
-        "Please enter 10-12 integers between 1 and 100 (comma or space separated)"
-      );
-      return;
-    }
-
-    // Check for duplicates
-    const uniqueLevels = new Set(parsed);
-    if (uniqueLevels.size !== parsed.length) {
-      const duplicates = parsed.filter(
-        (value, index) => parsed.indexOf(value) !== index
-      );
-      const uniqueDuplicates = [...new Set(duplicates)];
-      alert(
-        `Duplicate levels detected: ${uniqueDuplicates.join(
-          ", "
-        )}\n\nPlease ensure all levels are unique.`
-      );
+    if (!result.success) {
+      alert(result.error);
       return;
     }
 
     // All checks passed
-    setEnemyLevels(parsed);
+    setEnemyLevels(result.levels!);
     setShowLevelInput(false);
     // Set loading state immediately when game is about to start
     setIsLoading(true);
@@ -1229,33 +1214,7 @@ export default function DungeonGame() {
   };
 
   const generateRandomLevels = () => {
-    // Randomly choose between 10, 11, or 12 enemies
-    const count = Math.floor(Math.random() * 3) + 10; // Generates 10, 11, or 12
-
-    // Generate unique random levels between 1 and 100
-    const usedLevels = new Set<number>();
-    const randomLevels: number[] = [];
-
-    // Generate unique random levels (max 100 attempts to prevent infinite loop)
-    let attempts = 0;
-    const maxAttempts = 100;
-
-    while (randomLevels.length < count && attempts < maxAttempts) {
-      const randomLevel = Math.floor(Math.random() * 100) + 1; // 1-100
-      if (!usedLevels.has(randomLevel)) {
-        usedLevels.add(randomLevel);
-        randomLevels.push(randomLevel);
-      }
-      attempts++;
-    }
-
-    // Shuffle the array for randomness
-    for (let i = randomLevels.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [randomLevels[i], randomLevels[j]] = [randomLevels[j], randomLevels[i]];
-    }
-
-    setLevelInput(randomLevels.join(", "));
+    setLevelInput(generateLevels());
   };
 
   useEffect(() => {
@@ -1445,240 +1404,28 @@ export default function DungeonGame() {
             }`}
           />
 
-          {showTitleScreen && (
-            <>
-              {/* Vignette effect */}
-              <div className="fixed inset-0 bg-linear-to-b from-black/40 via-transparent to-black/60 pointer-events-none -z-5" />
-              <div
-                className="fixed inset-0 pointer-events-none -z-5"
-                style={{
-                  background:
-                    "radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.5) 100%)",
-                }}
-              />
+          {showTitleScreen && <TitleScreen onClick={handleTitleClick} />}
 
-              {/* Animated glow orbs */}
-              <div
-                className="fixed top-20 left-20 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl animate-pulse pointer-events-none -z-5"
-                style={{ animationDuration: "4s" }}
-              />
-              <div
-                className="fixed bottom-20 right-20 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl animate-pulse pointer-events-none -z-5"
-                style={{ animationDuration: "5s", animationDelay: "1s" }}
-              />
-            </>
-          )}
-
-          {showTitleScreen ? (
-            // Title Screen
-            <div
-              className="flex flex-col items-center justify-center min-h-screen cursor-pointer relative z-10 px-4"
-              onClick={handleTitleClick}
-            >
-              <div className="flex flex-col items-center gap-4 sm:gap-8 w-full max-w-3xl">
-                <Image
-                  src="/sprite/title.png"
-                  alt="Node Quest"
-                  width={896}
-                  height={224}
-                  priority
-                  className="w-full h-auto drop-shadow-[0_0_40px_rgba(255,180,0,0.6)] transition-all duration-300 hover:drop-shadow-[0_0_60px_rgba(255,180,0,0.8)] hover:scale-105"
-                  style={{ imageRendering: "pixelated" }}
-                />
-                <p className="text-white text-base sm:text-xl md:text-2xl font-bold drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] bg-black/40 backdrop-blur-md px-4 sm:px-8 py-3 sm:py-4 rounded-lg border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(255,180,0,0.3)] animate-pulse text-center">
-                  Click anywhere to start
-                </p>
-              </div>
-            </div>
-          ) : (
+          {showTitleScreen ? // Title Screen component handles all rendering
+          null : (
             <>
               {showPicker ? (
-                <div
-                  className="fixed inset-0 flex items-center justify-center"
-                  style={{
-                    backgroundImage: "url('/sprite/screen.png')",
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    backgroundRepeat: "no-repeat",
-                  }}
-                >
-                  {/* Dark overlay to dim the background */}
-                  <div className="fixed inset-0 bg-black/60 z-0" />
-                  <div className="relative z-10 flex items-center justify-center w-full h-full">
-                    <CharacterPicker
-                      onSelect={handleCharacterSelect}
-                      currentCharacter={selectedCharacter}
-                    />
-                  </div>
-                </div>
+                <CharacterSelectionScreen
+                  onSelect={handleCharacterSelect}
+                  currentCharacter={selectedCharacter}
+                />
               ) : showLevelInput ? (
-                <>
-                  {/* Dark overlay to dim the background */}
-                  <div className="fixed inset-0 bg-black/60 z-0" />
-                  <div className="w-full max-w-2xl relative z-10 px-4 sm:px-6 flex flex-col gap-4 sm:gap-6">
-                    <div
-                      className="flex flex-col gap-4 sm:gap-8 bg-black/60 backdrop-blur-xl p-4 sm:p-6 md:p-10 border-4 shadow-[0_0_60px_rgba(120,53,15,0.25),0_0_30px_rgba(120,53,15,0.15)_inset]"
-                      style={{
-                        borderImage:
-                          "linear-gradient(135deg, #92400e 0%, #78350f 25%, #92400e 50%, #78350f 75%, #92400e 100%) 4",
-                        clipPath:
-                          "polygon(0 8px, 8px 8px, 8px 0, calc(100% - 8px) 0, calc(100% - 8px) 8px, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 8px calc(100% - 8px), 0 calc(100% - 8px))",
-                        imageRendering: "pixelated",
-                      }}
-                    >
-                      {/* Header */}
-                      <div className="text-center">
-                        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
-                          Level Selection
-                        </h2>
-                      </div>
-
-                      {/* Level Input Section */}
-                      <div
-                        className="flex flex-col gap-3 sm:gap-4 bg-black/40 p-3 sm:p-4 md:p-6 border-4 shadow-[0_0_20px_rgba(120,53,15,0.1)_inset]"
-                        style={{
-                          borderImage:
-                            "linear-gradient(135deg, #78350f 0%, #92400e 50%, #78350f 100%) 4",
-                          clipPath:
-                            "polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px))",
-                          imageRendering: "pixelated",
-                        }}
-                      >
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-                          <label className="text-amber-100 font-bold text-base sm:text-lg">
-                            Enemy Levels
-                          </label>
-                          <span
-                            className="text-amber-200/70 text-xs sm:text-sm font-medium bg-amber-900/50 px-2 sm:px-3 py-1 border-2 shadow-[0_0_10px_rgba(120,53,15,0.2)]"
-                            style={{
-                              borderImage:
-                                "linear-gradient(90deg, #78350f 0%, #92400e 100%) 2",
-                              clipPath:
-                                "polygon(0 2px, 2px 2px, 2px 0, calc(100% - 2px) 0, calc(100% - 2px) 2px, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 2px calc(100% - 2px), 0 calc(100% - 2px))",
-                              imageRendering: "pixelated",
-                            }}
-                          >
-                            10-12 enemies
-                          </span>
-                        </div>
-
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={levelInput}
-                            onChange={(e) => setLevelInput(e.target.value)}
-                            placeholder="e.g., 1, 6, 5, 2, 7, 4, 3, 8, 9, 10"
-                            className="w-full pl-3 sm:pl-5 pr-12 sm:pr-20 py-3 sm:py-4 bg-black/70 backdrop-blur-md border-2 text-white placeholder-white/40 focus:outline-none focus:shadow-[0_0_20px_rgba(120,53,15,0.3)] text-center text-sm sm:text-base md:text-lg font-medium shadow-xl transition-all hover:shadow-[0_0_15px_rgba(120,53,15,0.2)]"
-                            style={{
-                              borderImage:
-                                "linear-gradient(90deg, #78350f 0%, #92400e 50%, #78350f 100%) 2",
-                              clipPath:
-                                "polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px))",
-                              imageRendering: "pixelated",
-                            }}
-                            onKeyPress={(e) => {
-                              if (e.key === "Enter") {
-                                handleLevelInputSubmit();
-                              }
-                            }}
-                          />
-                          <button
-                            onClick={generateRandomLevels}
-                            className="absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 transition-all duration-300 hover:scale-110 active:scale-95 hover:drop-shadow-[0_0_15px_rgba(146,64,14,0.6)]"
-                            style={{
-                              backgroundImage: "url('/sprite/random.png')",
-                              backgroundSize: "100% 100%",
-                              backgroundPosition: "center",
-                              backgroundRepeat: "no-repeat",
-                              imageRendering: "pixelated",
-                              width: "28px",
-                              height: "28px",
-                              border: "none",
-                              padding: 0,
-                            }}
-                            title="Generate Random Levels"
-                            aria-label="Generate Random Levels"
-                          />
-                        </div>
-
-                        <div className="text-amber-200/70 text-xs sm:text-sm text-center bg-black/30 p-2 sm:p-3">
-                          Levels range from 1-100. Lower values make enemies
-                          easier to defeat.
-                        </div>
-                      </div>
-
-                      {/* Start Button */}
-                      <button
-                        onClick={handleLevelInputSubmit}
-                        className="w-full px-4 sm:px-8 font-bold text-lg sm:text-xl md:text-2xl transition-all duration-300 hover:scale-105 hover:drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]"
-                        style={{
-                          backgroundImage: "url('/sprite/btn_small.png')",
-                          backgroundSize: "auto 100%",
-                          backgroundPosition: "center",
-                          backgroundRepeat: "no-repeat",
-                          imageRendering: "pixelated",
-                          color: "#10b981",
-                          textShadow: "0 3px 6px rgba(0, 0, 0, 0.9)",
-                          height: "60px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        Start
-                      </button>
-                    </div>
-
-                    {/* Navigation Buttons - Outside Card */}
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-center">
-                      <button
-                        onClick={() => {
-                          setShowLevelInput(false);
-                          setShowPicker(true);
-                        }}
-                        className="font-semibold text-sm sm:text-base transition-all duration-300 hover:scale-105 w-full sm:w-auto"
-                        style={{
-                          backgroundImage: "url('/sprite/btn_small.png')",
-                          backgroundSize: "auto 100%",
-                          backgroundPosition: "center",
-                          backgroundRepeat: "no-repeat",
-                          imageRendering: "pixelated",
-                          color: "#fbbf24",
-                          textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
-                          height: "48px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          minWidth: "160px",
-                          padding: "0 24px",
-                        }}
-                      >
-                        Back
-                      </button>
-                      <button
-                        onClick={() => setShowTutorial(true)}
-                        className="font-semibold text-sm sm:text-base transition-all duration-300 hover:scale-105 w-full sm:w-auto"
-                        style={{
-                          backgroundImage: "url('/sprite/btn_small.png')",
-                          backgroundSize: "auto 100%",
-                          backgroundPosition: "center",
-                          backgroundRepeat: "no-repeat",
-                          imageRendering: "pixelated",
-                          color: "#60a5fa",
-                          textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
-                          height: "48px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          minWidth: "160px",
-                          padding: "0 24px",
-                        }}
-                      >
-                        Tutorial
-                      </button>
-                    </div>
-                  </div>
-                </>
+                <LevelSelectionScreen
+                  levelInput={levelInput}
+                  onLevelInputChange={setLevelInput}
+                  onSubmit={handleLevelInputSubmit}
+                  onGenerateRandom={generateRandomLevels}
+                  onBack={() => {
+                    setShowLevelInput(false);
+                    setShowPicker(true);
+                  }}
+                  onShowTutorial={() => setShowTutorial(true)}
+                />
               ) : (
                 <button
                   onClick={() => {
@@ -1750,29 +1497,7 @@ export default function DungeonGame() {
           onClose={() => setShowTutorial(false)}
           title="How to Play"
         >
-          <div>
-            <h3 className="font-bold text-xl mb-2">Level Selection</h3>
-            <p>
-              Enter enemy levels separated by commas (e.g., 1, 6, 5, 2, 7, 4, 3,
-              8, 9, 10). You can select 10-12 levels. Use &quot;Generate Random
-              Levels&quot; for a quick start.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-bold text-xl mb-2">Gameplay</h3>
-            <p>
-              Navigate through the dungeon, defeat enemies, and reach the end.
-              Each enemy has a level that determines their strength. Plan your
-              strategy carefully!
-            </p>
-          </div>
-          <div>
-            <h3 className="font-bold text-xl mb-2">Controls</h3>
-            <p>
-              Use arrow keys or WASD to move. Space to jump. Attack enemies to
-              progress through levels.
-            </p>
-          </div>
+          <TutorialContent variant="pre-game" />
         </GameModal>
       )}
 
@@ -1787,32 +1512,7 @@ export default function DungeonGame() {
           }}
           title="How to Play"
         >
-          <div>
-            <h3 className="font-bold text-xl mb-2">Objective</h3>
-            <p>
-              Navigate through the dungeon and defeat all enemies to win. Each
-              enemy has a level - defeat them in order to level up!
-            </p>
-          </div>
-          <div>
-            <h3 className="font-bold text-xl mb-2">Controls</h3>
-            <p>
-              <strong>Movement:</strong> Arrow keys or WASD
-              <br />
-              <strong>Jump:</strong> Space bar
-              <br />
-              <strong>Attack:</strong> E key
-              <br />
-              <strong>Special:</strong> Q key (if available)
-            </p>
-          </div>
-          <div>
-            <h3 className="font-bold text-xl mb-2">Tips</h3>
-            <p>
-              Collect torches to see in the dark. Pick up items to boost your
-              stats. Defeat enemies at your level or lower to progress!
-            </p>
-          </div>
+          <TutorialContent variant="in-game" />
         </GameModal>
       )}
     </div>
