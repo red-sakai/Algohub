@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { TreeBuilder } from "./treeBuilder";
 import { GAME_CONSTANTS } from "./constants";
+import { MapDataUtils } from "./mapDataUtils";
 import type { TreeNode } from "./types";
 
 export class TreeTraversalController {
@@ -18,6 +19,8 @@ export class TreeTraversalController {
   private showHUD: () => void;
   private hideMobileControls?: () => void;
   private showMobileControls?: () => void;
+  private animationInProgress: boolean = false;
+  private animationTimeline?: Phaser.Tweens.Tween;
 
   constructor(
     scene: Phaser.Scene,
@@ -91,42 +94,10 @@ export class TreeTraversalController {
 
       // Get map data to access floors layer for tree building and branch pathfinding
       const mapData = this.scene.cache.json.get("tilemap");
-      let floorTileWorldPositions: Array<{
-        tileX: number;
-        tileY: number;
-        worldX: number;
-        worldY: number;
-      }> = [];
-      let tileSize = 64; // Default
 
-      if (mapData) {
-        // Find the floors layer
-        const floorsLayer = mapData.layers.find(
-          (layer: {
-            name: string;
-            tiles: Array<{ x: number; y: number; id: string }>;
-          }) => layer.name === "floors"
-        );
-
-        if (floorsLayer && floorsLayer.tiles && floorsLayer.tiles.length > 0) {
-          tileSize = mapData.tileSize;
-          const floorsTiles = floorsLayer.tiles;
-
-          // Convert floor tile coordinates to world coordinates
-          floorTileWorldPositions = floorsTiles.map(
-            (tile: { x: number; y: number; id: string }) => ({
-              tileX: tile.x,
-              tileY: tile.y,
-              worldX:
-                tile.x * tileSize * GAME_CONSTANTS.MAP_SCALE +
-                (tileSize * GAME_CONSTANTS.MAP_SCALE) / 2,
-              worldY:
-                tile.y * tileSize * GAME_CONSTANTS.MAP_SCALE +
-                (tileSize * GAME_CONSTANTS.MAP_SCALE) / 2,
-            })
-          );
-        }
-      }
+      // Extract floor tiles using shared utility
+      const { tiles: floorTileWorldPositions, tileSize } =
+        MapDataUtils.extractFloorsLayerTiles(mapData, GAME_CONSTANTS.MAP_SCALE);
 
       // Build binary tree structure using floor pathfinding (nodes stay at enemy positions)
       const tree = TreeBuilder.buildBinaryTreeStructure(
@@ -176,8 +147,8 @@ export class TreeTraversalController {
         const enemyLevels: number[] = [];
         const collectLevels = (node: TreeNode | null) => {
           if (!node) return;
-          collectLevels(node.left);
           enemyLevels.push(node.node.level);
+          collectLevels(node.left);
           collectLevels(node.right);
         };
         collectLevels(tree);
@@ -349,6 +320,11 @@ export class TreeTraversalController {
         .setDepth(20003);
       this.traversalDisplayObjects.push(orderText);
     });
+
+    // Start traversal animation after a short delay
+    this.scene.time.delayedCall(500, () => {
+      this.animateTraversal(tree, nodePositions, nodeRadius);
+    });
   }
 
   private addTreeUI(
@@ -362,7 +338,7 @@ export class TreeTraversalController {
     // Title (screen space) - full size
     const titleY = isMobile ? 25 : 40;
     const title = this.scene.add
-      .text(width / 2, titleY, "BINARY TREE - LEFT TO RIGHT TRAVERSAL", {
+      .text(width / 2, titleY, "BINARY TREE - PRE-ORDER TRAVERSAL", {
         fontFamily: "'Pixelify Sans', monospace",
         fontSize: "32px",
         color: "#00ffcc",
@@ -434,6 +410,13 @@ export class TreeTraversalController {
 
   hideTraversedMap() {
     try {
+      // Stop any ongoing animation
+      if (this.animationTimeline) {
+        this.animationTimeline.destroy();
+        this.animationTimeline = undefined;
+      }
+      this.animationInProgress = false;
+
       this.traversalDisplayObjects.forEach((obj) => {
         if (obj && obj.active) {
           try {
@@ -469,5 +452,277 @@ export class TreeTraversalController {
         console.error("Error showing buttons:", e);
       }
     }
+  }
+
+  /**
+   * Animates the traversal path through the tree
+   * Shows how the player traversed the dungeon in order
+   */
+  private animateTraversal(
+    tree: TreeNode | null,
+    nodePositions: Map<TreeNode, { x: number; y: number }>,
+    nodeRadius: number
+  ) {
+    if (!tree) return;
+
+    this.animationInProgress = true;
+
+    // Collect nodes in traversal order with parent information
+    const nodesInOrder: Array<{
+      node: TreeNode;
+      pos: { x: number; y: number };
+      parent: TreeNode | null;
+    }> = [];
+    const collectInOrder = (
+      node: TreeNode | null,
+      parent: TreeNode | null = null
+    ) => {
+      if (!node) return;
+      const pos = nodePositions.get(node);
+      if (pos) {
+        nodesInOrder.push({ node, pos, parent });
+      }
+      collectInOrder(node.left, node);
+      collectInOrder(node.right, node);
+    };
+    collectInOrder(tree, null);
+
+    if (nodesInOrder.length === 0) return;
+
+    // Build parent map for all nodes
+    const parentMap = new Map<TreeNode, TreeNode | null>();
+    nodesInOrder.forEach(({ node, parent }) => {
+      parentMap.set(node, parent);
+    });
+
+    // Helper function to get ancestors of a node
+    const getAncestors = (node: TreeNode): TreeNode[] => {
+      const ancestors: TreeNode[] = [];
+      let current: TreeNode | null = node;
+      while (current) {
+        ancestors.push(current);
+        current = parentMap.get(current) || null;
+      }
+      return ancestors;
+    };
+
+    // Helper function to find path between two nodes through tree structure
+    const findPathBetweenNodes = (
+      fromNode: TreeNode,
+      toNode: TreeNode
+    ): { x: number; y: number }[] => {
+      const path: { x: number; y: number }[] = [];
+
+      // If toNode is a direct child of fromNode, go directly
+      if (fromNode.left === toNode || fromNode.right === toNode) {
+        return path;
+      }
+
+      // Get ancestors of both nodes (including the nodes themselves)
+      const fromAncestors = getAncestors(fromNode);
+      const toAncestors = getAncestors(toNode);
+
+      // Find common ancestor (lowest common ancestor)
+      let commonAncestor: TreeNode | null = null;
+      for (const ancestor of fromAncestors) {
+        if (toAncestors.includes(ancestor)) {
+          commonAncestor = ancestor;
+          break;
+        }
+      }
+
+      if (!commonAncestor) {
+        // No common ancestor, shouldn't happen in a connected tree
+        return path;
+      }
+
+      // Build path: go up from fromNode to common ancestor
+      let current: TreeNode | null = fromNode;
+      while (current && current !== commonAncestor) {
+        const parent = parentMap.get(current);
+        if (parent) {
+          const parentPos = nodePositions.get(parent);
+          if (parentPos) {
+            path.push(parentPos);
+          }
+          current = parent;
+        } else {
+          break;
+        }
+      }
+
+      // Build path down from common ancestor to toNode
+      const pathDown: TreeNode[] = [];
+      current = toNode;
+      while (current && current !== commonAncestor) {
+        pathDown.unshift(current);
+        current = parentMap.get(current) || null;
+      }
+
+      // Add positions for path down (excluding the target node itself)
+      for (let i = 0; i < pathDown.length - 1; i++) {
+        const nodePos = nodePositions.get(pathDown[i]);
+        if (nodePos) {
+          path.push(nodePos);
+        }
+      }
+
+      return path;
+    };
+
+    // Create graphics for the animated path
+    const pathGraphics = this.scene.add.graphics();
+    pathGraphics.setDepth(20004);
+    pathGraphics.setScrollFactor(0);
+    this.traversalDisplayObjects.push(pathGraphics);
+
+    // Create a moving indicator (circle that travels along the path)
+    const indicator = this.scene.add.circle(
+      nodesInOrder[0].pos.x,
+      nodesInOrder[0].pos.y,
+      nodeRadius * 0.5,
+      0xff0000,
+      0.8
+    );
+    indicator.setDepth(20005);
+    indicator.setScrollFactor(0);
+    this.traversalDisplayObjects.push(indicator);
+
+    // Create highlight circles for visited nodes
+    const visitedCircles = new Map<TreeNode, Phaser.GameObjects.Arc>();
+
+    let currentIndex = 0;
+
+    // Animation loop
+    const animateNextStep = () => {
+      if (currentIndex >= nodesInOrder.length) {
+        this.animationInProgress = false;
+        // Pulse the indicator at the last node
+        this.scene.tweens.add({
+          targets: indicator,
+          alpha: 0.3,
+          scale: 1.5,
+          duration: 500,
+          yoyo: true,
+          repeat: -1,
+        });
+        return;
+      }
+
+      const currentNodeData = nodesInOrder[currentIndex];
+      const { node, pos, parent } = currentNodeData;
+
+      // Highlight current node with a glow effect
+      const highlightCircle = this.scene.add.circle(
+        pos.x,
+        pos.y,
+        nodeRadius,
+        0xff0000,
+        0.5
+      );
+      highlightCircle.setDepth(20004);
+      highlightCircle.setScrollFactor(0);
+      this.traversalDisplayObjects.push(highlightCircle);
+      visitedCircles.set(node, highlightCircle);
+
+      // Pulse effect for the highlighted node
+      this.scene.tweens.add({
+        targets: highlightCircle,
+        alpha: { from: 0.7, to: 0.2 },
+        scale: { from: 1.2, to: 1 },
+        duration: 400,
+        ease: "Sine.easeOut",
+      });
+
+      // Draw path from previous node to current node
+      if (currentIndex > 0) {
+        const prevNodeData = nodesInOrder[currentIndex - 1];
+        const prevPos = prevNodeData.pos;
+        const prevNode = prevNodeData.node;
+
+        // Find intermediate waypoints through tree structure
+        const waypoints = findPathBetweenNodes(prevNode, node);
+
+        // Draw lines through waypoints
+        pathGraphics.lineStyle(4, 0xff0000, 0.8);
+
+        let currentDrawPos = prevPos;
+        for (const waypoint of waypoints) {
+          pathGraphics.beginPath();
+          pathGraphics.moveTo(currentDrawPos.x, currentDrawPos.y);
+          pathGraphics.lineTo(waypoint.x, waypoint.y);
+          pathGraphics.strokePath();
+          currentDrawPos = waypoint;
+        }
+
+        // Draw final segment to current node
+        pathGraphics.beginPath();
+        pathGraphics.moveTo(currentDrawPos.x, currentDrawPos.y);
+        pathGraphics.lineTo(pos.x, pos.y);
+        pathGraphics.strokePath();
+      }
+
+      // Move indicator to current node (with waypoints for smooth animation)
+      if (currentIndex > 0) {
+        const prevNodeData = nodesInOrder[currentIndex - 1];
+        const prevNode = prevNodeData.node;
+        const waypoints = findPathBetweenNodes(prevNode, node);
+
+        if (waypoints.length > 0) {
+          // Animate through waypoints first
+          let waypointIndex = 0;
+          const animateWaypoint = () => {
+            if (waypointIndex < waypoints.length) {
+              const waypoint = waypoints[waypointIndex];
+              this.scene.tweens.add({
+                targets: indicator,
+                x: waypoint.x,
+                y: waypoint.y,
+                duration: 200,
+                ease: "Sine.easeInOut",
+                onComplete: () => {
+                  waypointIndex++;
+                  animateWaypoint();
+                },
+              });
+            } else {
+              // Final movement to target node
+              this.scene.tweens.add({
+                targets: indicator,
+                x: pos.x,
+                y: pos.y,
+                duration: 400,
+                ease: "Sine.easeInOut",
+                onComplete: () => {
+                  currentIndex++;
+                  this.scene.time.delayedCall(200, animateNextStep);
+                },
+              });
+            }
+          };
+          animateWaypoint();
+        } else {
+          // Direct movement
+          this.scene.tweens.add({
+            targets: indicator,
+            x: pos.x,
+            y: pos.y,
+            duration: 400,
+            ease: "Sine.easeInOut",
+            onComplete: () => {
+              currentIndex++;
+              this.scene.time.delayedCall(200, animateNextStep);
+            },
+          });
+        }
+      } else {
+        // First node, just continue
+        currentIndex++;
+        this.scene.time.delayedCall(200, animateNextStep);
+      }
+    };
+
+    // Start the animation
+    animateNextStep();
   }
 }

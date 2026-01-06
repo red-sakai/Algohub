@@ -3,6 +3,7 @@ import { GAME_CONSTANTS } from "./constants";
 import type { EnemyUnit } from "./types";
 import type { VirtualInput } from "./mobileControls";
 import type { AudioController } from "./audioController";
+import type { MagicEffectsController } from "./magicEffectsController";
 
 export class PlayerController {
   private scene: Phaser.Scene;
@@ -39,6 +40,9 @@ export class PlayerController {
   // Audio
   private audioController?: AudioController;
 
+  // Magic effects
+  private magicEffectsController?: MagicEffectsController;
+
   constructor(
     scene: Phaser.Scene,
     player: Phaser.Physics.Arcade.Sprite,
@@ -48,7 +52,8 @@ export class PlayerController {
     initialMaxHealth: number,
     mapWidth: number,
     mapHeight: number,
-    audioController?: AudioController
+    audioController?: AudioController,
+    magicEffectsController?: MagicEffectsController
   ) {
     this.scene = scene;
     this.player = player;
@@ -59,20 +64,34 @@ export class PlayerController {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.audioController = audioController;
+    this.magicEffectsController = magicEffectsController;
 
-    // Setup keyboard controls
-    this.cursors = scene.input.keyboard!.createCursorKeys();
+    // Setup keyboard controls - ensure keyboard input is available
+    if (!scene.input || !scene.input.keyboard) {
+      console.error("Keyboard input not available in scene!");
+      throw new Error("Keyboard input not initialized");
+    }
+
+    this.cursors = scene.input.keyboard.createCursorKeys();
     this.wasd = {
-      W: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      A: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      S: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      D: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      W: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      A: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      S: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      D: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
-    this.eKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.spaceKey = scene.input.keyboard!.addKey(
+    this.eKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.spaceKey = scene.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
-    this.qKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.qKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+
+    console.log("Keyboard controls initialized:", {
+      cursors: !!this.cursors,
+      wasd: !!this.wasd,
+      eKey: !!this.eKey,
+      spaceKey: !!this.spaceKey,
+      qKey: !!this.qKey,
+    });
   }
 
   getPlayer(): Phaser.Physics.Arcade.Sprite {
@@ -99,6 +118,10 @@ export class PlayerController {
     this.speedBoostMultiplier = multiplier;
   }
 
+  getSpeedBoost(): number {
+    return this.speedBoostMultiplier;
+  }
+
   setAttackSpeedBoost(multiplier: number) {
     this.attackSpeedMultiplier = multiplier;
   }
@@ -121,16 +144,20 @@ export class PlayerController {
   ): void {
     if (this.health <= 0) return;
 
-    // Handle input - check virtual input first, then keyboard
+    // Handle input - check keyboard if virtualInput is not provided or not from mobile
     const attackPressed =
       virtualInput?.attackJustPressed ||
-      Phaser.Input.Keyboard.JustDown(this.eKey);
+      (!virtualInput && this.eKey && Phaser.Input.Keyboard.JustDown(this.eKey));
     const jumpPressed =
       virtualInput?.jumpJustPressed ||
-      Phaser.Input.Keyboard.JustDown(this.spaceKey);
+      (!virtualInput &&
+        this.spaceKey &&
+        Phaser.Input.Keyboard.JustDown(this.spaceKey));
     const ultPressed =
       virtualInput?.ultJustPressed ||
-      (this.selectedCharacter === "goku" &&
+      (!virtualInput &&
+        this.selectedCharacter === "goku" &&
+        this.qKey &&
         Phaser.Input.Keyboard.JustDown(this.qKey));
 
     if (attackPressed && !this.isSlashing && !this.isJumping) {
@@ -180,21 +207,24 @@ export class PlayerController {
     let moveX = 0;
     let moveY = 0;
 
-    // Check virtual input first (mobile), but fall back to keyboard if virtual input is zero
-    if (
-      virtualInput &&
-      (virtualInput.moveX !== 0 || virtualInput.moveY !== 0)
-    ) {
+    // Use virtual input if provided and has movement, otherwise use keyboard
+    // This ensures keyboard controls work on desktop even when virtualInput object exists
+    const hasVirtualMovement =
+      virtualInput && (virtualInput.moveX !== 0 || virtualInput.moveY !== 0);
+
+    if (hasVirtualMovement) {
+      // Use mobile virtual input
       moveX = virtualInput.moveX;
       moveY = virtualInput.moveY;
     } else {
+      // Use keyboard controls (arrow keys and WASD)
       // Arrow keys
       if (this.cursors.left.isDown) moveX = -1;
       if (this.cursors.right.isDown) moveX = 1;
       if (this.cursors.up.isDown) moveY = -1;
       if (this.cursors.down.isDown) moveY = 1;
 
-      // WASD keys
+      // WASD keys (always check these, they should work alongside arrows)
       if (this.wasd.W.isDown) moveY = -1;
       if (this.wasd.S.isDown) moveY = 1;
       if (this.wasd.A.isDown) moveX = -1;
@@ -340,11 +370,19 @@ export class PlayerController {
       this.player.anims.timeScale = this.attackSpeedMultiplier;
     }
 
-    // Check if attack hits enemy
-    const attackDelay = 150 / this.attackSpeedMultiplier;
-    this.scene.time.delayedCall(attackDelay, () => {
-      this.checkAttackHitsEnemy(enemies);
-    });
+    // For mage character, create magic projectile
+    if (this.selectedCharacter === "mage" && this.magicEffectsController) {
+      const attackDelay = 200 / this.attackSpeedMultiplier;
+      this.scene.time.delayedCall(attackDelay, () => {
+        this.castMagicProjectile(enemies);
+      });
+    } else {
+      // Check if attack hits enemy (for melee characters)
+      const attackDelay = 150 / this.attackSpeedMultiplier;
+      this.scene.time.delayedCall(attackDelay, () => {
+        this.checkAttackHitsEnemy(enemies);
+      });
+    }
 
     this.player.once("animationcomplete", () => {
       this.isSlashing = false;
@@ -390,7 +428,12 @@ export class PlayerController {
   private checkAttackHitsEnemy(enemies: EnemyUnit[]) {
     if (!this.player || !this.isSlashing) return;
 
-    const attackRange = GAME_CONSTANTS.PLAYER_ATTACK_RANGE;
+    // Use character-specific attack range
+    const attackRange =
+      GAME_CONSTANTS.CHARACTER_ATTACK_RANGES[
+        this
+          .selectedCharacter as keyof typeof GAME_CONSTANTS.CHARACTER_ATTACK_RANGES
+      ] || GAME_CONSTANTS.PLAYER_ATTACK_RANGE;
 
     enemies.forEach((enemyUnit) => {
       if (enemyUnit.defeated) return;
@@ -450,5 +493,135 @@ export class PlayerController {
         GAME_CONSTANTS.FRAME_OFFSET_BOTTOM) *
       GAME_CONSTANTS.SPRITE_SCALE
     );
+  }
+
+  /**
+   * Cast a magic projectile (for mage character)
+   */
+  private castMagicProjectile(enemies: EnemyUnit[]) {
+    if (!this.magicEffectsController) return;
+
+    // Get character-specific attack range
+    const maxRange =
+      GAME_CONSTANTS.CHARACTER_ATTACK_RANGES[
+        this
+          .selectedCharacter as keyof typeof GAME_CONSTANTS.CHARACTER_ATTACK_RANGES
+      ] || GAME_CONSTANTS.PLAYER_ATTACK_RANGE;
+
+    // Find the nearest enemy in the attack direction to target
+    let targetEnemy: EnemyUnit | undefined = undefined;
+    let nearestDistance = Infinity;
+
+    for (const enemyUnit of enemies) {
+      if (enemyUnit.defeated) continue;
+      if (!enemyUnit.sprite || !enemyUnit.sprite.active) continue;
+
+      const dx = enemyUnit.sprite.x - this.player.x;
+      const dy = enemyUnit.sprite.y - this.player.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // Only consider enemies within reasonable range
+      if (distance > maxRange * 2) continue;
+
+      // Check if enemy is roughly in the attack direction
+      const angle = Math.atan2(dy, dx);
+      const angleDeg = (angle * 180) / Math.PI;
+
+      let inDirection = false;
+      if (this.lastDirection === "right" && angleDeg > -45 && angleDeg < 45) {
+        inDirection = true;
+      } else if (
+        this.lastDirection === "left" &&
+        (angleDeg > 135 || angleDeg < -135)
+      ) {
+        inDirection = true;
+      } else if (
+        this.lastDirection === "down" &&
+        angleDeg > 45 &&
+        angleDeg < 135
+      ) {
+        inDirection = true;
+      } else if (
+        this.lastDirection === "up" &&
+        angleDeg > -135 &&
+        angleDeg < -45
+      ) {
+        inDirection = true;
+      }
+
+      if (inDirection && distance < nearestDistance) {
+        nearestDistance = distance;
+        targetEnemy = enemyUnit;
+      }
+    }
+
+    // Calculate projectile spawn offset based on direction
+    let offsetX = 0;
+    let offsetY = 0;
+    const spawnDistance = 30;
+
+    switch (this.lastDirection) {
+      case "up":
+        offsetY = -spawnDistance;
+        break;
+      case "down":
+        offsetY = spawnDistance;
+        break;
+      case "left":
+        offsetX = -spawnDistance;
+        break;
+      case "right":
+        offsetX = spawnDistance;
+        break;
+    }
+
+    // Calculate damage
+    const baseDamage =
+      GAME_CONSTANTS.PLAYER_BASE_DAMAGE * this.attackBoostMultiplier;
+
+    // Create the magic projectile with target
+    const projectile = this.magicEffectsController.createProjectile(
+      this.player.x + offsetX,
+      this.player.y + offsetY,
+      this.lastDirection,
+      baseDamage,
+      maxRange,
+      targetEnemy
+    );
+
+    // Check for projectile-enemy collisions
+    const checkInterval = this.scene.time.addEvent({
+      delay: 16, // Check every frame (~60fps)
+      repeat: Math.ceil(((maxRange / 400) * 1000) / 16), // Based on projectile speed
+      callback: () => {
+        if (!projectile.active) {
+          checkInterval.destroy();
+          return;
+        }
+
+        const projectileBounds = projectile.getBounds();
+
+        for (const enemyUnit of enemies) {
+          if (enemyUnit.defeated) continue;
+          if (!enemyUnit.sprite || !enemyUnit.sprite.active) continue;
+
+          const enemyBounds = new Phaser.Geom.Circle(
+            enemyUnit.sprite.x,
+            enemyUnit.sprite.y,
+            30
+          );
+
+          if (
+            Phaser.Geom.Intersects.CircleToCircle(projectileBounds, enemyBounds)
+          ) {
+            // Hit the enemy
+            this.scene.events.emit("player-attack-hit", enemyUnit);
+            projectile.hit();
+            checkInterval.destroy();
+            break;
+          }
+        }
+      },
+    });
   }
 }

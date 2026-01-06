@@ -8,6 +8,7 @@ export class LightingController {
   private renderTexture!: Phaser.GameObjects.RenderTexture;
   private currentVisionRadius: number;
   private player: Phaser.Physics.Arcade.Sprite;
+  private lightingEnabled: boolean = true;
 
   constructor(scene: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
     this.scene = scene;
@@ -32,7 +33,24 @@ export class LightingController {
     this.currentVisionRadius = radius;
   }
 
+  toggleLighting() {
+    this.lightingEnabled = !this.lightingEnabled;
+    if (!this.lightingEnabled) {
+      // Clear the darkness when disabled
+      this.renderTexture.clear();
+    }
+  }
+
+  isLightingEnabled(): boolean {
+    return this.lightingEnabled;
+  }
+
   update() {
+    // Skip rendering if lighting is disabled
+    if (!this.lightingEnabled) {
+      return;
+    }
+
     const { width, height } = this.scene.cameras.main;
 
     this.renderTexture.clear();

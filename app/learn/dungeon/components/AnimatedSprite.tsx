@@ -27,7 +27,7 @@ export function AnimatedSprite({
 
   useEffect(() => {
     const img = new Image();
-    img.src = `/sprite/characters/${characterId}/idle.png`;
+    img.src = `/sprite/characters/players/${characterId}/idle.png`;
     imgRef.current = img;
 
     img.onload = () => {

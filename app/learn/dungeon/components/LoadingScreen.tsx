@@ -36,7 +36,7 @@ export function LoadingScreen({ character }: LoadingScreenProps) {
 
     // Load the running sprite sheet
     const img = new Image();
-    img.src = `/sprite/characters/${character}/run.png`;
+    img.src = `/sprite/characters/players/${character}/run.png`;
     spriteImageRef.current = img;
 
     img.onload = () => {

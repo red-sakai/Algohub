@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { GAME_CONSTANTS } from "./constants";
 import type { EnemyUnit, TreeNode } from "./types";
 import { TreeBuilder } from "./treeBuilder";
+import { MapDataUtils } from "./mapDataUtils";
 
 export class EnemyController {
   private scene: Phaser.Scene;
@@ -90,38 +91,9 @@ export class EnemyController {
       index: index,
     }));
 
-    // Get floor tiles for tree building
-    const tileSize = mapData?.tileSize || 64;
-    let floorTileWorldPositions: Array<{
-      tileX: number;
-      tileY: number;
-      worldX: number;
-      worldY: number;
-    }> = [];
-
-    if (mapData && mapData.layers) {
-      const nodesLayer = mapData.layers.find(
-        (layer: {
-          name: string;
-          tiles?: Array<{ x: number; y: number; id: string }>;
-        }) => layer.name === "nodes"
-      );
-
-      if (nodesLayer?.tiles) {
-        const nodeFloorTiles = nodesLayer.tiles.filter(
-          (tile: { x: number; y: number; id: string }) => tile.id === "33"
-        );
-
-        floorTileWorldPositions = nodeFloorTiles.map(
-          (tile: { x: number; y: number; id: string }) => ({
-            tileX: tile.x,
-            tileY: tile.y,
-            worldX: tile.x * tileSize * mapScale + (tileSize * mapScale) / 2,
-            worldY: tile.y * tileSize * mapScale + (tileSize * mapScale) / 2,
-          })
-        );
-      }
-    }
+    // Get floor tiles for tree building using shared utility
+    const { tiles: floorTileWorldPositions, tileSize } =
+      MapDataUtils.extractNodesFloorTiles(mapData, mapScale);
 
     // Build binary tree structure
     const tree = TreeBuilder.buildBinaryTreeStructure(
@@ -220,6 +192,11 @@ export class EnemyController {
     childrenNodeIndices: number[],
     shadowOffset: number
   ) {
+    // Randomly select an enemy type
+    const enemyTypes = GAME_CONSTANTS.ENEMY_TYPES;
+    const randomIndex = Math.floor(Math.random() * enemyTypes.length);
+    const enemyType = enemyTypes[randomIndex];
+
     const shadow = this.scene.add.ellipse(
       node.x,
       node.y + shadowOffset,
@@ -230,7 +207,12 @@ export class EnemyController {
     );
     shadow.setDepth(1000);
 
-    const sprite = this.scene.physics.add.sprite(node.x, node.y, "enemy-idle");
+    // Create sprite with the selected enemy type
+    const sprite = this.scene.physics.add.sprite(
+      node.x,
+      node.y,
+      `enemy-${enemyType}-idle`
+    );
     sprite.setScale(GAME_CONSTANTS.SPRITE_SCALE);
     sprite.setOrigin(0.5, 0.5);
     sprite.setDepth(1001);
@@ -303,10 +285,11 @@ export class EnemyController {
       parentNodeIndex,
       unlocked: true,
       childrenNodeIndices,
+      enemyType, // Store the enemy type
     };
 
     try {
-      sprite.play("enemy-idle-down");
+      sprite.play(`enemy-${enemyType}-idle-down`);
     } catch (e) {
       console.warn("Error playing enemy idle animation:", e);
     }
@@ -435,7 +418,7 @@ export class EnemyController {
         else dir = "up";
         enemyUnit.lastDirection = dir;
         try {
-          sprite.play(`enemy-attack-${dir}`);
+          sprite.play(`enemy-${enemyUnit.enemyType}-attack-${dir}`);
         } catch (e) {
           console.warn("Error playing enemy attack animation:", e);
         }
@@ -460,7 +443,10 @@ export class EnemyController {
           enemyUnit.attacking = false;
           enemyUnit.attackCooldownRemaining = enemyUnit.attackCooldownMs;
           try {
-            sprite.play(`enemy-idle-${enemyUnit.lastDirection}`, true);
+            sprite.play(
+              `enemy-${enemyUnit.enemyType}-idle-${enemyUnit.lastDirection}`,
+              true
+            );
           } catch (e) {
             console.warn("Error playing enemy idle animation:", e);
           }
@@ -484,7 +470,10 @@ export class EnemyController {
           }
           // Play idle animation when stopped
           try {
-            sprite.play(`enemy-idle-${enemyUnit.lastDirection}`, true);
+            sprite.play(
+              `enemy-${enemyUnit.enemyType}-idle-${enemyUnit.lastDirection}`,
+              true
+            );
           } catch (e) {
             console.warn("Error playing enemy idle animation:", e);
           }
@@ -499,14 +488,14 @@ export class EnemyController {
             if (vx < 0) {
               enemyUnit.lastDirection = "left";
               try {
-                sprite.play("enemy-run-left", true);
+                sprite.play(`enemy-${enemyUnit.enemyType}-run-left`, true);
               } catch (e) {
                 console.warn("Error playing enemy run animation:", e);
               }
             } else {
               enemyUnit.lastDirection = "right";
               try {
-                sprite.play("enemy-run-right", true);
+                sprite.play(`enemy-${enemyUnit.enemyType}-run-right`, true);
               } catch (e) {
                 console.warn("Error playing enemy run animation:", e);
               }
@@ -515,14 +504,14 @@ export class EnemyController {
             if (vy < 0) {
               enemyUnit.lastDirection = "up";
               try {
-                sprite.play("enemy-run-up", true);
+                sprite.play(`enemy-${enemyUnit.enemyType}-run-up`, true);
               } catch (e) {
                 console.warn("Error playing enemy run animation:", e);
               }
             } else {
               enemyUnit.lastDirection = "down";
               try {
-                sprite.play("enemy-run-down", true);
+                sprite.play(`enemy-${enemyUnit.enemyType}-run-down`, true);
               } catch (e) {
                 console.warn("Error playing enemy run animation:", e);
               }
@@ -531,10 +520,12 @@ export class EnemyController {
         }
       } else if (!enemyUnit.attacking) {
         sprite.setVelocity(0, 0);
-        const idleAnim = `enemy-idle-${enemyUnit.lastDirection}`;
+        const idleAnim = `enemy-${enemyUnit.enemyType}-idle-${enemyUnit.lastDirection}`;
         if (
           !sprite.anims.isPlaying ||
-          !sprite.anims.currentAnim?.key.startsWith("enemy-idle")
+          !sprite.anims.currentAnim?.key.startsWith(
+            `enemy-${enemyUnit.enemyType}-idle`
+          )
         ) {
           try {
             sprite.play(idleAnim, true);
@@ -659,7 +650,7 @@ export class EnemyController {
     enemy.levelText.setVisible(false);
 
     try {
-      enemy.sprite.play("enemy-hurt");
+      enemy.sprite.play(`enemy-${enemy.enemyType}-hurt`);
     } catch (e) {
       console.warn("Error playing enemy hurt animation:", e);
     }
