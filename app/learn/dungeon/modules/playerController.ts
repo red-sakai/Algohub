@@ -199,8 +199,9 @@ export class PlayerController {
 
     // Use virtual input if provided and has movement, otherwise use keyboard
     // This ensures keyboard controls work on desktop even when virtualInput object exists
-    const hasVirtualMovement = virtualInput && (virtualInput.moveX !== 0 || virtualInput.moveY !== 0);
-    
+    const hasVirtualMovement =
+      virtualInput && (virtualInput.moveX !== 0 || virtualInput.moveY !== 0);
+
     if (hasVirtualMovement) {
       // Use mobile virtual input
       moveX = virtualInput.moveX;
