@@ -146,14 +146,18 @@ export class PlayerController {
 
     // Handle input - check keyboard if virtualInput is not provided or not from mobile
     const attackPressed =
-      (virtualInput?.attackJustPressed) ||
+      virtualInput?.attackJustPressed ||
       (!virtualInput && this.eKey && Phaser.Input.Keyboard.JustDown(this.eKey));
     const jumpPressed =
-      (virtualInput?.jumpJustPressed) ||
-      (!virtualInput && this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey));
+      virtualInput?.jumpJustPressed ||
+      (!virtualInput &&
+        this.spaceKey &&
+        Phaser.Input.Keyboard.JustDown(this.spaceKey));
     const ultPressed =
-      (virtualInput?.ultJustPressed) ||
-      (!virtualInput && this.selectedCharacter === "goku" && this.qKey &&
+      virtualInput?.ultJustPressed ||
+      (!virtualInput &&
+        this.selectedCharacter === "goku" &&
+        this.qKey &&
         Phaser.Input.Keyboard.JustDown(this.qKey));
 
     if (attackPressed && !this.isSlashing && !this.isJumping) {
@@ -427,7 +431,8 @@ export class PlayerController {
     // Use character-specific attack range
     const attackRange =
       GAME_CONSTANTS.CHARACTER_ATTACK_RANGES[
-        this.selectedCharacter as keyof typeof GAME_CONSTANTS.CHARACTER_ATTACK_RANGES
+        this
+          .selectedCharacter as keyof typeof GAME_CONSTANTS.CHARACTER_ATTACK_RANGES
       ] || GAME_CONSTANTS.PLAYER_ATTACK_RANGE;
 
     enemies.forEach((enemyUnit) => {
@@ -499,7 +504,8 @@ export class PlayerController {
     // Get character-specific attack range
     const maxRange =
       GAME_CONSTANTS.CHARACTER_ATTACK_RANGES[
-        this.selectedCharacter as keyof typeof GAME_CONSTANTS.CHARACTER_ATTACK_RANGES
+        this
+          .selectedCharacter as keyof typeof GAME_CONSTANTS.CHARACTER_ATTACK_RANGES
       ] || GAME_CONSTANTS.PLAYER_ATTACK_RANGE;
 
     // Find the nearest enemy in the attack direction to target
@@ -570,7 +576,8 @@ export class PlayerController {
     }
 
     // Calculate damage
-    const baseDamage = GAME_CONSTANTS.PLAYER_BASE_DAMAGE * this.attackBoostMultiplier;
+    const baseDamage =
+      GAME_CONSTANTS.PLAYER_BASE_DAMAGE * this.attackBoostMultiplier;
 
     // Create the magic projectile with target
     const projectile = this.magicEffectsController.createProjectile(
@@ -585,7 +592,7 @@ export class PlayerController {
     // Check for projectile-enemy collisions
     const checkInterval = this.scene.time.addEvent({
       delay: 16, // Check every frame (~60fps)
-      repeat: Math.ceil((maxRange / 400) * 1000 / 16), // Based on projectile speed
+      repeat: Math.ceil(((maxRange / 400) * 1000) / 16), // Based on projectile speed
       callback: () => {
         if (!projectile.active) {
           checkInterval.destroy();
@@ -604,7 +611,9 @@ export class PlayerController {
             30
           );
 
-          if (Phaser.Geom.Intersects.CircleToCircle(projectileBounds, enemyBounds)) {
+          if (
+            Phaser.Geom.Intersects.CircleToCircle(projectileBounds, enemyBounds)
+          ) {
             // Hit the enemy
             this.scene.events.emit("player-attack-hit", enemyUnit);
             projectile.hit();
