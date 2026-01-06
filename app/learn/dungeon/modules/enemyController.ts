@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { GAME_CONSTANTS } from "./constants";
 import type { EnemyUnit, TreeNode } from "./types";
 import { TreeBuilder } from "./treeBuilder";
+import { MapDataUtils } from "./mapDataUtils";
 
 export class EnemyController {
   private scene: Phaser.Scene;
@@ -90,38 +91,9 @@ export class EnemyController {
       index: index,
     }));
 
-    // Get floor tiles for tree building
-    const tileSize = mapData?.tileSize || 64;
-    let floorTileWorldPositions: Array<{
-      tileX: number;
-      tileY: number;
-      worldX: number;
-      worldY: number;
-    }> = [];
-
-    if (mapData && mapData.layers) {
-      const nodesLayer = mapData.layers.find(
-        (layer: {
-          name: string;
-          tiles?: Array<{ x: number; y: number; id: string }>;
-        }) => layer.name === "nodes"
-      );
-
-      if (nodesLayer?.tiles) {
-        const nodeFloorTiles = nodesLayer.tiles.filter(
-          (tile: { x: number; y: number; id: string }) => tile.id === "33"
-        );
-
-        floorTileWorldPositions = nodeFloorTiles.map(
-          (tile: { x: number; y: number; id: string }) => ({
-            tileX: tile.x,
-            tileY: tile.y,
-            worldX: tile.x * tileSize * mapScale + (tileSize * mapScale) / 2,
-            worldY: tile.y * tileSize * mapScale + (tileSize * mapScale) / 2,
-          })
-        );
-      }
-    }
+    // Get floor tiles for tree building using shared utility
+    const { tiles: floorTileWorldPositions, tileSize } =
+      MapDataUtils.extractNodesFloorTiles(mapData, mapScale);
 
     // Build binary tree structure
     const tree = TreeBuilder.buildBinaryTreeStructure(

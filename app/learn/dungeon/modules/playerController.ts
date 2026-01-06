@@ -99,6 +99,10 @@ export class PlayerController {
     this.speedBoostMultiplier = multiplier;
   }
 
+  getSpeedBoost(): number {
+    return this.speedBoostMultiplier;
+  }
+
   setAttackSpeedBoost(multiplier: number) {
     this.attackSpeedMultiplier = multiplier;
   }

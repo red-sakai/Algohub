@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
+import Image from "next/image";
 import { Pixelify_Sans } from "next/font/google";
 import { MapRenderer } from "./modules/mapRenderer";
 import { AnimationManager } from "./modules/animationManager";
@@ -21,6 +22,12 @@ import type { EnemyUnit } from "./modules/types";
 import { MobileControls, type VirtualInput } from "./modules/mobileControls";
 import { AudioController } from "./modules/audioController";
 import { LoadingScreen } from "./components/LoadingScreen";
+import { GameModal } from "./components/GameModal";
+import { PhysicsHelper } from "./modules/physicsHelper";
+import {
+  pauseGlobalAudio,
+  resumeGlobalAudio,
+} from "./modules/globalAudioHelper";
 
 const pixelFont = Pixelify_Sans({
   weight: ["400", "500", "600", "700"],
@@ -63,9 +70,13 @@ class DungeonScene extends Phaser.Scene {
   private mapHeight!: number;
   private wallColliders!: Phaser.Physics.Arcade.StaticGroup;
   private debugKey!: Phaser.Input.Keyboard.Key;
+  private lightingToggleKey!: Phaser.Input.Keyboard.Key;
+  private godModeKey!: Phaser.Input.Keyboard.Key;
+  private speedBoostKey!: Phaser.Input.Keyboard.Key;
   private selectedCharacter: string = "gojo";
   private enemyLevels: number[] = [];
   private mapName: string = "map.json";
+  private isAdmin: boolean = false;
   private initData: {
     character: string;
     enemyLevels?: number[];
@@ -76,6 +87,7 @@ class DungeonScene extends Phaser.Scene {
   private nodes: Array<{ x: number; y: number }> = [];
   private torches!: Phaser.Physics.Arcade.Group;
   private collectibles!: Phaser.Physics.Arcade.Group;
+  public gameStarted: boolean = false;
 
   constructor() {
     super({ key: "DungeonScene" });
@@ -88,6 +100,8 @@ class DungeonScene extends Phaser.Scene {
     if (data.character) {
       this.selectedCharacter = data.character;
     }
+    // Set admin flag if character is gojo
+    this.isAdmin = this.selectedCharacter === "gojo";
     if (data.enemyLevels && data.enemyLevels.length > 0) {
       this.enemyLevels = data.enemyLevels;
     } else {
@@ -504,7 +518,7 @@ class DungeonScene extends Phaser.Scene {
       this.player,
       this.torches,
       (player, torch) => {
-        const timeRemaining = this.torchController.collectTorch(torch);
+        this.torchController.collectTorch(torch);
         this.lightingController.setVisionRadius(
           this.torchController.getVisionRadius()
         );
@@ -587,7 +601,11 @@ class DungeonScene extends Phaser.Scene {
       this.mapWidth,
       this.mapHeight,
       () => this.handleDebugClick(),
-      () => this.handleTreeDisplayClick()
+      () => this.handleTreeDisplayClick(),
+      () => this.toggleLighting(),
+      () => this.toggleGodMode(),
+      () => this.increaseSpeed(),
+      this.isAdmin
     );
     this.uiController.createDebugOverlays(this.player.x, this.player.y);
 
@@ -728,10 +746,21 @@ class DungeonScene extends Phaser.Scene {
 
     // Torch controller initialized above
 
-    // Keyboard controls moved to PlayerController (except debug key)
-    this.debugKey = this.input.keyboard!.addKey(
-      Phaser.Input.Keyboard.KeyCodes.F
-    );
+    // Keyboard controls moved to PlayerController (except debug keys for admin)
+    if (this.isAdmin) {
+      this.debugKey = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.F
+      );
+      this.lightingToggleKey = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.L
+      );
+      this.godModeKey = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.G
+      );
+      this.speedBoostKey = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.B
+      );
+    }
 
     // Dispatch scene ready event to React component
     window.dispatchEvent(new Event("scene-ready"));
@@ -942,13 +971,31 @@ class DungeonScene extends Phaser.Scene {
     // Update wisdom controller
     this.wisdomController.update();
 
-    // Check for F key press to toggle debug mode
-    if (Phaser.Input.Keyboard.JustDown(this.debugKey)) {
-      this.uiController.toggleDebugMode(this.wallColliders, this.player);
-    }
+    // Admin-only debug controls
+    if (this.isAdmin) {
+      // Check for F key press to toggle debug mode
+      if (Phaser.Input.Keyboard.JustDown(this.debugKey)) {
+        this.uiController.toggleDebugMode(this.wallColliders, this.player);
+      }
 
-    // Update debug overlay positions
-    this.uiController.updateDebugOverlays(this.player);
+      // Check for L key press to toggle lighting
+      if (Phaser.Input.Keyboard.JustDown(this.lightingToggleKey)) {
+        this.toggleLighting();
+      }
+
+      // Check for G key press to toggle god mode
+      if (Phaser.Input.Keyboard.JustDown(this.godModeKey)) {
+        this.toggleGodMode();
+      }
+
+      // Check for B key press to boost speed
+      if (Phaser.Input.Keyboard.JustDown(this.speedBoostKey)) {
+        this.increaseSpeed();
+      }
+
+      // Update debug overlay positions
+      this.uiController.updateDebugOverlays(this.player);
+    }
 
     // Update buff timers (including torch)
     const buffTimers = this.collectiblesController.getBuffTimers();
@@ -968,6 +1015,11 @@ class DungeonScene extends Phaser.Scene {
   // setupEnemyColliders, updateEnemies, updateEnemyHealthBar moved to EnemyController
 
   damagePlayer(damage: number, enemyLevel: number) {
+    // God mode prevents damage
+    if (this.isAdmin && this.godMode) {
+      return;
+    }
+
     const newHealth = this.playerController.getHealth() - damage;
     this.playerController.setHealth(newHealth);
     this.uiController.updateHealthBar();
@@ -984,6 +1036,67 @@ class DungeonScene extends Phaser.Scene {
       this.uiController.updateHealthBar();
       this.gameOver();
     }
+  }
+
+  // Admin debug methods
+  private toggleLighting() {
+    if (!this.isAdmin) return;
+    this.lightingController.toggleLighting();
+    const isEnabled = this.lightingController.isLightingEnabled();
+    this.showAdminMessage(
+      `Lighting: ${isEnabled ? "ON" : "OFF"}`,
+      isEnabled ? "#ffaa00" : "#ff0000"
+    );
+  }
+
+  private godMode: boolean = false;
+  private toggleGodMode() {
+    if (!this.isAdmin) return;
+    this.godMode = !this.godMode;
+    if (this.godMode) {
+      // Set health to max and make invincible
+      this.playerController.setHealth(this.playerController.getMaxHealth());
+      this.uiController.updateHealthBar();
+    }
+    this.showAdminMessage(
+      `God Mode: ${this.godMode ? "ON" : "OFF"}`,
+      this.godMode ? "#00ff00" : "#ff0000"
+    );
+  }
+
+  private increaseSpeed() {
+    if (!this.isAdmin) return;
+    const currentMultiplier = this.playerController.getSpeedBoost();
+    const newMultiplier = currentMultiplier + 0.5;
+    this.playerController.setSpeedBoost(newMultiplier);
+    this.showAdminMessage(`Speed: ${newMultiplier.toFixed(1)}x`, "#00aaff");
+  }
+
+  private showAdminMessage(text: string, color: string) {
+    const message = this.add
+      .text(
+        this.cameras.main.scrollX + this.cameras.main.width / 2,
+        this.cameras.main.scrollY + 100,
+        text,
+        {
+          fontFamily: "'Pixelify Sans', monospace",
+          fontSize: "18px",
+          color: color,
+          backgroundColor: "#000000",
+          padding: { x: 12, y: 6 },
+          stroke: "#000000",
+          strokeThickness: 2,
+        }
+      )
+      .setOrigin(0.5)
+      .setDepth(10002);
+
+    this.tweens.add({
+      targets: message,
+      alpha: 0,
+      duration: 1500,
+      onComplete: () => message.destroy(),
+    });
   }
 
   // Methods moved to modules:
@@ -1055,6 +1168,7 @@ export default function DungeonGame() {
   const [levelInput, setLevelInput] = useState("");
   const [enemyLevels, setEnemyLevels] = useState<number[]>([]);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showGameTutorial, setShowGameTutorial] = useState(false);
   const [showWisdom, setShowWisdom] = useState(false);
   const [wisdomFact, setWisdomFact] = useState<{
     title: string;
@@ -1108,6 +1222,10 @@ export default function DungeonGame() {
     // All checks passed
     setEnemyLevels(parsed);
     setShowLevelInput(false);
+    // Set loading state immediately when game is about to start
+    setIsLoading(true);
+    setIsGameActive(true);
+    pauseGlobalAudio();
   };
 
   const generateRandomLevels = () => {
@@ -1118,25 +1236,17 @@ export default function DungeonGame() {
     const usedLevels = new Set<number>();
     const randomLevels: number[] = [];
 
-    // Generate unique random levels
-    while (randomLevels.length < count) {
+    // Generate unique random levels (max 100 attempts to prevent infinite loop)
+    let attempts = 0;
+    const maxAttempts = 100;
+
+    while (randomLevels.length < count && attempts < maxAttempts) {
       const randomLevel = Math.floor(Math.random() * 100) + 1; // 1-100
       if (!usedLevels.has(randomLevel)) {
         usedLevels.add(randomLevel);
         randomLevels.push(randomLevel);
       }
-
-      // Safety check: if we can't generate enough unique numbers in reasonable range,
-      // expand the range or use sequential numbers
-      if (randomLevels.length < count && usedLevels.size >= 100) {
-        // If we've used all numbers 1-100, start using numbers beyond 100
-        let nextLevel = 101;
-        while (randomLevels.length < count) {
-          randomLevels.push(nextLevel);
-          nextLevel++;
-        }
-        break;
-      }
+      attempts++;
     }
 
     // Shuffle the array for randomness
@@ -1152,31 +1262,80 @@ export default function DungeonGame() {
     if (!parentRef.current || !selectedCharacter || enemyLevels.length === 0)
       return;
 
-    // Show loading screen
-    setIsLoading(true);
-    setIsGameActive(true);
+    // Get window dimensions helper
+    const getWindowSize = () => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
 
-    // Pause any global audio/music playing
-    if (typeof window !== "undefined") {
-      try {
-        // Try to get and pause the global audio singleton
-        const globalAudio = (window as any).__ALG_HUB_AUDIO;
-        if (globalAudio && typeof globalAudio.pause === "function") {
-          globalAudio.pause();
-        }
-      } catch (e) {
-        console.log("Could not pause global audio:", e);
+    // Define event handlers at the top level of useEffect
+    const handleWisdomEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        title: string;
+        content: string;
+      }>;
+      if (customEvent.detail) {
+        console.log("Wisdom event received:", customEvent.detail);
+        setWisdomFact(customEvent.detail);
+        setShowWisdom(true);
+        // Pause game physics when showing wisdom
+        const scene = PhysicsHelper.getScene(gameRef.current, "DungeonScene");
+        PhysicsHelper.pausePhysics(scene, "Wisdom Modal");
       }
-    }
+    };
 
-    // Small delay to ensure loading screen is visible
-    const loadingTimer = setTimeout(() => {
+    const handleTutorialEvent = () => {
+      setShowGameTutorial(true);
+    };
+
+    const handleTutorialCloseEvent = () => {
+      // Resume game physics when tutorial closes
+      const scene = PhysicsHelper.getScene(gameRef.current, "DungeonScene");
+      PhysicsHelper.resumePhysics(scene, "Tutorial Close");
+    };
+
+    const handleExitEvent = () => {
+      // Reset game state to go back to title screen
+      setSelectedCharacter(null);
+      setEnemyLevels([]);
+      setLevelInput("");
+      setShowLevelInput(false);
+      setShowPicker(false);
+      setShowTitleScreen(true);
+      setIsLoading(false);
+      setIsGameActive(false);
+
+      // Resume global audio when exiting
+      resumeGlobalAudio();
+    };
+
+    const handleSceneReady = () => {
+      setIsLoading(false);
+      setIsGameActive(true);
+      // Show tutorial after loading screen is hidden
+      setTimeout(() => {
+        const scene = PhysicsHelper.getScene(
+          gameRef.current,
+          "DungeonScene"
+        ) as DungeonScene | null;
+        if (scene && !scene.gameStarted) {
+          scene.gameStarted = true;
+          PhysicsHelper.pausePhysics(scene, "Initial Tutorial");
+          setShowGameTutorial(true);
+        }
+      }, 500);
+    };
+
+    const handleResize = () => {
+      if (gameRef.current) {
+        const newSize = getWindowSize();
+        gameRef.current.scale.resize(newSize.width, newSize.height);
+      }
+    };
+
+    // Initialize game setup in a separate function
+    const initializeGame = () => {
       // Get window dimensions
-      const getWindowSize = () => ({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-
       const initialSize = getWindowSize();
 
       const config: Phaser.Types.Core.GameConfig = {
@@ -1210,15 +1369,15 @@ export default function DungeonGame() {
 
       gameRef.current = new Phaser.Game(config);
 
-      // Handle window resize
-      const handleResize = () => {
-        if (gameRef.current) {
-          const newSize = getWindowSize();
-          gameRef.current.scale.resize(newSize.width, newSize.height);
-        }
-      };
-
+      // Register event listeners
       window.addEventListener("resize", handleResize);
+      window.addEventListener("show-wisdom", handleWisdomEvent);
+      window.addEventListener("show-tutorial", handleTutorialEvent);
+      window.addEventListener("close-tutorial", handleTutorialCloseEvent);
+      window.addEventListener("exit-game", handleExitEvent);
+      window.addEventListener("scene-ready", handleSceneReady);
+
+      console.log("Event listeners registered");
 
       // Determine map name based on number of levels
       let mapName = "map10.json";
@@ -1228,85 +1387,29 @@ export default function DungeonGame() {
         mapName = "map12.json";
       }
 
-      // Listen for wisdom events from Phaser scene
-      // Use a custom event system since Phaser game events might not work as expected
-      const handleWisdomEvent = (event: Event) => {
-        const customEvent = event as CustomEvent<{
-          title: string;
-          content: string;
-        }>;
-        if (customEvent.detail) {
-          console.log("Wisdom event received:", customEvent.detail);
-          setWisdomFact(customEvent.detail);
-          setShowWisdom(true);
-        }
-      };
-
-      window.addEventListener("show-wisdom", handleWisdomEvent);
-      console.log("Wisdom event listener registered");
-
-      // Listen for tutorial event
-      const handleTutorialEvent = () => {
-        setShowTutorial(true);
-      };
-      window.addEventListener("show-tutorial", handleTutorialEvent);
-
-      // Listen for exit event
-      const handleExitEvent = () => {
-        // Reset game state to go back to title screen
-        setSelectedCharacter(null);
-        setEnemyLevels([]);
-        setLevelInput("");
-        setShowLevelInput(false);
-        setShowPicker(false);
-        setShowTitleScreen(true);
-        setIsLoading(false);
-        setIsGameActive(false);
-
-        // Optionally resume global audio when exiting
-        if (typeof window !== "undefined") {
-          try {
-            const globalAudio = (window as any).__ALG_HUB_AUDIO;
-            if (
-              globalAudio &&
-              typeof globalAudio.play === "function" &&
-              !globalAudio.ended
-            ) {
-              globalAudio.play().catch(() => {
-                // Ignore if autoplay is blocked
-              });
-            }
-          } catch (e) {
-            console.log("Could not resume global audio:", e);
-          }
-        }
-      };
-      window.addEventListener("exit-game", handleExitEvent);
-
-      // Listen for scene ready (custom event from scene)
-      const handleSceneReady = () => {
-        setIsLoading(false);
-      };
-      window.addEventListener("scene-ready", handleSceneReady);
-
       // Pass character data, enemy levels, and map name to scene
       gameRef.current.scene.start("DungeonScene", {
         character: selectedCharacter,
         enemyLevels: enemyLevels,
         mapName: mapName,
       });
-    }, 100);
+    };
+
+    // Initialize game with a small delay
+    const loadingTimer = setTimeout(initializeGame, 100);
 
     return () => {
       clearTimeout(loadingTimer);
       if (gameRef.current) {
-        window.removeEventListener("resize", () => {});
-        window.removeEventListener("show-wisdom", () => {});
-        window.removeEventListener("show-tutorial", () => {});
-        window.removeEventListener("exit-game", () => {});
-        window.removeEventListener("scene-ready", () => {});
-        gameRef.current?.destroy(true);
+        gameRef.current.destroy(true);
       }
+      // Clean up event listeners properly
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("show-wisdom", handleWisdomEvent);
+      window.removeEventListener("show-tutorial", handleTutorialEvent);
+      window.removeEventListener("close-tutorial", handleTutorialCloseEvent);
+      window.removeEventListener("exit-game", handleExitEvent);
+      window.removeEventListener("scene-ready", handleSceneReady);
     };
   }, [selectedCharacter, enemyLevels]);
 
@@ -1373,9 +1476,12 @@ export default function DungeonGame() {
               onClick={handleTitleClick}
             >
               <div className="flex flex-col items-center gap-4 sm:gap-8 w-full max-w-3xl">
-                <img
+                <Image
                   src="/sprite/title.png"
                   alt="Node Quest"
+                  width={896}
+                  height={224}
+                  priority
                   className="w-full h-auto drop-shadow-[0_0_40px_rgba(255,180,0,0.6)] transition-all duration-300 hover:drop-shadow-[0_0_60px_rgba(255,180,0,0.8)] hover:scale-105"
                   style={{ imageRendering: "pixelated" }}
                 />
@@ -1572,78 +1678,6 @@ export default function DungeonGame() {
                       </button>
                     </div>
                   </div>
-
-                  {/* Tutorial Modal */}
-                  {showTutorial && (
-                    <div className="fixed inset-0 flex items-center justify-center z-50">
-                      {/* Backdrop */}
-                      <div
-                        className="fixed inset-0 bg-black/80"
-                        onClick={() => setShowTutorial(false)}
-                      />
-                      {/* Tutorial Content */}
-                      <div
-                        className="relative w-full max-w-lg mx-4"
-                        style={{
-                          backgroundImage: "url('/sprite/infosheet.png')",
-                          backgroundSize: "contain",
-                          backgroundPosition: "center",
-                          backgroundRepeat: "no-repeat",
-                          imageRendering: "pixelated",
-                          aspectRatio: "3/4",
-                          padding: "3rem 2rem",
-                        }}
-                      >
-                        {/* Close Button */}
-                        <button
-                          onClick={() => setShowTutorial(false)}
-                          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-amber-900 hover:text-amber-700 transition-colors font-bold text-2xl"
-                        >
-                          ×
-                        </button>
-
-                        {/* Tutorial Text Content */}
-                        <div className="px-8 py-6 text-amber-900">
-                          <h2 className="text-3xl font-bold mb-4 text-center">
-                            How to Play
-                          </h2>
-                          <div className="space-y-4 text-lg leading-relaxed">
-                            <div>
-                              <h3 className="font-bold text-xl mb-2">
-                                Level Selection
-                              </h3>
-                              <p>
-                                Enter enemy levels separated by commas (e.g., 1,
-                                6, 5, 2, 7, 4, 3, 8, 9, 10). You can select
-                                10-12 levels. Use &quot;Generate Random
-                                Levels&quot; for a quick start.
-                              </p>
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-xl mb-2">
-                                Gameplay
-                              </h3>
-                              <p>
-                                Navigate through the dungeon, defeat enemies,
-                                and reach the end. Each enemy has a level that
-                                determines their strength. Plan your strategy
-                                carefully!
-                              </p>
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-xl mb-2">
-                                Controls
-                              </h3>
-                              <p>
-                                Use arrow keys or WASD to move. Space to jump.
-                                Attack enemies to progress through levels.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </>
               ) : (
                 <button
@@ -1692,44 +1726,94 @@ export default function DungeonGame() {
 
       {/* Wisdom Modal - Available during gameplay */}
       {showWisdom && wisdomFact && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/80"
-            onClick={() => setShowWisdom(false)}
-          />
-          {/* Wisdom Content */}
-          <div
-            className="relative w-full max-w-lg mx-4"
-            style={{
-              backgroundImage: "url('/sprite/infosheet.png')",
-              backgroundSize: "contain",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
-              imageRendering: "pixelated",
-              aspectRatio: "3/4",
-              padding: "3rem 2rem",
-            }}
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => setShowWisdom(false)}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-amber-900 hover:text-amber-700 transition-colors font-bold text-2xl"
-            >
-              ×
-            </button>
+        <GameModal
+          isOpen={showWisdom}
+          onClose={() => {
+            setShowWisdom(false);
+            // Resume game physics
+            const scene = PhysicsHelper.getScene(
+              gameRef.current,
+              "DungeonScene"
+            );
+            PhysicsHelper.resumePhysics(scene, "Wisdom Modal Close");
+          }}
+          title={wisdomFact.title}
+        >
+          <p>{wisdomFact.content}</p>
+        </GameModal>
+      )}
 
-            {/* Wisdom Text Content */}
-            <div className="px-8 py-6 text-amber-900">
-              <h2 className="text-3xl font-bold mb-4 text-center">
-                {wisdomFact.title}
-              </h2>
-              <div className="space-y-4 text-lg leading-relaxed">
-                <p>{wisdomFact.content}</p>
-              </div>
-            </div>
+      {/* Tutorial Modal - For level selection screen (no physics) */}
+      {showTutorial && !isGameActive && (
+        <GameModal
+          isOpen={showTutorial}
+          onClose={() => setShowTutorial(false)}
+          title="How to Play"
+        >
+          <div>
+            <h3 className="font-bold text-xl mb-2">Level Selection</h3>
+            <p>
+              Enter enemy levels separated by commas (e.g., 1, 6, 5, 2, 7, 4, 3,
+              8, 9, 10). You can select 10-12 levels. Use &quot;Generate Random
+              Levels&quot; for a quick start.
+            </p>
           </div>
-        </div>
+          <div>
+            <h3 className="font-bold text-xl mb-2">Gameplay</h3>
+            <p>
+              Navigate through the dungeon, defeat enemies, and reach the end.
+              Each enemy has a level that determines their strength. Plan your
+              strategy carefully!
+            </p>
+          </div>
+          <div>
+            <h3 className="font-bold text-xl mb-2">Controls</h3>
+            <p>
+              Use arrow keys or WASD to move. Space to jump. Attack enemies to
+              progress through levels.
+            </p>
+          </div>
+        </GameModal>
+      )}
+
+      {/* Game Tutorial Modal - During gameplay (with physics handling) */}
+      {showGameTutorial && isGameActive && (
+        <GameModal
+          isOpen={showGameTutorial}
+          onClose={() => {
+            setShowGameTutorial(false);
+            const event = new Event("close-tutorial");
+            window.dispatchEvent(event);
+          }}
+          title="How to Play"
+        >
+          <div>
+            <h3 className="font-bold text-xl mb-2">Objective</h3>
+            <p>
+              Navigate through the dungeon and defeat all enemies to win. Each
+              enemy has a level - defeat them in order to level up!
+            </p>
+          </div>
+          <div>
+            <h3 className="font-bold text-xl mb-2">Controls</h3>
+            <p>
+              <strong>Movement:</strong> Arrow keys or WASD
+              <br />
+              <strong>Jump:</strong> Space bar
+              <br />
+              <strong>Attack:</strong> E key
+              <br />
+              <strong>Special:</strong> Q key (if available)
+            </p>
+          </div>
+          <div>
+            <h3 className="font-bold text-xl mb-2">Tips</h3>
+            <p>
+              Collect torches to see in the dark. Pick up items to boost your
+              stats. Defeat enemies at your level or lower to progress!
+            </p>
+          </div>
+        </GameModal>
       )}
     </div>
   );

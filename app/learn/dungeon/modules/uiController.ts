@@ -13,6 +13,9 @@ export class UIController {
   private playerHealthText!: Phaser.GameObjects.Text;
   private debugButton!: Phaser.GameObjects.Text;
   private treeDisplayButton!: Phaser.GameObjects.Text;
+  private lightingToggleButton!: Phaser.GameObjects.Text;
+  private godModeButton!: Phaser.GameObjects.Text;
+  private speedBoostButton!: Phaser.GameObjects.Text;
   private debugBg!: Phaser.GameObjects.Rectangle;
   private debugInnerBg!: Phaser.GameObjects.Rectangle;
   private debugInfoText!: Phaser.GameObjects.Text;
@@ -21,6 +24,7 @@ export class UIController {
   private menuButtonText?: Phaser.GameObjects.Text;
   private menuPopupObjects: Phaser.GameObjects.GameObject[] = [];
   private isMenuOpen: boolean = false;
+  private isAdmin: boolean = false;
 
   // Buff timers at top of screen
   private buffTimerTexts: Map<string, Phaser.GameObjects.Text> = new Map();
@@ -41,8 +45,13 @@ export class UIController {
     mapWidth: number,
     mapHeight: number,
     onDebugClick: () => void,
-    onTreeDisplayClick: () => void
+    onTreeDisplayClick: () => void,
+    onLightingToggle: () => void,
+    onGodModeToggle: () => void,
+    onSpeedBoost: () => void,
+    isAdmin: boolean = false
   ) {
+    this.isAdmin = isAdmin;
     const { width, height } = this.scene.cameras.main;
     const isMobile = width < 768;
 
@@ -93,136 +102,90 @@ export class UIController {
       .setScrollFactor(0)
       .setDepth(10000);
 
-    // Debug button - top-left corner with improved styling
+    // Define buttonPadding for use in both admin buttons and buff timers
     const buttonPadding = 16;
-    this.debugButton = this.scene.add
-      .text(buttonPadding, buttonPadding, "DEBUG: Show Map", {
-        fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "13px",
-        color: "#ffaa00",
-        backgroundColor: "#000000",
-        padding: {
-          x: 10,
-          y: 6,
-        },
-        stroke: "#664400",
-        strokeThickness: 1,
-      })
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(10000)
-      .setInteractive({ useHandCursor: true });
 
-    this.debugButton.on("pointerdown", () => {
-      if (this.audioController) {
-        this.audioController.playButtonClick();
+    // Admin-only debug buttons - bottom-left on desktop, popup on mobile
+    if (this.isAdmin) {
+      if (isMobile) {
+        // Mobile: Create a single popup button at bottom-left
+        this.createMobileDebugPopup(
+          buttonPadding,
+          height,
+          width,
+          onDebugClick,
+          onTreeDisplayClick,
+          onLightingToggle,
+          onGodModeToggle,
+          onSpeedBoost
+        );
+      } else {
+        // Desktop: Show all buttons stacked at bottom-left
+        this.createDesktopDebugButtons(
+          buttonPadding,
+          height,
+          onDebugClick,
+          onTreeDisplayClick,
+          onLightingToggle,
+          onGodModeToggle,
+          onSpeedBoost
+        );
       }
-      onDebugClick();
-    });
-    this.debugButton.on("pointerover", () => {
-      this.debugButton.setStyle({
-        backgroundColor: "#333333",
-        color: "#ffcc00",
-      });
-    });
-    this.debugButton.on("pointerout", () => {
-      this.debugButton.setStyle({
-        backgroundColor: "#000000",
-        color: "#ffaa00",
-      });
-    });
+    }
 
-    // Menu button - top right corner
-    this.createMenuButton(width, height);
+    // Debug info text (admin only)
+    if (this.isAdmin) {
+      const collisionWidth =
+        GAME_CONSTANTS.FRAME_WIDTH -
+        GAME_CONSTANTS.FRAME_OFFSET_LEFT -
+        GAME_CONSTANTS.FRAME_OFFSET_RIGHT;
+      const collisionHeight =
+        GAME_CONSTANTS.FRAME_HEIGHT -
+        GAME_CONSTANTS.FRAME_OFFSET_TOP -
+        GAME_CONSTANTS.FRAME_OFFSET_BOTTOM;
 
-    // Tree display button - below debug button
-    const treeButtonY = 50;
-    this.treeDisplayButton = this.scene.add
-      .text(buttonPadding, treeButtonY, "Show Tree", {
-        fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "13px",
-        color: "#00ffcc",
-        backgroundColor: "#000000",
-        padding: {
-          x: 10,
-          y: 6,
-        },
-        stroke: "#006666",
-        strokeThickness: 1,
-      })
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(10000)
-      .setInteractive({ useHandCursor: true });
+      this.debugInfoText = this.scene.add
+        .text(
+          16,
+          520,
+          `Map: ${Math.round(mapWidth)}x${Math.round(mapHeight)} (Scale: ${
+            GAME_CONSTANTS.MAP_SCALE
+          }x) | Viewport: ${width}x${height}\nSprite - Visual: ${
+            GAME_CONSTANTS.FRAME_WIDTH
+          }x${
+            GAME_CONSTANTS.FRAME_HEIGHT
+          } | Collision: ${collisionWidth}x${collisionHeight} | Scale: ${
+            GAME_CONSTANTS.SPRITE_SCALE
+          }x\nOffsets - T:${GAME_CONSTANTS.FRAME_OFFSET_TOP} B:${
+            GAME_CONSTANTS.FRAME_OFFSET_BOTTOM
+          } L:${GAME_CONSTANTS.FRAME_OFFSET_LEFT} R:${
+            GAME_CONSTANTS.FRAME_OFFSET_RIGHT
+          }`,
+          {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: "10px",
+            color: "#ffffff",
+            backgroundColor: "#000000",
+            padding: { x: 8, y: 4 },
+          }
+        )
+        .setScrollFactor(0)
+        .setDepth(1000)
+        .setVisible(false); // Hidden by default
 
-    this.treeDisplayButton.on("pointerdown", () => {
-      if (this.audioController) {
-        this.audioController.playButtonClick();
-      }
-      onTreeDisplayClick();
-    });
-    this.treeDisplayButton.on("pointerover", () => {
-      this.treeDisplayButton.setStyle({
-        backgroundColor: "#333333",
-        color: "#00ffff",
-      });
-    });
-    this.treeDisplayButton.on("pointerout", () => {
-      this.treeDisplayButton.setStyle({
-        backgroundColor: "#000000",
-        color: "#00ffcc",
-      });
-    });
-
-    // Debug info text
-    const collisionWidth =
-      GAME_CONSTANTS.FRAME_WIDTH -
-      GAME_CONSTANTS.FRAME_OFFSET_LEFT -
-      GAME_CONSTANTS.FRAME_OFFSET_RIGHT;
-    const collisionHeight =
-      GAME_CONSTANTS.FRAME_HEIGHT -
-      GAME_CONSTANTS.FRAME_OFFSET_TOP -
-      GAME_CONSTANTS.FRAME_OFFSET_BOTTOM;
-
-    this.debugInfoText = this.scene.add
-      .text(
-        16,
-        520,
-        `Map: ${Math.round(mapWidth)}x${Math.round(mapHeight)} (Scale: ${
-          GAME_CONSTANTS.MAP_SCALE
-        }x) | Viewport: ${width}x${height}\nSprite - Visual: ${
-          GAME_CONSTANTS.FRAME_WIDTH
-        }x${
-          GAME_CONSTANTS.FRAME_HEIGHT
-        } | Collision: ${collisionWidth}x${collisionHeight} | Scale: ${
-          GAME_CONSTANTS.SPRITE_SCALE
-        }x\nOffsets - T:${GAME_CONSTANTS.FRAME_OFFSET_TOP} B:${
-          GAME_CONSTANTS.FRAME_OFFSET_BOTTOM
-        } L:${GAME_CONSTANTS.FRAME_OFFSET_LEFT} R:${
-          GAME_CONSTANTS.FRAME_OFFSET_RIGHT
-        }`,
-        {
+      // Debug legend
+      this.debugLegendText = this.scene.add
+        .text(16, 16, "Red = Visual Frame\nGreen = Collision/Hitbox", {
           fontFamily: "'Pixelify Sans', monospace",
-          fontSize: "10px",
+          fontSize: "12px",
           color: "#ffffff",
           backgroundColor: "#000000",
           padding: { x: 8, y: 4 },
-        }
-      )
-      .setScrollFactor(0)
-      .setDepth(1000);
-
-    // Debug legend
-    this.debugLegendText = this.scene.add
-      .text(16, 16, "Red = Visual Frame\nGreen = Collision/Hitbox", {
-        fontFamily: "'Pixelify Sans', monospace",
-        fontSize: "12px",
-        color: "#ffffff",
-        backgroundColor: "#000000",
-        padding: { x: 8, y: 4 },
-      })
-      .setScrollFactor(0)
-      .setDepth(1000);
+        })
+        .setScrollFactor(0)
+        .setDepth(1000)
+        .setVisible(false); // Hidden by default
+    }
 
     this.updateHealthBar();
 
@@ -292,9 +255,15 @@ export class UIController {
         .setVisible(false);
       this.buffTimerTexts.set(config.type, text);
     });
+
+    // Create menu button
+    this.createMenuButton(width, height);
   }
 
   createDebugOverlays(playerX: number, playerY: number) {
+    // Only create debug overlays for admin
+    if (!this.isAdmin) return;
+
     // Debug: Add red background to show original frame boundaries
     this.debugBg = this.scene.add.rectangle(
       playerX,
@@ -506,18 +475,32 @@ export class UIController {
   }
 
   toggleDebugOverlays(visible: boolean) {
+    if (!this.isAdmin) return; // Only admin has debug overlays
     if (this.debugBg) this.debugBg.setVisible(visible);
     if (this.debugInnerBg) this.debugInnerBg.setVisible(visible);
+    if (this.debugInfoText) this.debugInfoText.setVisible(visible);
+    if (this.debugLegendText) this.debugLegendText.setVisible(visible);
   }
 
   hideButtons() {
-    if (this.debugButton) this.debugButton.setVisible(false);
-    if (this.treeDisplayButton) this.treeDisplayButton.setVisible(false);
+    if (this.isAdmin) {
+      if (this.debugButton) this.debugButton.setVisible(false);
+      if (this.treeDisplayButton) this.treeDisplayButton.setVisible(false);
+      if (this.lightingToggleButton)
+        this.lightingToggleButton.setVisible(false);
+      if (this.godModeButton) this.godModeButton.setVisible(false);
+      if (this.speedBoostButton) this.speedBoostButton.setVisible(false);
+    }
   }
 
   showButtons() {
-    if (this.debugButton) this.debugButton.setVisible(true);
-    if (this.treeDisplayButton) this.treeDisplayButton.setVisible(true);
+    if (this.isAdmin) {
+      if (this.debugButton) this.debugButton.setVisible(true);
+      if (this.treeDisplayButton) this.treeDisplayButton.setVisible(true);
+      if (this.lightingToggleButton) this.lightingToggleButton.setVisible(true);
+      if (this.godModeButton) this.godModeButton.setVisible(true);
+      if (this.speedBoostButton) this.speedBoostButton.setVisible(true);
+    }
   }
 
   hideHUD() {
@@ -545,6 +528,8 @@ export class UIController {
     wallColliders: Phaser.Physics.Arcade.StaticGroup,
     player: Phaser.Physics.Arcade.Sprite
   ) {
+    if (!this.isAdmin) return; // Only admin can toggle debug mode
+
     this.debugMode = !this.debugMode;
     this.toggleDebugOverlays(this.debugMode);
 
@@ -566,7 +551,7 @@ export class UIController {
   }
 
   updateDebugOverlays(player: Phaser.Physics.Arcade.Sprite) {
-    if (!this.debugBg || !this.debugInnerBg) return;
+    if (!this.isAdmin || !this.debugBg || !this.debugInnerBg) return;
 
     // Update debug background position to follow player
     this.debugBg.x = player.x;
@@ -791,5 +776,284 @@ export class UIController {
     });
     this.menuPopupObjects = [];
     this.isMenuOpen = false;
+  }
+
+  private createMobileDebugPopup(
+    buttonPadding: number,
+    height: number,
+    width: number,
+    onDebugClick: () => void,
+    onTreeDisplayClick: () => void,
+    onLightingToggle: () => void,
+    onGodModeToggle: () => void,
+    onSpeedBoost: () => void
+  ) {
+    const debugPopupButton = this.scene.add
+      .text(buttonPadding, height - buttonPadding, "⚙️ DEBUG", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "14px",
+        color: "#ffaa00",
+        backgroundColor: "#000000",
+        padding: {
+          x: 12,
+          y: 8,
+        },
+        stroke: "#664400",
+        strokeThickness: 2,
+      })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(10000)
+      .setInteractive({ useHandCursor: true });
+
+    let debugPopupOpen = false;
+    const debugPopupObjects: Phaser.GameObjects.GameObject[] = [];
+
+    const closeDebugPopup = () => {
+      debugPopupObjects.forEach((obj) => obj.destroy());
+      debugPopupObjects.length = 0;
+      debugPopupOpen = false;
+    };
+
+    const showDebugPopup = () => {
+      if (debugPopupOpen) {
+        closeDebugPopup();
+        return;
+      }
+      debugPopupOpen = true;
+
+      // Popup background
+      const popupBg = this.scene.add
+        .rectangle(buttonPadding, height - 60, 180, 200, 0x000000, 0.9)
+        .setOrigin(0, 1)
+        .setScrollFactor(0)
+        .setDepth(10010)
+        .setStrokeStyle(2, 0xffaa00);
+      debugPopupObjects.push(popupBg);
+
+      const buttons = [
+        { text: "[F] Show Map", callback: onDebugClick, color: "#ffaa00" },
+        {
+          text: "[T] Show Tree",
+          callback: onTreeDisplayClick,
+          color: "#00ffcc",
+        },
+        { text: "[L] Light", callback: onLightingToggle, color: "#ffff00" },
+        { text: "[G] God", callback: onGodModeToggle, color: "#00ff00" },
+        { text: "[B] Speed", callback: onSpeedBoost, color: "#00aaff" },
+      ];
+
+      buttons.forEach((btn, idx) => {
+        const yPos = height - 245 + idx * 35;
+        const button = this.scene.add
+          .text(buttonPadding + 10, yPos, btn.text, {
+            fontFamily: "'Pixelify Sans', monospace",
+            fontSize: "11px",
+            color: btn.color,
+            backgroundColor: "#000000",
+            padding: { x: 6, y: 4 },
+          })
+          .setOrigin(0, 0)
+          .setScrollFactor(0)
+          .setDepth(10011)
+          .setInteractive({ useHandCursor: true });
+
+        button.on("pointerdown", () => {
+          if (this.audioController) {
+            this.audioController.playButtonClick();
+          }
+          btn.callback();
+          closeDebugPopup();
+        });
+
+        debugPopupObjects.push(button);
+      });
+    };
+
+    debugPopupButton.on("pointerdown", () => {
+      if (this.audioController) {
+        this.audioController.playButtonClick();
+      }
+      showDebugPopup();
+    });
+
+    // Store reference
+    this.debugButton = debugPopupButton;
+  }
+
+  private createDesktopDebugButtons(
+    buttonPadding: number,
+    height: number,
+    onDebugClick: () => void,
+    onTreeDisplayClick: () => void,
+    onLightingToggle: () => void,
+    onGodModeToggle: () => void,
+    onSpeedBoost: () => void
+  ) {
+    let yOffset = height - buttonPadding;
+
+    // Speed Boost button (bottom-most)
+    this.speedBoostButton = this.scene.add
+      .text(buttonPadding, yOffset, "[B] Speed Boost", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "13px",
+        color: "#00aaff",
+        backgroundColor: "#000000",
+        padding: { x: 10, y: 6 },
+        stroke: "#004466",
+        strokeThickness: 1,
+      })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(10000)
+      .setInteractive({ useHandCursor: true });
+    this.speedBoostButton.on("pointerdown", () => {
+      if (this.audioController) this.audioController.playButtonClick();
+      onSpeedBoost();
+    });
+    this.speedBoostButton.on("pointerover", () =>
+      this.speedBoostButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#66ccff",
+      })
+    );
+    this.speedBoostButton.on("pointerout", () =>
+      this.speedBoostButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#00aaff",
+      })
+    );
+    yOffset -= 35;
+
+    // God Mode button
+    this.godModeButton = this.scene.add
+      .text(buttonPadding, yOffset, "[G] God Mode", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "13px",
+        color: "#00ff00",
+        backgroundColor: "#000000",
+        padding: { x: 10, y: 6 },
+        stroke: "#006600",
+        strokeThickness: 1,
+      })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(10000)
+      .setInteractive({ useHandCursor: true });
+    this.godModeButton.on("pointerdown", () => {
+      if (this.audioController) this.audioController.playButtonClick();
+      onGodModeToggle();
+    });
+    this.godModeButton.on("pointerover", () =>
+      this.godModeButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#66ff66",
+      })
+    );
+    this.godModeButton.on("pointerout", () =>
+      this.godModeButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#00ff00",
+      })
+    );
+    yOffset -= 35;
+
+    // Lighting Toggle button
+    this.lightingToggleButton = this.scene.add
+      .text(buttonPadding, yOffset, "[L] Toggle Light", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "13px",
+        color: "#ffff00",
+        backgroundColor: "#000000",
+        padding: { x: 10, y: 6 },
+        stroke: "#666600",
+        strokeThickness: 1,
+      })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(10000)
+      .setInteractive({ useHandCursor: true });
+    this.lightingToggleButton.on("pointerdown", () => {
+      if (this.audioController) this.audioController.playButtonClick();
+      onLightingToggle();
+    });
+    this.lightingToggleButton.on("pointerover", () =>
+      this.lightingToggleButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#ffff66",
+      })
+    );
+    this.lightingToggleButton.on("pointerout", () =>
+      this.lightingToggleButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#ffff00",
+      })
+    );
+    yOffset -= 35;
+
+    // Tree Display button
+    this.treeDisplayButton = this.scene.add
+      .text(buttonPadding, yOffset, "[T] Show Tree", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "13px",
+        color: "#00ffcc",
+        backgroundColor: "#000000",
+        padding: { x: 10, y: 6 },
+        stroke: "#006666",
+        strokeThickness: 1,
+      })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(10000)
+      .setInteractive({ useHandCursor: true });
+    this.treeDisplayButton.on("pointerdown", () => {
+      if (this.audioController) this.audioController.playButtonClick();
+      onTreeDisplayClick();
+    });
+    this.treeDisplayButton.on("pointerover", () =>
+      this.treeDisplayButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#00ffff",
+      })
+    );
+    this.treeDisplayButton.on("pointerout", () =>
+      this.treeDisplayButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#00ffcc",
+      })
+    );
+    yOffset -= 35;
+
+    // Debug Map button (top-most)
+    this.debugButton = this.scene.add
+      .text(buttonPadding, yOffset, "[F] Show Map", {
+        fontFamily: "'Pixelify Sans', monospace",
+        fontSize: "13px",
+        color: "#ffaa00",
+        backgroundColor: "#000000",
+        padding: { x: 10, y: 6 },
+        stroke: "#664400",
+        strokeThickness: 1,
+      })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setDepth(10000)
+      .setInteractive({ useHandCursor: true });
+    this.debugButton.on("pointerdown", () => {
+      if (this.audioController) this.audioController.playButtonClick();
+      onDebugClick();
+    });
+    this.debugButton.on("pointerover", () =>
+      this.debugButton.setStyle({
+        backgroundColor: "#333333",
+        color: "#ffcc00",
+      })
+    );
+    this.debugButton.on("pointerout", () =>
+      this.debugButton.setStyle({
+        backgroundColor: "#000000",
+        color: "#ffaa00",
+      })
+    );
   }
 }
