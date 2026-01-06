@@ -18,6 +18,7 @@ export type EnemyUnit = {
   parentNodeIndex: number | null;
   unlocked: boolean;
   childrenNodeIndices: number[];
+  enemyType: string; // Type of enemy (boar, orc, wartator, zombie)
 };
 
 export type TreeNode = {

@@ -37,11 +37,24 @@ export const GAME_CONSTANTS = {
   ENEMY_AGGRO_RANGE: 260,
   ENEMY_ATTACK_RANGE: 90,
 
+  // Enemy types (randomly selected)
+  ENEMY_TYPES: ["boar", "orc", "wartator", "zombie"] as const,
+
   // Combat configuration
   PLAYER_ATTACK_RANGE: 100,
   PLAYER_BASE_DAMAGE: 50,
   ENEMY_BASE_DAMAGE: 10,
   KNOCKBACK_FORCE: 250,
+
+  // Character-specific attack ranges
+  CHARACTER_ATTACK_RANGES: {
+    gojo: 100,
+    gladiator: 100,
+    crusader: 100,
+    warrior: 100,
+    guardian: 100,
+    mage: 150, // Mid-range attack for mage
+  } as const,
 
   // Layer rendering
   DEPTH_PER_LAYER: 10,

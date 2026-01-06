@@ -56,14 +56,13 @@ export class MobileControls {
   }
 
   isMobileDevice(): boolean {
-    // Check dynamically based on current screen size
+    // Only check user agent to determine if it's truly a mobile device
+    // This ensures desktop users with small windows still get keyboard controls
     const isMobileUserAgent =
       /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent
       );
-    const isSmallScreen = window.innerWidth < 768;
-    // Consider it mobile if it's a mobile user agent OR small screen (for responsive design)
-    return isMobileUserAgent || isSmallScreen;
+    return isMobileUserAgent;
   }
 
   createControls(width: number, height: number, hasUlt: boolean = false) {

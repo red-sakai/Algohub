@@ -22,6 +22,7 @@ import { AudioController } from "./modules/audioController";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { GameModal } from "./components/GameModal";
 import { PhysicsHelper } from "./modules/physicsHelper";
+import { MagicEffectsController } from "./modules/magicEffectsController";
 import {
   pauseGlobalAudio,
   resumeGlobalAudio,
@@ -67,6 +68,7 @@ class DungeonScene extends Phaser.Scene {
   private wisdomController!: WisdomController;
   private mobileControls!: MobileControls;
   private audioController!: AudioController;
+  private magicEffectsController!: MagicEffectsController;
   private lastScreenWidth: number = 0;
 
   // Core game objects
@@ -132,9 +134,10 @@ class DungeonScene extends Phaser.Scene {
       frameHeight: 16,
     });
 
+    // Load player sprites from players folder
     this.load.spritesheet(
       "player-idle",
-      `/sprite/characters/${this.selectedCharacter}/idle.png`,
+      `/sprite/characters/players/${this.selectedCharacter}/idle.png`,
       {
         frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
         frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
@@ -143,75 +146,79 @@ class DungeonScene extends Phaser.Scene {
 
     this.load.spritesheet(
       "player-run",
-      `/sprite/characters/${this.selectedCharacter}/run.png`,
+      `/sprite/characters/players/${this.selectedCharacter}/run.png`,
       {
         frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
         frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
       }
     );
 
-    // Load character-specific skill sprite
-    if (this.selectedCharacter === "goku") {
+    // Load character attack/skill sprite
+    // Note: Most characters use 192x192 frames, but warrior uses 128x128 frames
+    const attackFrameWidth =
+      this.selectedCharacter === "warrior"
+        ? 128
+        : GAME_CONSTANTS.SLASH_FRAME_WIDTH;
+    const attackFrameHeight =
+      this.selectedCharacter === "warrior"
+        ? 128
+        : GAME_CONSTANTS.SLASH_FRAME_HEIGHT;
+
+    this.load.spritesheet(
+      "player-skill",
+      `/sprite/characters/players/${this.selectedCharacter}/attack.png`,
+      {
+        frameWidth: attackFrameWidth,
+        frameHeight: attackFrameHeight,
+      }
+    );
+
+    this.load.spritesheet(
+      "player-jump",
+      `/sprite/characters/players/${this.selectedCharacter}/jump.png`,
+      {
+        frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
+        frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
+      }
+    );
+
+    // Load all enemy types from enemies folder
+    GAME_CONSTANTS.ENEMY_TYPES.forEach((enemyType) => {
       this.load.spritesheet(
-        "player-skill",
-        `/sprite/characters/${this.selectedCharacter}/spellcast.png`,
+        `enemy-${enemyType}-idle`,
+        `/sprite/characters/enemies/${enemyType}/idle.png`,
         {
           frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
           frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
         }
       );
-    } else if (this.selectedCharacter === "ferd") {
+
       this.load.spritesheet(
-        "player-skill",
-        `/sprite/characters/${this.selectedCharacter}/thrust_oversize.png`,
+        `enemy-${enemyType}-run`,
+        `/sprite/characters/enemies/${enemyType}/run.png`,
+        {
+          frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
+          frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
+        }
+      );
+
+      this.load.spritesheet(
+        `enemy-${enemyType}-attack`,
+        `/sprite/characters/enemies/${enemyType}/attack.png`,
         {
           frameWidth: GAME_CONSTANTS.SLASH_FRAME_WIDTH,
           frameHeight: GAME_CONSTANTS.SLASH_FRAME_HEIGHT,
         }
       );
-    } else {
+
       this.load.spritesheet(
-        "player-skill",
-        `/sprite/characters/${this.selectedCharacter}/slash_oversize.png`,
+        `enemy-${enemyType}-hurt`,
+        `/sprite/characters/enemies/${enemyType}/hurt.png`,
         {
-          frameWidth: GAME_CONSTANTS.SLASH_FRAME_WIDTH,
-          frameHeight: GAME_CONSTANTS.SLASH_FRAME_HEIGHT,
+          frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
+          frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
         }
       );
-    }
-
-    this.load.spritesheet(
-      "player-jump",
-      `/sprite/characters/${this.selectedCharacter}/jump.png`,
-      {
-        frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
-        frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
-      }
-    );
-
-    // Load Ferdinand as enemy
-    this.load.spritesheet("enemy-idle", "/sprite/characters/ferd/idle.png", {
-      frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
-      frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
-    });
-
-    this.load.spritesheet("enemy-run", "/sprite/characters/ferd/run.png", {
-      frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
-      frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
-    });
-
-    this.load.spritesheet(
-      "enemy-attack",
-      "/sprite/characters/ferd/thrust_oversize.png",
-      {
-        frameWidth: GAME_CONSTANTS.SLASH_FRAME_WIDTH,
-        frameHeight: GAME_CONSTANTS.SLASH_FRAME_HEIGHT,
-      }
-    );
-
-    this.load.spritesheet("enemy-hurt", "/sprite/characters/ferd/hurt.png", {
-      frameWidth: GAME_CONSTANTS.FRAME_WIDTH,
-      frameHeight: GAME_CONSTANTS.FRAME_HEIGHT,
     });
 
     // Create a simple torch texture if it doesn't exist
@@ -585,7 +592,10 @@ class DungeonScene extends Phaser.Scene {
 
     // Create animations using AnimationManager
     AnimationManager.createPlayerAnimations(this, this.selectedCharacter);
-    AnimationManager.createEnemyAnimations(this);
+    AnimationManager.createAllEnemyAnimations(this);
+
+    // Initialize magic effects controller
+    this.magicEffectsController = new MagicEffectsController(this);
 
     // Initialize player controller
     const initialLevel =
@@ -601,7 +611,8 @@ class DungeonScene extends Phaser.Scene {
       playerMaxHealth,
       this.mapWidth,
       this.mapHeight,
-      this.audioController
+      this.audioController,
+      this.magicEffectsController
     );
 
     // Initialize UI controller
@@ -625,7 +636,7 @@ class DungeonScene extends Phaser.Scene {
 
     // Initialize mobile controls
     this.mobileControls = new MobileControls(this);
-    const hasUlt = this.selectedCharacter === "goku";
+    const hasUlt = false; // Ult skill disabled for all characters
     this.mobileControls.createControls(width, height, hasUlt);
 
     // Initialize audio controller
@@ -671,6 +682,9 @@ class DungeonScene extends Phaser.Scene {
     // Listen for player attack hits
     this.events.on("player-attack-hit", (enemy: EnemyUnit) => {
       const playerLevel = this.levelController.getPlayerLevel();
+
+      // Create blood particle effect
+      this.createBloodEffect(enemy.sprite.x, enemy.sprite.y);
 
       // If facing an enemy higher level than player, reduce damage to 1
       // (The "player-attack-hit" event only fires when player is facing the enemy)
@@ -985,6 +999,11 @@ class DungeonScene extends Phaser.Scene {
     // Update wisdom controller
     this.wisdomController.update();
 
+    // Update magic effects (projectiles)
+    if (this.magicEffectsController) {
+      this.magicEffectsController.update(delta);
+    }
+
     // Admin-only debug controls
     if (this.isAdmin) {
       // Check for F key press to toggle debug mode
@@ -1110,6 +1129,45 @@ class DungeonScene extends Phaser.Scene {
       alpha: 0,
       duration: 1500,
       onComplete: () => message.destroy(),
+    });
+  }
+
+  private createBloodEffect(x: number, y: number) {
+    // Create multiple blood particles
+    const particleCount = 8;
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 * i) / particleCount;
+      const distance = 30 + Math.random() * 20;
+
+      // Create blood particle as a circle
+      const particle = this.add.circle(x, y, 3 + Math.random() * 3, 0xff0000);
+      particle.setDepth(1500);
+
+      const targetX = x + Math.cos(angle) * distance;
+      const targetY = y + Math.sin(angle) * distance;
+
+      // Animate particle outward with gravity
+      this.tweens.add({
+        targets: particle,
+        x: targetX,
+        y: targetY + 20, // Add gravity effect
+        alpha: 0,
+        scale: 0.3,
+        duration: 400 + Math.random() * 200,
+        ease: "Cubic.easeOut",
+        onComplete: () => particle.destroy(),
+      });
+    }
+
+    // Add blood splatter effect at hit point
+    const splatter = this.add.circle(x, y, 15, 0xff0000, 0.6);
+    splatter.setDepth(1499);
+    this.tweens.add({
+      targets: splatter,
+      scale: 1.5,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => splatter.destroy(),
     });
   }
 

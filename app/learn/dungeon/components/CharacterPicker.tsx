@@ -34,16 +34,6 @@ const CHARACTERS = [
     cardBackground: "/sprite/card/special_card.png",
   },
   {
-    id: "goku",
-    name: "Goku",
-    direction: "down" as const,
-    description: "Legendary Saiyan warrior with boundless energy",
-    attack: 100,
-    defense: 80,
-    life: 95,
-    cardBackground: "/sprite/card/hero_card.png",
-  },
-  {
     id: "gladiator",
     name: "Gladiator",
     direction: "down" as const,
@@ -52,6 +42,46 @@ const CHARACTERS = [
     defense: 95,
     life: 90,
     cardBackground: "/sprite/card/steam_card.png",
+  },
+  {
+    id: "crusader",
+    name: "Crusader",
+    direction: "down" as const,
+    description: "Holy knight with divine protection and righteous fury",
+    attack: 88,
+    defense: 92,
+    life: 95,
+    cardBackground: "/sprite/card/hero_card.png",
+  },
+  {
+    id: "warrior",
+    name: "Warrior",
+    direction: "down" as const,
+    description: "Fierce fighter with unmatched strength and resilience",
+    attack: 90,
+    defense: 88,
+    life: 92,
+    cardBackground: "/sprite/card/steam_card.png",
+  },
+  {
+    id: "guardian",
+    name: "Guardian",
+    direction: "down" as const,
+    description: "Ancient protector with impenetrable defense",
+    attack: 82,
+    defense: 98,
+    life: 100,
+    cardBackground: "/sprite/card/hero_card.png",
+  },
+  {
+    id: "mage",
+    name: "Mage",
+    direction: "down" as const,
+    description: "Mystical spellcaster with devastating magical power",
+    attack: 98,
+    defense: 75,
+    life: 85,
+    cardBackground: "/sprite/card/mage_card.png",
   },
 ] as const;
 
@@ -136,7 +166,10 @@ export function CharacterPicker({
                     >
                       {/* Character Name on Top Scroll */}
                       <div className="absolute top-[6%] left-0 right-0 flex items-center justify-center">
-                        <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-amber-900 tracking-wider text-center w-full px-2">
+                        <h2
+                          className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white tracking-wide text-center w-full px-2"
+                          style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.8)" }}
+                        >
                           {char.name}
                         </h2>
                       </div>
@@ -158,8 +191,8 @@ export function CharacterPicker({
                       </div>
 
                       {/* Description on Bottom Scroll */}
-                      <div className="absolute bottom-[22%] left-[12%] right-[12%] flex items-center justify-center">
-                        <p className="text-xs sm:text-sm md:text-base font-medium text-amber-900 text-center leading-snug px-1 sm:px-2">
+                      <div className="absolute bottom-[22%] left-[15%] right-[15%] flex items-center justify-center">
+                        <p className="text-xs sm:text-sm md:text-base font-medium text-amber-800 text-center leading-snug px-4 sm:px-5">
                           {char.description}
                         </p>
                       </div>
@@ -167,17 +200,32 @@ export function CharacterPicker({
                       {/* Stats Bar at Bottom */}
                       <div className="absolute bottom-[5%] left-[15%] right-[7%] flex items-center justify-around">
                         <div className="flex items-center justify-center">
-                          <span className="text-base sm:text-lg md:text-xl font-bold text-amber-900">
+                          <span
+                            className="text-base sm:text-lg md:text-xl font-bold text-white"
+                            style={{
+                              textShadow: "1px 1px 3px rgba(0,0,0,0.8)",
+                            }}
+                          >
                             {char.attack}
                           </span>
                         </div>
                         <div className="flex items-center justify-center">
-                          <span className="text-base sm:text-lg md:text-xl font-bold text-amber-900">
+                          <span
+                            className="text-base sm:text-lg md:text-xl font-bold text-white"
+                            style={{
+                              textShadow: "1px 1px 3px rgba(0,0,0,0.8)",
+                            }}
+                          >
                             {char.defense}
                           </span>
                         </div>
                         <div className="flex items-center justify-center">
-                          <span className="text-base sm:text-lg md:text-xl font-bold text-amber-900">
+                          <span
+                            className="text-base sm:text-lg md:text-xl font-bold text-white"
+                            style={{
+                              textShadow: "1px 1px 3px rgba(0,0,0,0.8)",
+                            }}
+                          >
                             {char.life}
                           </span>
                         </div>
