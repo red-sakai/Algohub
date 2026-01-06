@@ -158,7 +158,7 @@ export function CharacterPicker({
                       </div>
 
                       {/* Description on Bottom Scroll */}
-                      <div className="absolute bottom-[28%] left-[12%] right-[12%] flex items-center justify-center">
+                      <div className="absolute bottom-[22%] left-[12%] right-[12%] flex items-center justify-center">
                         <p className="text-xs sm:text-sm md:text-base font-medium text-amber-900 text-center leading-snug px-1 sm:px-2">
                           {char.description}
                         </p>

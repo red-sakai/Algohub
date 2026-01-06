@@ -232,6 +232,14 @@ class DungeonScene extends Phaser.Scene {
 
     console.log("Create called - Viewport:", width, "x", height);
 
+    // Explicitly enable keyboard input
+    if (this.input.keyboard) {
+      this.input.keyboard.enabled = true;
+      console.log("Keyboard input explicitly enabled");
+    } else {
+      console.error("Keyboard plugin not available!");
+    }
+
     // Add a background color to see the canvas
     this.add
       .rectangle(0, 0, 10000, 10000, 0x000000)
@@ -1320,13 +1328,34 @@ export default function DungeonGame() {
           antialias: false,
           pixelArt: true,
         },
+        input: {
+          keyboard: {
+            target: window,
+          },
+          mouse: true,
+          touch: true,
+        },
         loader: {
           maxParallelDownloads: 10, // Load multiple assets in parallel
           timeout: 30000,
         },
+        dom: {
+          createContainer: true,
+        },
       };
 
       gameRef.current = new Phaser.Game(config);
+
+      // Ensure the canvas gets focus for keyboard input
+      setTimeout(() => {
+        const canvas = parentRef.current?.querySelector("canvas");
+        if (canvas) {
+          canvas.setAttribute("tabindex", "0");
+          canvas.focus();
+          canvas.style.outline = "none";
+          console.log("Canvas focused for keyboard input");
+        }
+      }, 200);
 
       // Register event listeners
       window.addEventListener("resize", handleResize);
@@ -1406,8 +1435,7 @@ export default function DungeonGame() {
 
           {showTitleScreen && <TitleScreen onClick={handleTitleClick} />}
 
-          {showTitleScreen ? // Title Screen component handles all rendering
-          null : (
+          {showTitleScreen ? null : ( // Title Screen component handles all rendering
             <>
               {showPicker ? (
                 <CharacterSelectionScreen
@@ -1467,6 +1495,15 @@ export default function DungeonGame() {
           }
           style={{
             visibility: isLoading ? "hidden" : "visible",
+          }}
+          onClick={(e) => {
+            // Ensure canvas gets focus when clicked
+            const canvas = (e.currentTarget as HTMLElement).querySelector(
+              "canvas"
+            );
+            if (canvas) {
+              canvas.focus();
+            }
           }}
         />
       )}

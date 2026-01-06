@@ -60,19 +60,32 @@ export class PlayerController {
     this.mapHeight = mapHeight;
     this.audioController = audioController;
 
-    // Setup keyboard controls
-    this.cursors = scene.input.keyboard!.createCursorKeys();
+    // Setup keyboard controls - ensure keyboard input is available
+    if (!scene.input || !scene.input.keyboard) {
+      console.error("Keyboard input not available in scene!");
+      throw new Error("Keyboard input not initialized");
+    }
+
+    this.cursors = scene.input.keyboard.createCursorKeys();
     this.wasd = {
-      W: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      A: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      S: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      D: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      W: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      A: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      S: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      D: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
-    this.eKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.spaceKey = scene.input.keyboard!.addKey(
+    this.eKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.spaceKey = scene.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE
     );
-    this.qKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.qKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+
+    console.log("Keyboard controls initialized:", {
+      cursors: !!this.cursors,
+      wasd: !!this.wasd,
+      eKey: !!this.eKey,
+      spaceKey: !!this.spaceKey,
+      qKey: !!this.qKey,
+    });
   }
 
   getPlayer(): Phaser.Physics.Arcade.Sprite {
@@ -184,21 +197,23 @@ export class PlayerController {
     let moveX = 0;
     let moveY = 0;
 
-    // Check virtual input first (mobile), but fall back to keyboard if virtual input is zero
-    if (
-      virtualInput &&
-      (virtualInput.moveX !== 0 || virtualInput.moveY !== 0)
-    ) {
+    // Use virtual input if provided and has movement, otherwise use keyboard
+    // This ensures keyboard controls work on desktop even when virtualInput object exists
+    const hasVirtualMovement = virtualInput && (virtualInput.moveX !== 0 || virtualInput.moveY !== 0);
+    
+    if (hasVirtualMovement) {
+      // Use mobile virtual input
       moveX = virtualInput.moveX;
       moveY = virtualInput.moveY;
     } else {
+      // Use keyboard controls (arrow keys and WASD)
       // Arrow keys
       if (this.cursors.left.isDown) moveX = -1;
       if (this.cursors.right.isDown) moveX = 1;
       if (this.cursors.up.isDown) moveY = -1;
       if (this.cursors.down.isDown) moveY = 1;
 
-      // WASD keys
+      // WASD keys (always check these, they should work alongside arrows)
       if (this.wasd.W.isDown) moveY = -1;
       if (this.wasd.S.isDown) moveY = 1;
       if (this.wasd.A.isDown) moveX = -1;
