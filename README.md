@@ -25,12 +25,38 @@ Playable and in-development experiences surface inside the Learn Carousel (`app/
 | **Tower of Hanoi** | `/learn/tower-of-hanoi` | Playable | Recursion, constraints, and optimal move sequences through a staged UI that escalates into a terminal-style “system” flow. |
 | **Dungeon** | `/learn/dungeon` | Playable | Phaser-based mini-game experience (client-only) used as an interactive playground inside the Learn hub. |
 
-### Stack 'Em Queue Snapshot
+## Snapshots
 
+### Stack 'Em Queue
+
+- ![Stack 'Em Queue snapshot](public/readme-images/stack-em-queue.png)
 - Built with `@react-three/fiber`, `three`, and custom camera rigs.
 - Queue management logic lives in `app/learn/parking/ParkingScene.jsx` with helpers in `hooks/` and `lib/`.
 - Gameplay loop includes queue markers, countdown triggers, Supabase-powered license validation, and optional fast-forward.
 - Mobile joystick: multi-input handling with pointer/touch fallbacks (`MobileJoystick` component inside `ParkingScene.jsx`).
+
+### Binary Tree Pinball
+
+- ![Binary Tree Pinball snapshot](public/readme-images/pinball.png)
+
+- Enter a list of numbers to build a BST, then visualize it in 3D.
+- Choose a traversal (preorder / inorder / postorder) and watch the sequence play out.
+- Traversal and positioning logic live under `lib/pinball/`.
+
+### Critical Migration
+
+- ![Tower of Hanoi / Critical Migration snapshot](public/readme-images/critical-migration.png)
+
+- Solve the Tower of Hanoi by moving disks between towers under the classic size constraints.
+- The experience is presented as a staged UI flow (logo → desktop → game → terminal-style sequence).
+- The flow and state live under `app/learn/tower-of-hanoi/`.
+
+### Dungeon Quest
+
+- ![Dungeon snapshot](public/readme-images/dungeon-quest.png)
+
+- Client-only Phaser experience loaded via dynamic import.
+- Uses sprite/map assets from `public/sprite/` and related game files under `app/learn/dungeon/`.
 
 ## Tech Stack
 
@@ -75,15 +101,6 @@ Important: the `sbom/` folder in this repo is currently empty, and no vulnerabil
 | **UI Icons** | Icon set | `lucide-react@^0.552.0` | npm registry | No report committed (run `npm audit` / SBOM tooling) |
 | **Build / Type / Lint Tooling** | TypeScript + lint rules | `typescript@^5`, `eslint@^9`, `eslint-config-next@16.0.1`, `eslint-plugin-security@^3.0.1`, `@types/*` | npm registry | No report committed (run `npm audit` / SBOM tooling) |
 | **Unit Testing** | Jest unit tests | `jest@^30.2.0`, `@types/jest@^30.0.0` | npm registry | No report committed (run `npm audit` / SBOM tooling) |
-
-### How To Produce A Verifiable SBOM + Vulnerability Report
-
-If you want this README table to include an auditable vulnerability list, generate and commit the outputs from your preferred tooling (examples):
-
-- `npm audit --json` (dependency vulnerabilities)
-- CycloneDX or SPDX generators for npm projects
-
-Once you have an SBOM file and/or vulnerability report artifacts checked into the repo, I can update this README to reflect exact findings without guessing.
 
 ## Project Structure
 
