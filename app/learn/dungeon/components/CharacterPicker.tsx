@@ -1,0 +1,304 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  type CarouselApi,
+} from "@/app/components/ui/Carousel";
+import { AnimatedSprite } from "./AnimatedSprite";
+import { Pixelify_Sans } from "next/font/google";
+
+const pixelFont = Pixelify_Sans({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+});
+
+interface CharacterPickerProps {
+  onSelect: (character: string) => void;
+  currentCharacter?: string | null;
+}
+
+const CHARACTERS = [
+  {
+    id: "gojo",
+    name: "Gojo",
+    direction: "down" as const,
+    description: "Master of space manipulation with infinite potential",
+    attack: 95,
+    defense: 85,
+    life: 100,
+    cardBackground: "/sprite/card/special_card.png",
+  },
+  {
+    id: "gladiator",
+    name: "Gladiator",
+    direction: "down" as const,
+    description: "Battle-hardened warrior with exceptional combat skills",
+    attack: 85,
+    defense: 95,
+    life: 90,
+    cardBackground: "/sprite/card/steam_card.png",
+  },
+  {
+    id: "crusader",
+    name: "Crusader",
+    direction: "down" as const,
+    description: "Holy knight with divine protection and righteous fury",
+    attack: 88,
+    defense: 92,
+    life: 95,
+    cardBackground: "/sprite/card/hero_card.png",
+  },
+  {
+    id: "warrior",
+    name: "Warrior",
+    direction: "down" as const,
+    description: "Fierce fighter with unmatched strength and resilience",
+    attack: 90,
+    defense: 88,
+    life: 92,
+    cardBackground: "/sprite/card/steam_card.png",
+  },
+  {
+    id: "guardian",
+    name: "Guardian",
+    direction: "down" as const,
+    description: "Ancient protector with impenetrable defense",
+    attack: 82,
+    defense: 98,
+    life: 100,
+    cardBackground: "/sprite/card/hero_card.png",
+  },
+  {
+    id: "mage",
+    name: "Mage",
+    direction: "down" as const,
+    description: "Mystical spellcaster with devastating magical power",
+    attack: 98,
+    defense: 75,
+    life: 85,
+    cardBackground: "/sprite/card/mage_card.png",
+  },
+] as const;
+
+export function CharacterPicker({
+  onSelect,
+  currentCharacter,
+}: CharacterPickerProps) {
+  const [api, setApi] = useState<CarouselApi>();
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    if (!api) return;
+
+    const updateCurrent = () => {
+      setCurrent(api.selectedScrollSnap());
+    };
+
+    updateCurrent();
+    api.on("select", updateCurrent);
+  }, [api]);
+
+  return (
+    <div className={`w-full ${pixelFont.className} relative z-10 px-4 sm:px-6`}>
+      {/* Header */}
+      <div className="flex justify-center mb-4 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-normal text-amber-100 tracking-wider drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] text-center">
+          Pick a Character
+        </h1>
+      </div>
+
+      <Carousel
+        setApi={setApi}
+        opts={{
+          align: "center",
+          loop: true,
+        }}
+        className="w-full"
+      >
+        <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 w-full">
+          {/* Left Arrow Button */}
+          <CarouselPrevious
+            className="group relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            aria-label="Previous character"
+            style={{
+              backgroundImage: "url('/sprite/btn_circle.png')",
+              backgroundSize: "100% 100%",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              imageRendering: "pixelated",
+            }}
+          >
+            <svg
+              className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+          </CarouselPrevious>
+
+          {/* Carousel Content */}
+          <div className="flex-1 max-w-[280px] sm:max-w-[350px] md:max-w-[450px] lg:max-w-[500px]">
+            <CarouselContent>
+              {CHARACTERS.map((char) => (
+                <CarouselItem key={char.id}>
+                  <div className="flex items-center justify-center p-2 sm:p-3 md:p-4">
+                    <div
+                      className="relative w-full aspect-3/4 max-w-[280px] sm:max-w-[350px] md:max-w-[450px] transition-all duration-300"
+                      style={{
+                        backgroundImage: `url('${char.cardBackground}')`,
+                        backgroundSize: "100% 100%",
+                        backgroundPosition: "center",
+                        backgroundRepeat: "no-repeat",
+                        imageRendering: "pixelated",
+                      }}
+                    >
+                      {/* Character Name on Top Scroll */}
+                      <div className="absolute top-[6%] left-0 right-0 flex items-center justify-center">
+                        <h2
+                          className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white tracking-wide text-center w-full px-2"
+                          style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.8)" }}
+                        >
+                          {char.name}
+                        </h2>
+                      </div>
+
+                      {/* Character Sprite in Center */}
+                      <div className="absolute top-[22%] left-0 right-0 bottom-[45%] flex items-center justify-center">
+                        <div className="w-[70%] h-[70%] flex items-center justify-center scale-[0.6] sm:scale-[0.8] md:scale-100">
+                          <AnimatedSprite
+                            key={char.id}
+                            characterId={char.id}
+                            direction={char.direction}
+                            frameWidth={64}
+                            frameHeight={64}
+                            frameCount={2}
+                            frameRate={4}
+                            scale={5}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Description on Bottom Scroll */}
+                      <div className="absolute bottom-[22%] left-[15%] right-[15%] flex items-center justify-center">
+                        <p className="text-xs sm:text-sm md:text-base font-medium text-amber-800 text-center leading-snug px-4 sm:px-5">
+                          {char.description}
+                        </p>
+                      </div>
+
+                      {/* Stats Bar at Bottom */}
+                      <div className="absolute bottom-[5%] left-[15%] right-[7%] flex items-center justify-around">
+                        <div className="flex items-center justify-center">
+                          <span
+                            className="text-base sm:text-lg md:text-xl font-bold text-white"
+                            style={{
+                              textShadow: "1px 1px 3px rgba(0,0,0,0.8)",
+                            }}
+                          >
+                            {char.attack}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <span
+                            className="text-base sm:text-lg md:text-xl font-bold text-white"
+                            style={{
+                              textShadow: "1px 1px 3px rgba(0,0,0,0.8)",
+                            }}
+                          >
+                            {char.defense}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <span
+                            className="text-base sm:text-lg md:text-xl font-bold text-white"
+                            style={{
+                              textShadow: "1px 1px 3px rgba(0,0,0,0.8)",
+                            }}
+                          >
+                            {char.life}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+          </div>
+
+          {/* Right Arrow Button */}
+          <CarouselNext
+            className="group relative shrink-0 flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 transition-all duration-300 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            aria-label="Next character"
+            style={{
+              backgroundImage: "url('/sprite/btn_circle.png')",
+              backgroundSize: "100% 100%",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              imageRendering: "pixelated",
+            }}
+          >
+            <svg
+              className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-amber-200 group-hover:text-amber-100 transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </CarouselNext>
+        </div>
+      </Carousel>
+
+      {/* Select Button */}
+      <div className="flex justify-center mt-4 sm:mt-6">
+        <button
+          onClick={() => onSelect(CHARACTERS[current].id)}
+          disabled={currentCharacter === CHARACTERS[current].id}
+          className={`font-bold text-base sm:text-lg md:text-xl transition-all duration-300 px-6 sm:px-8 ${
+            currentCharacter === CHARACTERS[current].id
+              ? "opacity-60 cursor-not-allowed"
+              : "hover:scale-105 active:scale-95 cursor-pointer"
+          }`}
+          style={{
+            backgroundImage: "url('/sprite/btn_small.png')",
+            backgroundSize: "auto 100%",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            imageRendering: "pixelated",
+            color:
+              currentCharacter === CHARACTERS[current].id
+                ? "#10b981"
+                : "#fbbf24",
+            textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
+            height: "40px",
+            minWidth: "160px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {currentCharacter === CHARACTERS[current].id
+            ? "✓ Selected"
+            : "Select"}
+        </button>
+      </div>
+    </div>
+  );
+}

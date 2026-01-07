@@ -110,8 +110,13 @@ export function ArcadeCabinetShell() {
   const glassRef = useRef<THREE.Mesh>(null);
   const sidePanelLeftRef = useRef<THREE.Mesh>(null);
   const sidePanelRightRef = useRef<THREE.Mesh>(null);
+  const lastUpdate = useRef(0);
 
   useFrame((state) => {
+    // Throttle to ~20fps for subtle ambient effects
+    if (state.clock.elapsedTime - lastUpdate.current < 0.05) return;
+    lastUpdate.current = state.clock.elapsedTime;
+    
     const time = state.clock.elapsedTime;
     
     // Subtle backbox glow pulse
@@ -203,7 +208,7 @@ export function ArcadeCabinetShell() {
         {/* Top marquee lights */}
         {[-6, -2, 2, 6].map((x, i) => (
           <mesh key={`top-light-${i}`} position={[x, 6.5, 3]}>
-            <sphereGeometry args={[0.4, 16, 16]} />
+            <sphereGeometry args={[0.4, 8, 8]} />
             <meshStandardMaterial
               color={i % 2 === 0 ? "#ff0066" : "#00ffff"}
               emissive={i % 2 === 0 ? "#ff0066" : "#00ffff"}
@@ -258,7 +263,7 @@ export function ArcadeCabinetShell() {
         <group key={`leg-${i}`} position={pos as [number, number, number]}>
           {/* Main leg post - chrome */}
           <mesh rotation={[0.05, 0, 0]}>
-            <cylinderGeometry args={[0.7, 0.9, 10, 16]} />
+            <cylinderGeometry args={[0.7, 0.9, 10, 12]} />
             <meshStandardMaterial
               color="#c0c0c0"
               roughness={0.2}
@@ -268,7 +273,7 @@ export function ArcadeCabinetShell() {
           
           {/* Leg leveler foot */}
           <mesh position={[0, -5.5, 0]}>
-            <cylinderGeometry args={[1.2, 1.4, 1, 16]} />
+            <cylinderGeometry args={[1.2, 1.4, 1, 12]} />
             <meshStandardMaterial
               color="#222222"
               roughness={0.6}
@@ -278,7 +283,7 @@ export function ArcadeCabinetShell() {
           
           {/* Leg bracket */}
           <mesh position={[0, 3, 0]}>
-            <cylinderGeometry args={[0.8, 0.8, 1.5, 16]} />
+            <cylinderGeometry args={[0.8, 0.8, 1.5, 12]} />
             <meshStandardMaterial
               color="#ffaa00"
               roughness={0.3}
@@ -327,7 +332,7 @@ export function ArcadeCabinetShell() {
             position={[x, 8, -12]} 
             rotation={[0, i === 0 ? -Math.PI / 2 : Math.PI / 2, 0]}
           >
-            <circleGeometry args={[2, 32]} />
+            <circleGeometry args={[2, 16]} />
             <meshStandardMaterial
               color="#00ffff"
               emissive="#00ddff"

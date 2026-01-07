@@ -5,7 +5,8 @@
  * Educational 3D arcade game for teaching tree traversal algorithms
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { buildBST } from '@/lib/pinball/treeAlgorithms';
 import { convertTo3DTree, createTraversalResult } from '@/lib/pinball/positioningEngine';
 import { PinballAnimator, NodeVisualStateManager } from '@/lib/pinball/animationController';
@@ -14,8 +15,14 @@ import PinballScene3D from './PinballScene3D';
 import GameControls from './GameControls';
 import TraversalInfo from './TraversalInfo';
 import AlgorithmExplanation from './AlgorithmExplanation';
+import IntroOverlay from './IntroOverlay';
+import KeyboardShortcutsPanel from './KeyboardShortcutsPanel';
+import VolumeControl from './VolumeControl';
+import { soundEffects } from '@/lib/audio/soundEffects';
+import { backgroundMusic } from '@/lib/audio/backgroundMusic';
 
 export default function PinballGamePage() {
+  const router = useRouter();
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -34,6 +41,89 @@ export default function PinballGamePage() {
   const [showExplanation, setShowExplanation] = useState<boolean>(true);
   const [showCabinetIntro, setShowCabinetIntro] = useState<boolean>(false);
   const [skipIntro, setSkipIntro] = useState<boolean>(false);
+  const [showIntroOverlay, setShowIntroOverlay] = useState<boolean>(false);
+
+  // Check if this is the first visit
+  useEffect(() => {
+    const hasSeenIntro = sessionStorage.getItem('pinball-intro-seen');
+    if (!hasSeenIntro) {
+      setShowIntroOverlay(true);
+      sessionStorage.setItem('pinball-intro-seen', 'true');
+    }
+  }, []);
+
+  // Start background music when component mounts
+  useEffect(() => {
+    // Small delay to ensure audio context is ready
+    const timer = setTimeout(() => {
+      backgroundMusic.play();
+    }, 500);
+    
+    return () => {
+      clearTimeout(timer);
+      backgroundMusic.stop();
+    };
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Prevent shortcuts when typing in input
+      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+      
+      // R - Reset current game
+      if (e.code === 'KeyR' && gameState.tree) {
+        e.preventDefault();
+        handleReset();
+      }
+      
+      // N - New tree
+      if (e.code === 'KeyN') {
+        e.preventDefault();
+        setGameState(prev => ({
+          ...prev,
+          phase: 'input',
+          tree: null,
+          currentTraversal: null,
+          pinball: null
+        }));
+      }
+      
+      // 1/2/3 - Select traversal algorithm
+      if (gameState.phase === 'select' && gameState.tree) {
+        if (e.code === 'Digit1') {
+          e.preventDefault();
+          handleStartTraversal('preorder');
+        } else if (e.code === 'Digit2') {
+          e.preventDefault();
+          handleStartTraversal('inorder');
+        } else if (e.code === 'Digit3') {
+          e.preventDefault();
+          handleStartTraversal('postorder');
+        }
+      }
+      
+      // P - Pause/Resume
+      if (e.code === 'KeyP') {
+        e.preventDefault();
+        if (gameState.phase === 'traversing') {
+          handlePause();
+        } else if (gameState.phase === 'paused') {
+          handleResume();
+        }
+      }
+      
+      // M - Toggle sound and music
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        soundEffects.toggle();
+        backgroundMusic.toggle();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [gameState]);
 
   // Animation refs
   const animatorRef = useRef<PinballAnimator>(new PinballAnimator());
@@ -54,6 +144,13 @@ export default function PinballGamePage() {
 
     if (values.length === 0) {
       alert('Please enter at least one number');
+      return;
+    }
+
+    // Prevent too many nodes to avoid overflow
+    const MAX_NODES = 15;
+    if (values.length > MAX_NODES) {
+      alert(`Too many nodes! Maximum is ${MAX_NODES} nodes to ensure proper visualization. Please reduce the number of inputs.`);
       return;
     }
 
@@ -125,9 +222,13 @@ export default function PinballGamePage() {
       (step: TraversalStep) => {
         // Node hit callback
         visualStateManagerRef.current.hitNode(step.nodeId, step.sequenceIndex);
+        
+        // Play sound effect based on node depth
+        soundEffects.playNodeHit(step.depth);
       },
       () => {
         // Traversal complete callback
+        soundEffects.playComplete();
         setGameState(prev => ({ ...prev, phase: 'complete' }));
       }
     );
@@ -148,8 +249,7 @@ export default function PinballGamePage() {
 
   const startAnimationLoop = () => {
     lastTimeRef.current = performance.now();
-    
-    console.log('🎬 Animation loop started');
+    let frameCount = 0;
     
     const animate = (currentTime: number) => {
       const deltaTime = (currentTime - lastTimeRef.current) / 1000;
@@ -161,20 +261,21 @@ export default function PinballGamePage() {
       // Update visual states
       visualStateManagerRef.current.update(deltaTime);
 
-      // Update game state
-      setGameState(prev => ({
-        ...prev,
-        pinball: animatorRef.current.getState()
-      }));
+      // Throttle state updates to every 2 frames (~30fps)
+      frameCount++;
+      if (frameCount % 2 === 0) {
+        // Update game state
+        setGameState(prev => ({
+          ...prev,
+          pinball: animatorRef.current.getState()
+        }));
+      }
 
       const currentState = animatorRef.current.getState();
-      console.log('🔄 Frame update - isMoving:', currentState.isMoving, 'pos:', pinballPosition);
 
       // Continue loop if still moving
       if (currentState.isMoving) {
         animationFrameRef.current = requestAnimationFrame(animate);
-      } else {
-        console.log('⏹️ Animation loop stopped - ball not moving');
       }
     };
 
@@ -205,20 +306,20 @@ export default function PinballGamePage() {
 
   const handleLaunchEnd = () => {
     if (gameState.phase === 'ready' && gameState.pinball && !gameState.pinball.isLaunched) {
-      console.log('🚀 Launching ball');
-      
       // Cancel any existing animation loop
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = 0;
       }
       
+      // Play launch sound
+      soundEffects.playLaunch();
+      
       // Launch the ball
       animatorRef.current.launchBall();
       setGameState(prev => ({ ...prev, phase: 'traversing' }));
       
       // Restart animation loop for launch
-      console.log('⚡ Restarting animation loop for launch');
       startAnimationLoop();
     }
   };
@@ -282,27 +383,120 @@ export default function PinballGamePage() {
   // ============================================================================
 
   return (
-    <div className="w-full h-screen bg-gradient-to-b from-slate-950 via-purple-950 to-slate-950 flex flex-col overflow-hidden relative">
-      {/* Arcade scanlines effect */}
-      <div className="absolute inset-0 pointer-events-none opacity-5" style={{
+    <div className="w-full h-screen bg-gradient-to-br from-red-950 via-purple-950 to-amber-950 flex flex-col overflow-hidden relative">
+      {/* Casino neon lights border */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute bottom-0 left-0 right-0 h-2 bg-gradient-to-r from-cyan-400 via-purple-500 to-cyan-400 opacity-60 animate-pulse" style={{ animationDelay: '0.5s' }} />
+        <div className="absolute top-0 bottom-0 left-0 w-2 bg-gradient-to-b from-pink-400 via-purple-500 to-pink-400 opacity-60 animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-0 bottom-0 right-0 w-2 bg-gradient-to-b from-green-400 via-cyan-500 to-green-400 opacity-60 animate-pulse" style={{ animationDelay: '1.5s' }} />
+      </div>
+      
+      {/* Floating casino elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+        <div className="casino-symbols"></div>
+      </div>
+      
+      {/* Diamond pattern background */}
+      <div className="absolute inset-0 pointer-events-none opacity-10" style={{
+        backgroundImage: `
+          repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,215,0,0.3) 35px, rgba(255,215,0,0.3) 70px),
+          repeating-linear-gradient(-45deg, transparent, transparent 35px, rgba(255,0,128,0.3) 35px, rgba(255,0,128,0.3) 70px)
+        `,
+        backgroundSize: '100px 100px'
+      }} />
+      
+      {/* Spotlight effects */}
+      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-yellow-500/25 rounded-full blur-[120px] animate-pulse pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-red-500/25 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
+      <div className="absolute bottom-0 left-1/3 w-[600px] h-[600px] bg-purple-500/25 rounded-full blur-[130px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
+      <div className="absolute bottom-0 right-1/3 w-[600px] h-[600px] bg-cyan-500/25 rounded-full blur-[130px] animate-pulse pointer-events-none" style={{ animationDelay: '3s' }} />
+      
+      {/* Velvet texture overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.08]" style={{
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px)'
       }} />
       
-      {/* Top Bar - Arcade Marquee Style */}
-      <div className="p-4 text-center bg-gradient-to-r from-purple-900/80 via-pink-900/80 to-purple-900/80 backdrop-blur-sm border-b-4 border-purple-500/60 shadow-[0_0_40px_rgba(139,92,246,0.5)] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-cyan-600/20 animate-pulse pointer-events-none" />
-        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 drop-shadow-[0_0_20px_rgba(139,92,246,1)] uppercase tracking-wider relative z-10">
-          🎯 Binary Tree Traversal Pinball 🕹️
-        </h1>
-        <div className="text-xs text-purple-300 mt-1 font-bold uppercase tracking-widest drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] relative z-10">
-          ⚡ Arcade Edition ⚡
+      <style jsx>{`
+        .casino-symbols {
+          width: 100%;
+          height: 100%;
+          position: relative;
+          animation: float 20s linear infinite;
+        }
+        
+        .casino-symbols::before,
+        .casino-symbols::after {
+          content: '♠ ♥ ♦ ♣ 🎰 🎲 ⭐ 💎 ♠ ♥ ♦ ♣ 🎰 🎲 ⭐ 💎';
+          position: absolute;
+          font-size: 80px;
+          white-space: nowrap;
+          color: rgba(255, 215, 0, 0.4);
+          text-shadow: 0 0 20px rgba(255, 0, 128, 0.6);
+          animation: scrollSymbols 60s linear infinite;
+        }
+        
+        .casino-symbols::before {
+          top: 20%;
+          left: 0;
+        }
+        
+        .casino-symbols::after {
+          top: 60%;
+          left: 0;
+          animation-delay: -30s;
+          animation-direction: reverse;
+        }
+        
+        @keyframes scrollSymbols {
+          from { transform: translateX(100%); }
+          to { transform: translateX(-100%); }
+        }
+        
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-20px); }
+        }
+      `}</style>
+      
+      {/* Top Bar - Sleek Gaming Header */}
+      <div className="relative overflow-hidden z-50">
+        <div className="p-4 sm:p-6 text-center bg-gradient-to-r from-slate-900/60 via-purple-900/60 to-slate-900/60 backdrop-blur-xl border-b border-purple-500/20 relative">
+          {/* Back button */}
+          <button
+            onClick={() => {
+              console.log('Back button clicked!');
+              router.push('/learn');
+            }}
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-[9999] flex items-center gap-2 px-4 py-2 bg-slate-800/90 hover:bg-slate-700 text-white rounded-lg font-semibold transition-all border-2 border-slate-600 hover:border-slate-400 shadow-lg hover:scale-105 active:scale-95 cursor-pointer"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+            </svg>
+            <span className="hidden sm:inline">Back</span>
+          </button>
+
+          {/* Subtle glow effect */}
+          <div className="absolute inset-0 bg-gradient-to-b from-purple-500/5 to-transparent pointer-events-none" />
+          
+          {/* Main title */}
+          <h1 className="relative text-3xl sm:text-5xl lg:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 uppercase tracking-wide" style={{
+            filter: 'drop-shadow(0 0 20px rgba(168,85,247,0.5))'
+          }}>
+            🎮 Binary Tree Pinball 🎯
+          </h1>
+          
+          {/* Subtitle */}
+          <p className="mt-2 text-xs sm:text-sm text-purple-300/80 font-medium tracking-widest uppercase">
+            Master Tree Algorithms Through Play
+          </p>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 3D Scene - Main Area */}
-        <div className="flex-1 relative">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 3D Scene - Main Area (full screen on mobile) */}
+        <div className="absolute inset-0">
           <PinballScene3D
             tree={gameState.tree}
             pinballState={gameState.pinball}
@@ -315,6 +509,7 @@ export default function PinballGamePage() {
             showCabinetIntro={showCabinetIntro}
             skipIntro={skipIntro}
             onIntroComplete={handleIntroComplete}
+            gamePhase={gameState.phase}
           />
         </div>
       </div>
@@ -389,6 +584,7 @@ export default function PinballGamePage() {
                 <p className="font-semibold"><span className="text-green-400">• Balanced:</span> <span className="text-white">50,30,70,20,40,60,80</span></p>
                 <p className="font-semibold"><span className="text-yellow-400">• Left-heavy:</span> <span className="text-white">10,5,15,3,7</span></p>
                 <p className="font-semibold"><span className="text-red-400">• Sequential:</span> <span className="text-white">1,2,3,4,5,6,7</span></p>
+                <p className="font-semibold text-amber-300 mt-3">⚠️ Maximum 15 nodes for optimal visualization</p>
               </div>
               </div>
             </div>
@@ -407,9 +603,9 @@ export default function PinballGamePage() {
           </div>
         )}
 
-        {/* Game Controls - Bottom Left */}
+        {/* Game Controls - Bottom (compact on mobile) */}
         {(gameState.phase === 'select' || gameState.phase === 'ready' || gameState.phase === 'traversing' || gameState.phase === 'paused' || gameState.phase === 'complete') && (
-          <div className="p-4 pointer-events-auto select-none">
+          <div className="p-2 sm:p-4 pointer-events-auto select-none w-full sm:w-auto">
             <GameControls
               phase={gameState.phase}
               onStartTraversal={handleStartTraversal}
@@ -425,6 +621,18 @@ export default function PinballGamePage() {
           </div>
         )}
       </div>
+
+      {/* Cinematic Intro Overlay with Blur Warm-Up */}
+      <IntroOverlay 
+        isActive={showIntroOverlay}
+        onComplete={() => setShowIntroOverlay(false)}
+      />
+      
+      {/* Volume Control */}
+      <VolumeControl />
+      
+      {/* Keyboard Shortcuts Panel */}
+      <KeyboardShortcutsPanel />
     </div>
   );
 }

@@ -6,6 +6,7 @@
  */
 
 import { GamePhase, TraversalType, PinballState } from '@/types/pinball';
+import { useState } from 'react';
 
 interface Props {
   phase: GamePhase;
@@ -32,8 +33,27 @@ export default function GameControls({
   onLaunchStart,
   onLaunchEnd
 }: Props) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Show toggle button on mobile during gameplay phases
+  const showToggle = (phase === 'ready' || phase === 'traversing' || phase === 'paused') && typeof window !== 'undefined' && window.innerWidth < 640;
+
   return (
-    <div className="select-none bg-gradient-to-br from-slate-900/98 via-purple-950/95 to-slate-900/98 backdrop-blur-lg p-6 rounded-2xl shadow-[0_0_40px_rgba(139,92,246,0.4)] border-4 border-purple-500/60 max-w-md relative overflow-hidden">
+    <div className="relative">
+      {/* Toggle button for mobile */}
+      {showToggle && (
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="sm:hidden absolute -top-12 right-2 z-20 w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-lg hover:from-purple-500 hover:to-pink-500 transition-all shadow-[0_0_20px_rgba(168,85,247,0.6)] border-2 border-purple-400/50 flex items-center justify-center active:scale-95"
+        >
+          {isCollapsed ? '👁️' : '✕'}
+        </button>
+      )}
+
+      {/* Main panel - hide on mobile when collapsed */}
+      <div className={`select-none bg-gradient-to-br from-slate-900/95 via-purple-950/90 to-slate-900/95 backdrop-blur-lg p-3 sm:p-6 rounded-xl sm:rounded-2xl shadow-[0_0_40px_rgba(139,92,246,0.4)] border-2 sm:border-4 border-purple-500/60 max-w-full sm:max-w-md relative overflow-hidden transition-all ${
+        isCollapsed && showToggle ? 'opacity-0 pointer-events-none h-0 p-0 border-0' : ''
+      }`}>
       {/* Neon glow effect */}
       <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-cyan-500/10 pointer-events-none" />
       <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 via-pink-600 to-cyan-600 opacity-20 blur-xl pointer-events-none" />
@@ -80,20 +100,20 @@ export default function GameControls({
 
       {/* Launch Controls - DRAG PLUNGER */}
       {phase === 'ready' && pinballState && !pinballState.isLaunched && (
-        <div className="space-y-3 relative z-10">
-          <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 font-black text-2xl mb-3 text-center animate-pulse drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]">🎯 READY TO LAUNCH!</h3>
+        <div className="space-y-2 sm:space-y-3 relative z-10">
+          <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 font-black text-lg sm:text-2xl mb-2 sm:mb-3 text-center animate-pulse drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]">🎯 READY!</h3>
           
-          <div className="bg-gradient-to-r from-purple-900/80 to-blue-900/80 p-5 rounded-xl border-4 border-purple-400/60 shadow-[0_0_30px_rgba(168,85,247,0.5)] relative overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-900/80 to-blue-900/80 p-3 sm:p-5 rounded-lg sm:rounded-xl border-2 sm:border-4 border-purple-400/60 shadow-[0_0_30px_rgba(168,85,247,0.5)] relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 via-transparent to-cyan-500/20 pointer-events-none" />
-            <div className="text-white font-black mb-3 flex items-center gap-3 relative z-10">
-              <span className="text-3xl animate-pulse">🎮</span>
-              <span className="text-xl drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">DRAG THE PLUNGER!</span>
+            <div className="text-white font-black mb-2 sm:mb-3 flex items-center gap-2 sm:gap-3 relative z-10">
+              <span className="text-2xl sm:text-3xl animate-pulse">🎮</span>
+              <span className="text-base sm:text-xl drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">DRAG PLUNGER!</span>
             </div>
-            <p className="text-cyan-200 text-base mb-4 font-semibold relative z-10 drop-shadow-[0_0_4px_rgba(34,211,238,0.6)]">
-              Click and drag the plunger DOWN in the 3D view, then release to launch!
+            <p className="text-cyan-200 text-xs sm:text-base mb-2 sm:mb-4 font-semibold relative z-10 drop-shadow-[0_0_4px_rgba(34,211,238,0.6)]">
+              Drag plunger DOWN, release to launch!
             </p>
-            <p className="text-yellow-300 text-sm font-black animate-pulse relative z-10 drop-shadow-[0_0_6px_rgba(253,224,71,0.8)]">
-              👉 PLUNGER is on the RIGHT SIDE of the table
+            <p className="text-yellow-300 text-xs sm:text-sm font-black animate-pulse relative z-10 drop-shadow-[0_0_6px_rgba(253,224,71,0.8)]">
+              👉 RIGHT SIDE
             </p>
             
             {pinballState.launcherCharge > 0 && (
@@ -221,6 +241,7 @@ export default function GameControls({
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

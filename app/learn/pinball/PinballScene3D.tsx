@@ -5,7 +5,7 @@
  * Full pinball machine with cabinet, spline rails, and thick bumpers
  */
 
-import React, { useRef, useEffect, Suspense, useState } from 'react';
+import React, { useRef, useEffect, Suspense, useState, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -19,6 +19,7 @@ import {
   CornerPosts
 } from '@/lib/pinball/playfieldRenderer';
 import { CabinetIntro, ArcadeCabinetShell } from './CabinetIntro';
+import PlungerOverlay from './PlungerOverlay';
 
 interface Props {
   tree: TreeNode3D | null;
@@ -32,6 +33,7 @@ interface Props {
   showCabinetIntro?: boolean;
   skipIntro?: boolean;
   onIntroComplete?: () => void;
+  gamePhase?: string;
 }
 
 export default function PinballScene3D({ 
@@ -45,12 +47,20 @@ export default function PinballScene3D({
   onLaunchEnd,
   showCabinetIntro = false,
   skipIntro = false,
-  onIntroComplete
+  onIntroComplete,
+  gamePhase
 }: Props) {
   return (
-    <Canvas 
-      shadows
-      onPointerMissed={() => {
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Canvas 
+        shadows
+        dpr={[1, 1.5]}
+        gl={{ 
+          antialias: true, 
+          powerPreference: "high-performance"
+        }}
+        performance={{ min: 0.5 }}
+        onPointerMissed={() => {
         // Reset cursor when clicking outside objects
         document.body.style.cursor = 'default';
       }}
@@ -72,6 +82,18 @@ export default function PinballScene3D({
         />
       </Suspense>
     </Canvas>
+    
+    {/* 2D Overlay for Plunger Drag (bypasses R3F raycasting zoom issues) */}
+    {!showCabinetIntro && tree && (
+      <PlungerOverlay
+        onDragStart={onLaunchStart}
+        onDragChange={onLaunchChange}
+        onDragEnd={onLaunchEnd}
+        isLaunched={pinballState?.isLaunched}
+        traversalSelected={gamePhase === 'ready' || gamePhase === 'playing' || gamePhase === 'finished'}
+      />
+    )}
+    </div>
   );
 }
 
@@ -101,17 +123,59 @@ function SceneContent({
   });
 
   useEffect(() => {
-    // Set initial camera position (used when not in intro)
-    if (!showCabinetIntro) {
-      camera.position.set(0, 8, 42);
+    // Responsive camera positioning based on viewport
+    const updateCamera = () => {
+      if (showCabinetIntro) return;
+      
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const aspect = width / height;
+      
+      // Adjust camera distance based on screen size
+      let z = 50;
+      let y = 5;
+      let fov = 60;
+      
+      // Mobile portrait
+      if (aspect < 0.75) {
+        z = 65;
+        y = 3;
+        fov = 70;
+      }
+      // Mobile landscape / tablet portrait
+      else if (aspect < 1.2) {
+        z = 55;
+        y = 4;
+        fov = 65;
+      }
+      // Narrow desktop
+      else if (aspect < 1.5) {
+        z = 50;
+        y = 5;
+        fov = 60;
+      }
+      // Wide desktop
+      else {
+        z = 48;
+        y = 5;
+        fov = 58;
+      }
+      
+      camera.position.set(0, y, z);
       camera.lookAt(0, 0, 0);
-    }
+      
+      if ('fov' in camera && 'updateProjectionMatrix' in camera) {
+        (camera as THREE.PerspectiveCamera).fov = fov;
+        (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+      }
+    };
     
-    // Add subtle FOV for arcade depth perception
-    if ('fov' in camera && 'updateProjectionMatrix' in camera) {
-      (camera as THREE.PerspectiveCamera).fov = 55;
-      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
-    }
+    updateCamera();
+    window.addEventListener('resize', updateCamera);
+    
+    return () => {
+      window.removeEventListener('resize', updateCamera);
+    };
   }, [camera, tree, showCabinetIntro]);
 
   return (
@@ -128,8 +192,8 @@ function SceneContent({
         position={[0, 30, 25]} 
         intensity={2.5} 
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-far={60}
         shadow-camera-left={-25}
         shadow-camera-right={25}
@@ -222,17 +286,19 @@ interface TreeBumpersProps {
   visualStateManager: NodeVisualStateManager;
 }
 
-function TreeBumpers({ tree, visualStateManager }: TreeBumpersProps) {
-  const nodes: TreeNode3D[] = [];
-
-  function collectNodes(node: TreeNode3D | null) {
-    if (node === null) return;
-    nodes.push(node);
-    if (node.left) collectNodes(node.left as TreeNode3D);
-    if (node.right) collectNodes(node.right as TreeNode3D);
-  }
-
-  collectNodes(tree);
+const TreeBumpers = React.memo(({ tree, visualStateManager }: TreeBumpersProps) => {
+  // Memoize node collection
+  const nodes = useMemo(() => {
+    const nodeList: TreeNode3D[] = [];
+    function collectNodes(node: TreeNode3D | null) {
+      if (node === null) return;
+      nodeList.push(node);
+      if (node.left) collectNodes(node.left as TreeNode3D);
+      if (node.right) collectNodes(node.right as TreeNode3D);
+    }
+    collectNodes(tree);
+    return nodeList;
+  }, [tree]);
 
   return (
     <>
@@ -245,17 +311,22 @@ function TreeBumpers({ tree, visualStateManager }: TreeBumpersProps) {
       ))}
     </>
   );
-}
+});
 
-function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualStateManager: NodeVisualStateManager }) {
+const ArcadeBumper = React.memo(({ node, visualStateManager }: { node: TreeNode3D; visualStateManager: NodeVisualStateManager }) => {
   const coreRef = useRef<THREE.Mesh>(null);
   const rimRef = useRef<THREE.Mesh>(null);
   const innerRingRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.PointLight>(null);
   const [showParticles, setShowParticles] = useState(false);
   const prevActiveRef = useRef(false);
+  const lastUpdate = useRef(0);
 
   useFrame((state) => {
+    // Throttle to ~60fps
+    if (state.clock.elapsedTime - lastUpdate.current < 0.016) return;
+    lastUpdate.current = state.clock.elapsedTime;
+
     const visualState = visualStateManager.getNodeState(node.nodeId);
     if (!visualState) return;
 
@@ -277,13 +348,13 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       coreRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.2);
     }
 
-    // Rotate rim
-    if (rimRef.current) {
+    // Rotate rim (only if active or was visited)
+    if (rimRef.current && (visualState.isActive || visualState.wasVisited)) {
       rimRef.current.rotation.z += 0.018;
     }
 
-    // Counter-rotate inner ring
-    if (innerRingRef.current) {
+    // Counter-rotate inner ring (only if active or was visited)
+    if (innerRingRef.current && (visualState.isActive || visualState.wasVisited)) {
       innerRingRef.current.rotation.z -= 0.025;
     }
   });
@@ -295,11 +366,19 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
   const baseColor = wasVisited ? '#44ff44' : '#ff2222';
   const emissiveColor = isActive ? '#ffaa00' : (wasVisited ? '#22aa22' : '#aa0000');
 
+  // Scale node based on tree size
+  const nodeScale = node.nodeScale || 1;
+
+  // Memoize geometries to avoid recreating them
+  const rimGeometry = useMemo(() => new THREE.TorusGeometry(1.0, 0.25, 12, 24), []);
+  const coreGeometry = useMemo(() => new THREE.SphereGeometry(0.75, 16, 16), []);
+  const innerRingGeometry = useMemo(() => new THREE.TorusGeometry(0.65, 0.08, 8, 16), []);
+  const postGeometry = useMemo(() => new THREE.CylinderGeometry(0.2, 0.2, 0.25, 8), []);
+
   return (
-    <group position={[node.worldPosition.x, node.worldPosition.y, node.worldPosition.z]}>
+    <group position={[node.worldPosition.x, node.worldPosition.y, node.worldPosition.z]} scale={nodeScale}>
       {/* THICK OUTER RIM */}
-      <mesh ref={rimRef} castShadow receiveShadow>
-        <torusGeometry args={[1.0, 0.25, 16, 32]} />
+      <mesh ref={rimRef} castShadow receiveShadow geometry={rimGeometry}>
         <meshStandardMaterial
           color={baseColor}
           metalness={0.95}
@@ -310,8 +389,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </mesh>
 
       {/* INNER CORE (glowing center) */}
-      <mesh ref={coreRef} castShadow receiveShadow>
-        <sphereGeometry args={[0.75, 32, 32]} />
+      <mesh ref={coreRef} castShadow receiveShadow geometry={coreGeometry}>
         <meshStandardMaterial
           color={isActive ? '#ffff00' : (wasVisited ? '#88ff88' : '#ff6666')}
           metalness={0.85}
@@ -322,8 +400,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </mesh>
 
       {/* INNER ROTATING RING */}
-      <mesh ref={innerRingRef}>
-        <torusGeometry args={[0.65, 0.08, 16, 32]} />
+      <mesh ref={innerRingRef} geometry={innerRingGeometry}>
         <meshStandardMaterial
           color={isActive ? '#ffff00' : (wasVisited ? '#88ff88' : '#ff8888')}
           metalness={0.9}
@@ -334,12 +411,10 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </mesh>
 
       {/* TOP/BOTTOM POSTS */}
-      <mesh position={[0, 0, 0.7]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.25, 16]} />
+      <mesh position={[0, 0, 0.7]} castShadow geometry={postGeometry}>
         <meshStandardMaterial color="#555555" metalness={0.9} roughness={0.3} />
       </mesh>
-      <mesh position={[0, 0, -0.7]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.25, 16]} />
+      <mesh position={[0, 0, -0.7]} castShadow geometry={postGeometry}>
         <meshStandardMaterial color="#555555" metalness={0.9} roughness={0.3} />
       </mesh>
 
@@ -352,11 +427,11 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
         decay={2}
       />
       
-      {/* Particle burst on hit */}
+      {/* Particle burst on hit - reduced count for performance */}
       {showParticles && (
         <>
-          {[...Array(8)].map((_, i) => {
-            const angle = (i / 8) * Math.PI * 2;
+          {[...Array(6)].map((_, i) => {
+            const angle = (i / 6) * Math.PI * 2;
             const distance = 2 + Math.random();
             return (
               <mesh 
@@ -367,7 +442,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
                   (Math.random() - 0.5) * 2
                 ]}
               >
-                <sphereGeometry args={[0.15, 8, 8]} />
+                <sphereGeometry args={[0.15, 6, 6]} />
                 <meshBasicMaterial 
                   color={isActive ? '#ffff00' : '#44ff44'} 
                   transparent 
@@ -382,7 +457,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       {/* VALUE LABEL - Arcade style */}
       <Html center distanceFactor={8}>
         <div
-          className="px-4 py-2 rounded-xl text-white font-black text-2xl shadow-2xl border-3 pointer-events-none relative"
+          className="px-3 py-1.5 rounded-lg text-white font-black text-lg shadow-2xl border-2 pointer-events-none relative"
           style={{
             background: isActive 
               ? 'linear-gradient(135deg, rgba(251, 191, 36, 0.98), rgba(245, 158, 11, 0.98))' 
@@ -409,7 +484,7 @@ function ArcadeBumper({ node, visualStateManager }: { node: TreeNode3D; visualSt
       </Html>
     </group>
   );
-}
+});
 
 // ============================================================================
 // SPLINE RAILS (Glowing trajectory path)
@@ -422,10 +497,12 @@ interface SplineRailsProps {
 function SplineRails({ animationController }: SplineRailsProps) {
   const railRef = useRef<THREE.Mesh>(null);
   const spline = animationController?.getSpline();
+  const lastUpdate = useRef(0);
 
-  // Enhanced pulse animation with color shift
+  // Enhanced pulse animation with color shift (throttled for performance)
   useFrame((state) => {
-    if (railRef.current) {
+    if (railRef.current && state.clock.elapsedTime - lastUpdate.current > 0.016) { // ~60fps
+      lastUpdate.current = state.clock.elapsedTime;
       const time = state.clock.elapsedTime;
       const material = railRef.current.material as THREE.MeshStandardMaterial;
       
@@ -446,9 +523,9 @@ function SplineRails({ animationController }: SplineRailsProps) {
   // Generate tube geometry from spline with larger radius
   const tubeGeometry = new THREE.TubeGeometry(
     spline.curve,
-    250, // more segments for smoother look
+    150, // balanced segments for performance
     0.18, // slightly thicker radius
-    12,   // more radial segments
+    8,   // reduced radial segments for performance
     false // closed
   );
 
@@ -478,8 +555,13 @@ function Pinball({ position, traversalType }: {
   const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.PointLight>(null);
   const config = TRAVERSAL_CONFIGS[traversalType];
+  const lastUpdate = useRef(0);
 
   useFrame((state) => {
+    // Throttle updates to every other frame for performance
+    if (state.clock.elapsedTime - lastUpdate.current < 0.032) return; // ~30fps
+    lastUpdate.current = state.clock.elapsedTime;
+    
     // Rotate pinball for reflective effect
     if (meshRef.current) {
       meshRef.current.rotation.x += 0.2;
@@ -496,7 +578,7 @@ function Pinball({ position, traversalType }: {
     <group position={[position.x, position.y, position.z]}>
       {/* Main Pinball Sphere - Chrome-like */}
       <mesh ref={meshRef} castShadow>
-        <sphereGeometry args={[1, 32, 32]} />
+        <sphereGeometry args={[1, 24, 24]} />
         <meshStandardMaterial
           color={config.accentColor}
           metalness={0.95}
@@ -575,18 +657,52 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
   const [startMouseY, setStartMouseY] = useState(0);
   const config = TRAVERSAL_CONFIGS[traversalType];
 
-  // Add window-level event listeners for drag tracking
+  // Add window-level event listeners for drag tracking (mouse and touch)
   useEffect(() => {
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
       e.preventDefault();
       e.stopPropagation();
       
-      // Pass raw Y coordinate to controller
-      onDragChange?.(e.clientY);
+      // Normalize Y coordinate relative to viewport height (zoom-independent)
+      const normalizedY = (e.clientY / window.innerHeight) * 1000;
+      onDragChange?.(normalizedY);
+    };
+
+    const handleWindowTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Get first touch point
+      const touch = e.touches[0];
+      if (touch) {
+        const normalizedY = (touch.clientY / window.innerHeight) * 1000;
+        onDragChange?.(normalizedY);
+      }
     };
 
     const handleWindowMouseUp = (e: MouseEvent) => {
+      if (isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        
+        // Re-enable orbit controls
+        if (orbitControlsRef?.current) {
+          orbitControlsRef.current.enabled = true;
+          orbitControlsRef.current.enableRotate = true;
+        }
+        
+        // Re-enable text selection
+        document.body.style.userSelect = '';
+        document.body.style.cursor = 'default';
+        
+        onDragEnd?.();
+      }
+    };
+
+    const handleWindowTouchEnd = (e: TouchEvent) => {
       if (isDragging) {
         e.preventDefault();
         e.stopPropagation();
@@ -615,18 +731,21 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
     if (isDragging) {
       window.addEventListener('mousemove', handleWindowMouseMove, { capture: true });
       window.addEventListener('mouseup', handleWindowMouseUp, { capture: true });
+      window.addEventListener('touchmove', handleWindowTouchMove, { capture: true, passive: false });
+      window.addEventListener('touchend', handleWindowTouchEnd, { capture: true });
       window.addEventListener('selectstart', handleSelectStart, { capture: true });
     }
 
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove, { capture: true });
       window.removeEventListener('mouseup', handleWindowMouseUp, { capture: true });
+      window.removeEventListener('touchmove', handleWindowTouchMove, { capture: true });
+      window.removeEventListener('touchend', handleWindowTouchEnd, { capture: true });
       window.removeEventListener('selectstart', handleSelectStart, { capture: true });
     };
   }, [isDragging, startMouseY, onDragChange, onDragEnd, orbitControlsRef]);
 
   const handlePointerDown = (e: any) => {
-    console.log('🎯 Plunger clicked!', e);
     e.stopPropagation();
     
     // Prevent text selection during drag
@@ -638,9 +757,17 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
       orbitControlsRef.current.enabled = false;
     }
     
+    // Get Y position from either mouse or touch event
+    let clientY = e.clientY;
+    if (e.touches && e.touches[0]) {
+      clientY = e.touches[0].clientY;
+    }
+    
+    // Normalize start position (zoom-independent)
+    const normalizedStartY = (clientY / window.innerHeight) * 1000;
     setIsDragging(true);
-    setStartMouseY(e.clientY);
-    onDragStart?.(e.clientY); // Pass start Y to controller
+    setStartMouseY(normalizedStartY);
+    onDragStart?.(normalizedStartY);
   };
 
   useFrame(() => {
@@ -692,46 +819,19 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
         />
       </mesh>
 
-      {/* PLUNGER TIP (visible part) - DRAGGABLE */}
+      {/* PLUNGER TIP (visible part) - Visual only, drag handled by 2D overlay */}
       <mesh
         ref={plungerRef}
         castShadow
         position={[0, -2, 0]}
-        onPointerDown={(e) => {
-          console.log('👆 Pointer down on plunger mesh');
-          e.stopPropagation();
-          handlePointerDown(e);
-        }}
-        onPointerEnter={(e) => {
-          console.log('🖱️ Pointer entered plunger');
-          e.stopPropagation();
-          if (!isDragging) {
-            document.body.style.cursor = 'grab';
-            // Pre-disable orbit controls on hover for smoother drag start
-            if (orbitControlsRef?.current) {
-              orbitControlsRef.current.enableRotate = false;
-            }
-          }
-        }}
-        onPointerLeave={(e) => {
-          console.log('🚪 Pointer left plunger');
-          e.stopPropagation();
-          if (!isDragging) {
-            document.body.style.cursor = 'default';
-            // Re-enable orbit rotate when not hovering
-            if (orbitControlsRef?.current) {
-              orbitControlsRef.current.enableRotate = true;
-            }
-          }
-        }}
       >
-        <cylinderGeometry args={[1.2, 1.2, 2.5, 32]} />
+        <cylinderGeometry args={[1.2, 1.2, 2.5, 24]} />
         <meshStandardMaterial
-          color={isDragging ? '#ffff00' : config.accentColor}
+          color={config.accentColor}
           metalness={0.9}
           roughness={0.1}
-          emissive={isDragging ? '#ffff00' : config.accentColor}
-          emissiveIntensity={isDragging ? 2 : (charge * 1.5)}
+          emissive={config.accentColor}
+          emissiveIntensity={charge * 1.5}
         />
       </mesh>
 
@@ -739,7 +839,7 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
       <group ref={springRef} position={[0, -3.5, 0]}>
         {[0, 0.4, 0.8, 1.2, 1.6].map((offset, i) => (
           <mesh key={i} position={[0, offset, 0]}>
-            <torusGeometry args={[0.6, 0.12, 16, 32]} />
+            <torusGeometry args={[0.6, 0.12, 12, 24]} />
             <meshStandardMaterial
               color="#ffaa00"
               emissive="#ffaa00"
@@ -753,7 +853,7 @@ function Launcher({ position, charge, traversalType, onDragStart, onDragChange, 
 
       {/* Base plate */}
       <mesh position={[0, -5.5, 0]} castShadow>
-        <cylinderGeometry args={[1.5, 1.5, 0.5, 32]} />
+        <cylinderGeometry args={[1.5, 1.5, 0.5, 24]} />
         <meshStandardMaterial
           color="#333333"
           metalness={0.8}

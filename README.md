@@ -190,4 +190,4 @@ AlgoHub deploys like any App Router project. Provision Supabase environment vari
 
 ## License
 
-Pending — please reach out to the maintainers for reuse or distribution questions.
+(MIT License)[https://github.com/red-sakai/Algohub/blob/main/LICENSE]
