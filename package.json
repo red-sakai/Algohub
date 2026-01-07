@@ -27,6 +27,7 @@
     "phaser": "^3.90.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "snyk": "^1.1301.2",
     "react-icons": "^5.5.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
