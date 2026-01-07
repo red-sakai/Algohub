@@ -25,6 +25,7 @@
     "phaser": "^3.90.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "snyk": "^1.1301.2",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.3.1",
