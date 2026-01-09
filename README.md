@@ -167,6 +167,30 @@ npm run start
 
 ```
 
+## Integration Testing (Postman)
+
+Integration tests are maintained as a Postman Collection and can be run in Postman or headlessly via Newman.
+
+### Run locally (Newman)
+
+Run the integration suite (starts a dev server and runs Newman against it):
+
+```bash
+npm run test:integration
+```
+
+If you already have a server running (or want to point at a different `baseUrl` in Postman), run only the Newman step:
+
+```bash
+npm run test:integration:only
+```
+
+### Environment toggles
+
+- The runner uses [postman/AlgoHub.local.postman_environment.json](postman/AlgoHub.local.postman_environment.json).
+- Set `EXPECT_EXTERNAL_SERVICES` to `true` if your `.env.local` is configured for Supabase/Gemini and you want those routes to be required to return `200`.
+- Leave it as `false` to allow external-service routes to return `{ "error": "..." }` (useful for running the suite without secrets configured).
+
 ## Gameplay Flow
 
 1. **Landing:** Sign in (or continue as guest). Global music plays via the shared audio bus.
