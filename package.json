@@ -33,7 +33,7 @@
     "snyk": "^1.1301.2",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "tailwind-merge": "^3.3.1",
+    "tailwind-merge": "^3.4.0",
     "three": "^0.181.0",
     "zod": "^4.3.4"
   },
