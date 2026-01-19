@@ -1,0 +1,420 @@
+{
+  "info": {
+    "_postman_id": "f5ea5f64-b6bb-4c8e-8d9a-f2c3193fd90c",
+    "name": "AlgoHub - Integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Default env toggles",
+          "if (!pm.environment.get('baseUrl')) pm.environment.set('baseUrl', 'http://localhost:3000');",
+          "if (!pm.environment.get('EXPECT_EXTERNAL_SERVICES')) pm.environment.set('EXPECT_EXTERNAL_SERVICES', 'false');",
+          ""
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Socket.IO bootstrap (GET /api/socketio)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/socketio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "socketio"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 400 (already bootstrapped)', function () {",
+                  "  pm.expect([200, 400]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Media",
+      "item": [
+        {
+          "name": "Audio tracks (GET /api/audio)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/audio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "audio"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Body is an array (possibly empty)', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(Array.isArray(body)).to.eql(true);",
+                  "});",
+                  "pm.test('If items exist, they match {title, src}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (!Array.isArray(body) || body.length === 0) return;",
+                  "  const first = body[0];",
+                  "  pm.expect(first).to.have.property('title');",
+                  "  pm.expect(first.title).to.be.a('string');",
+                  "  pm.expect(first).to.have.property('src');",
+                  "  pm.expect(first.src).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Car radio tracks (GET /api/car-radio)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/car-radio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "car-radio"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Body is an array (possibly empty)', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(Array.isArray(body)).to.eql(true);",
+                  "});",
+                  "pm.test('If items exist, they match {title, src}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (!Array.isArray(body) || body.length === 0) return;",
+                  "  const first = body[0];",
+                  "  pm.expect(first).to.have.property('title');",
+                  "  pm.expect(first.title).to.be.a('string');",
+                  "  pm.expect(first).to.have.property('src');",
+                  "  pm.expect(first.src).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin Analytics",
+      "item": [
+        {
+          "name": "Student growth (GET /api/admin/student-growth)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/student-growth",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "student-growth"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expectExternal = (pm.environment.get('EXPECT_EXTERNAL_SERVICES') || 'false').toLowerCase() === 'true';",
+                  "",
+                  "pm.test('Status is 200 when external services enabled; otherwise 200/400/500 allowed', function () {",
+                  "  if (expectExternal) pm.expect(pm.response.code).to.eql(200);",
+                  "  else pm.expect([200, 400, 500]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response shape: success schema OR {error}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(body).to.have.property('data');",
+                  "    pm.expect(Array.isArray(body.data)).to.eql(true);",
+                  "    pm.expect(body).to.have.property('meta');",
+                  "    pm.expect(body.meta).to.have.property('totalStudents');",
+                  "    pm.expect(body.meta.totalStudents).to.be.a('number');",
+                  "  } else {",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    pm.expect(body.error).to.be.a('string');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Achievements gained (GET /api/admin/achievements-gained)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/achievements-gained",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "achievements-gained"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expectExternal = (pm.environment.get('EXPECT_EXTERNAL_SERVICES') || 'false').toLowerCase() === 'true';",
+                  "",
+                  "pm.test('Status is 200 when external services enabled; otherwise 200/400/500 allowed', function () {",
+                  "  if (expectExternal) pm.expect(pm.response.code).to.eql(200);",
+                  "  else pm.expect([200, 400, 500]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response shape: success schema OR {error}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(body).to.have.property('data');",
+                  "    pm.expect(Array.isArray(body.data)).to.eql(true);",
+                  "    pm.expect(body).to.have.property('meta');",
+                  "    pm.expect(body.meta).to.have.property('totalUnlocked');",
+                  "    pm.expect(body.meta.totalUnlocked).to.be.a('number');",
+                  "  } else {",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    pm.expect(body.error).to.be.a('string');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AI insight (GET /api/admin/ai-insight)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/ai-insight",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "ai-insight"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expectExternal = (pm.environment.get('EXPECT_EXTERNAL_SERVICES') || 'false').toLowerCase() === 'true';",
+                  "",
+                  "pm.test('Status is 200 when external services enabled; otherwise 200/500 allowed', function () {",
+                  "  if (expectExternal) pm.expect(pm.response.code).to.eql(200);",
+                  "  else pm.expect([200, 500]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response shape: success schema OR {error}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(body).to.have.property('data');",
+                  "    pm.expect(body.data).to.have.property('insight');",
+                  "    pm.expect(body.data.insight).to.be.a('string');",
+                  "    pm.expect(body.data).to.have.property('metrics');",
+                  "  } else {",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    pm.expect(body.error).to.be.a('string');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Storage",
+      "item": [
+        {
+          "name": "Latest image path (POST /api/storage/latest)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"folder\": \"license_cards\",\n  \"limit\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/storage/latest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "storage", "latest"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expectExternal = (pm.environment.get('EXPECT_EXTERNAL_SERVICES') || 'false').toLowerCase() === 'true';",
+                  "",
+                  "pm.test('Status is 200 when external services enabled; otherwise 200/400/500 allowed', function () {",
+                  "  if (expectExternal) pm.expect(pm.response.code).to.eql(200);",
+                  "  else pm.expect([200, 400, 500]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response shape: {path: string|null} OR {error}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(body).to.have.property('path');",
+                  "    if (body.path !== null) pm.expect(body.path).to.be.a('string');",
+                  "  } else {",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    pm.expect(body.error).to.be.a('string');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload image (POST /api/storage/upload)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dataUrl\": \"{{TEST_IMAGE_DATA_URL}}\",\n  \"folder\": \"integration_tests\",\n  \"makePublic\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/storage/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "storage", "upload"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expectExternal = (pm.environment.get('EXPECT_EXTERNAL_SERVICES') || 'false').toLowerCase() === 'true';",
+                  "",
+                  "pm.test('Status is 200 when external services enabled; otherwise 200/400/500 allowed', function () {",
+                  "  if (expectExternal) pm.expect(pm.response.code).to.eql(200);",
+                  "  else pm.expect([200, 400, 500]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response shape: {path, publicUrl?} OR {error}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(body).to.have.property('path');",
+                  "    pm.expect(body.path).to.be.a('string');",
+                  "    pm.environment.set('uploadedPath', body.path);",
+                  "  } else {",
+                  "    pm.environment.set('uploadedPath', '');",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    pm.expect(body.error).to.be.a('string');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign uploaded image (POST /api/storage/sign)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"{{uploadedPath}}\",\n  \"expiresInSeconds\": 300\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/storage/sign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "storage", "sign"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const expectExternal = (pm.environment.get('EXPECT_EXTERNAL_SERVICES') || 'false').toLowerCase() === 'true';",
+                  "const uploadedPath = pm.environment.get('uploadedPath') || '';",
+                  "",
+                  "pm.test('If external services expected, upload path must exist', function () {",
+                  "  if (expectExternal) pm.expect(uploadedPath.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Status is 200 when external services enabled; otherwise 200/400/500 allowed', function () {",
+                  "  if (expectExternal) pm.expect(pm.response.code).to.eql(200);",
+                  "  else pm.expect([200, 400, 500]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response shape: {url} OR {error}', function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(body).to.have.property('url');",
+                  "    pm.expect(body.url).to.be.a('string');",
+                  "  } else {",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    pm.expect(body.error).to.be.a('string');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
