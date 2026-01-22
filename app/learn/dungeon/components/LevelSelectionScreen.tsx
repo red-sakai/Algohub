@@ -64,7 +64,7 @@ export function LevelSelectionScreen({
                   imageRendering: "pixelated",
                 }}
               >
-                10-12 enemies
+                10-30 enemies
               </span>
             </div>
 
